@@ -199,6 +199,21 @@ export function Dashboard({
     void copyText("Renewal request draft", text);
   }
 
+  function copyOwnerPackets() {
+    const rows = selectedItems.length ? selectedItems : filtered;
+    const groups = new Map<string, DashboardItem[]>();
+    for (const item of rows) {
+      const key = item.ownerName ? `${item.ownerName}${item.ownerEmail ? ` <${item.ownerEmail}>` : ""}` : "Unassigned owner";
+      groups.set(key, [...(groups.get(key) ?? []), item]);
+    }
+
+    const text = [...groups.entries()]
+      .sort((a, b) => b[1].length - a[1].length)
+      .map(([owner, ownerItems]) => renewalPacket(owner, ownerItems))
+      .join("\n\n---\n\n");
+    void copyText("Owner renewal packets", text);
+  }
+
   function copyUnknownOwners() {
     const unknownRows = filtered.filter((item) => !item.ownerName);
     const text = [
@@ -329,6 +344,10 @@ export function Dashboard({
           <button type="button" onClick={copyRenewalRequest} disabled={!filtered.length}>
             <Download size={15} />
             Copy renewal request
+          </button>
+          <button type="button" onClick={copyOwnerPackets} disabled={!filtered.length}>
+            <Download size={15} />
+            Copy owner packets
           </button>
           <button type="button" onClick={copyOwnerSummary}>
             <Download size={15} />
@@ -896,6 +915,45 @@ function renewalCopyText(item: DashboardItem): string {
     "Requested action: rotate or replace this credential before the expiration date, then reply with the completion date and the new rotation owner.",
     "If this credential is no longer needed, confirm it can be removed or marked ignored."
   ].join("\n");
+}
+
+function renewalPacket(owner: string, items: DashboardItem[]): string {
+  const sorted = [...items].sort((a, b) => riskRank(a.riskBucket) - riskRank(b.riskBucket));
+  const urgentCount = sorted.filter((item) => item.riskBucket === "expired" || item.riskBucket === "0-30").length;
+  const dueSoonCount = sorted.filter((item) => item.riskBucket === "31-60" || item.riskBucket === "61-90").length;
+  const subject = `Credential rotation request: ${urgentCount} urgent, ${dueSoonCount} upcoming`;
+  const rows = sorted
+    .map((item) =>
+      [
+        SOURCE_LABELS[item.source],
+        item.parentName,
+        item.credentialName,
+        item.credentialType,
+        formatDate(item.expiresAt),
+        item.daysUntilExpiry === null ? "No expiry metadata" : `${item.daysUntilExpiry} days`,
+        STATUS_LABELS[item.status],
+        item.credentialId
+      ].join("\t")
+    )
+    .join("\n");
+
+  return [
+    `To: ${owner}`,
+    `Subject: ${subject}`,
+    "",
+    "Please review and rotate the credentials below. Reply with the completion date, the new rotation owner, and whether any listed credential should be removed instead of rotated.",
+    "",
+    `Total credentials: ${sorted.length}`,
+    `Urgent credentials: ${urgentCount}`,
+    `Upcoming credentials: ${dueSoonCount}`,
+    "",
+    "source\tapplication_or_resource\tcredential\ttype\texpires\tremaining\tstatus\tcredential_id",
+    rows
+  ].join("\n");
+}
+
+function riskRank(bucket: RiskBucket): number {
+  return ["expired", "0-30", "31-60", "61-90", "90+", "no-expiry"].indexOf(bucket);
 }
 
 function formatMetadataValue(value: string | number | boolean | null): string {

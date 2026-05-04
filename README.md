@@ -53,6 +53,7 @@ In the dashboard:
 - Review `Source coverage` to confirm Graph and Key Vault syncs are reachable, current, and not skipping metadata.
 - Use `Copy unknowns` to copy a tab-separated worklist of rows that still need owner mapping.
 - Select rows and use `Copy renewal request` to draft owner-facing rotation requests.
+- Use `Copy owner packets` to generate owner-grouped renewal packets with subject lines and credential tables.
 - Use `Copy by owner` to create an owner-grouped renewal worklist.
 
 ## What It Stores
