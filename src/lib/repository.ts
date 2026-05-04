@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { migrate, openDatabase } from "./db";
 import { daysUntilExpiry, riskBucket } from "./risk";
+import { classifyRotation, isRenewalActionable } from "./rotation";
 import type {
   DashboardCoverage,
   DashboardItem,
@@ -243,6 +244,12 @@ export function listDashboardItems(db: DatabaseSync = openDatabase()): Dashboard
   return rows.map((row) => {
     const days = daysUntilExpiry(row.expires_at as string | null);
     const id = Number(row.id);
+    const metadata = parseMetadata(row.metadata_json);
+    const rotation = classifyRotation({
+      source: row.source as DashboardItem["source"],
+      credentialType: String(row.credential_type),
+      metadata
+    });
     return {
       id,
       naturalKey: String(row.natural_key),
@@ -266,7 +273,9 @@ export function listDashboardItems(db: DatabaseSync = openDatabase()): Dashboard
       lastSeenAt: String(row.last_seen_at),
       sourceUpdatedAt: row.source_updated_at as string | null,
       removedAt: row.removed_at as string | null,
-      metadata: parseMetadata(row.metadata_json),
+      metadata,
+      rotationMode: rotation.mode,
+      rotationModeReason: rotation.reason,
       coverageState: "ok",
       statusHistory: histories.get(id) ?? []
     };
@@ -325,6 +334,7 @@ function statusHistoryByItemId(ids: number[], db: DatabaseSync): Map<number, Das
 
 export function dashboardSummary(db: DatabaseSync = openDatabase()): DashboardSummary {
   const items = listDashboardItems(db);
+  const renewalItems = items.filter((item) => isRenewalActionable(item.rotationMode));
   const coverageRows = db
     .prepare("SELECT reachable, items_skipped FROM source_coverage")
     .all() as { reachable: number; items_skipped: number }[];
@@ -334,12 +344,13 @@ export function dashboardSummary(db: DatabaseSync = openDatabase()): DashboardSu
 
   return {
     total: items.length,
-    expired: items.filter((item) => item.riskBucket === "expired").length,
-    next30: items.filter((item) => item.riskBucket === "0-30").length,
-    next60: items.filter((item) => item.riskBucket === "31-60").length,
-    next90: items.filter((item) => item.riskBucket === "61-90").length,
-    unknownOwners: items.filter((item) => !item.ownerName).length,
-    lowConfidenceOwners: items.filter((item) => item.ownerConfidence === "low").length,
+    expired: renewalItems.filter((item) => item.riskBucket === "expired").length,
+    next30: renewalItems.filter((item) => item.riskBucket === "0-30").length,
+    next60: renewalItems.filter((item) => item.riskBucket === "31-60").length,
+    next90: renewalItems.filter((item) => item.riskBucket === "61-90").length,
+    unknownOwners: renewalItems.filter((item) => !item.ownerName).length,
+    lowConfidenceOwners: renewalItems.filter((item) => item.ownerConfidence === "low").length,
+    excludedFromRenewal: items.filter((item) => !isRenewalActionable(item.rotationMode)).length,
     coverageGaps: coverageRows.filter((row) => !row.reachable || row.items_skipped > 0).length,
     lastSuccessfulSyncAt: lastRun?.finished_at ?? null
   };

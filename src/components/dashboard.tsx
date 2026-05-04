@@ -2,6 +2,7 @@
 
 import {
   AlertTriangle,
+  Ban,
   CheckCircle2,
   Clock,
   Copy,
@@ -29,11 +30,14 @@ import type {
   InventorySource,
   OwnerMatchType,
   RiskBucket,
+  RotationMode,
   WorkflowStatus
 } from "@/types";
 import { deleteOwnerOverride, saveBulkOwnerOverride, saveOwnerOverride, updateCredentialStatus } from "@/app/actions";
+import { isRenewalActionable } from "@/lib/rotation";
 
 type WorkflowMode = "all" | "urgent" | "due60" | "unknown" | "contacted_pending";
+type RotationScope = "actionable" | "all" | RotationMode;
 
 const SOURCE_LABELS: Record<InventorySource, string> = {
   entra_application: "Entra app",
@@ -81,6 +85,14 @@ const QUEUE_LABELS: Record<WorkflowMode, string> = {
   contacted_pending: "Contacted"
 };
 
+const ROTATION_LABELS: Record<RotationMode, string> = {
+  owner_rotates: "Owner rotates",
+  platform_managed: "Platform managed",
+  rotate_in_source_system: "Source system",
+  coordinated_high_risk: "Coordinated",
+  federated_no_secret: "Federated"
+};
+
 export function Dashboard({
   items,
   summary,
@@ -97,6 +109,7 @@ export function Dashboard({
   const [bucket, setBucket] = useState<RiskBucket | "all">("all");
   const [status, setStatus] = useState<WorkflowStatus | "all">("all");
   const [ownerMode, setOwnerMode] = useState<"all" | "unknown" | "low">("all");
+  const [rotationScope, setRotationScope] = useState<RotationScope>("actionable");
   const [workflowMode, setWorkflowMode] = useState<WorkflowMode>("all");
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -127,6 +140,7 @@ export function Dashboard({
       if (source !== "all" && item.source !== source) return false;
       if (bucket !== "all" && item.riskBucket !== bucket) return false;
       if (status !== "all" && item.status !== status) return false;
+      if (!matchesRotationScope(item, rotationScope)) return false;
       if (ownerMode === "unknown" && item.ownerName) return false;
       if (ownerMode === "low" && item.ownerConfidence !== "low" && item.ownerConfidence !== "unknown") {
         return false;
@@ -137,23 +151,14 @@ export function Dashboard({
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(needle));
     });
-  }, [bucket, items, ownerMode, query, source, status, workflowMode]);
-
-  const groupedByOwner = useMemo(() => {
-    const groups = new Map<string, DashboardItem[]>();
-    for (const item of filtered) {
-      const key = item.ownerName ? `${item.ownerName}${item.ownerEmail ? ` <${item.ownerEmail}>` : ""}` : "Unknown owner";
-      groups.set(key, [...(groups.get(key) ?? []), item]);
-    }
-    return [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
-  }, [filtered]);
+  }, [bucket, items, ownerMode, query, rotationScope, source, status, workflowMode]);
 
   const queueCounts = useMemo(
     () =>
       Object.fromEntries(
         (Object.keys(QUEUE_LABELS) as WorkflowMode[]).map((mode) => [
           mode,
-          items.filter((item) => matchesWorkflowMode(item, mode)).length
+          items.filter((item) => isRenewalActionable(item.rotationMode) && matchesWorkflowMode(item, mode)).length
         ])
       ) as Record<WorkflowMode, number>,
     [items]
@@ -163,6 +168,9 @@ export function Dashboard({
     () => items.filter((item) => selectedIds.includes(item.id)),
     [items, selectedIds]
   );
+  const renewalBaseItems = selectedItems.length ? selectedItems : filtered;
+  const actionableRenewalItems = renewalBaseItems.filter((item) => isRenewalActionable(item.rotationMode));
+  const excludedRenewalItems = renewalBaseItems.length - actionableRenewalItems.length;
   const selectedDetail = useMemo(
     () => items.find((item) => item.id === selectedDetailId) ?? null,
     [items, selectedDetailId]
@@ -188,7 +196,13 @@ export function Dashboard({
   }
 
   function copyOwnerSummary() {
-    const text = groupedByOwner
+    const groups = new Map<string, DashboardItem[]>();
+    for (const item of actionableRenewalItems) {
+      const key = item.ownerName ? `${item.ownerName}${item.ownerEmail ? ` <${item.ownerEmail}>` : ""}` : "Unknown owner";
+      groups.set(key, [...(groups.get(key) ?? []), item]);
+    }
+    const text = [...groups.entries()]
+      .sort((a, b) => b[1].length - a[1].length)
       .map(([owner, ownerItems]) => {
         const rows = ownerItems
           .map((item) => `- ${item.parentName}: ${item.credentialName} expires ${formatDate(item.expiresAt)} (${item.riskBucket})`)
@@ -196,7 +210,7 @@ export function Dashboard({
         return `${owner}\n${rows}`;
       })
       .join("\n\n");
-    void copyText("Owner grouped renewal worklist", text);
+    void copyText("Owner grouped renewal worklist", withExclusionNote(text, excludedRenewalItems));
   }
 
   function copyOwnerMappings() {
@@ -220,7 +234,7 @@ export function Dashboard({
   function copyInventoryExport() {
     const rows = selectedItems.length ? selectedItems : filtered;
     const text = [
-      "source\tparent_name\tcredential_name\tcredential_type\texpires_at\tdays_until_expiry\trisk\towner_name\towner_email\towner_confidence\tstatus\ttenant_id\tsubscription_id\tresource_group\tparent_id\tcredential_id\tnatural_key\tlast_seen_at",
+      "source\tparent_name\tcredential_name\tcredential_type\texpires_at\tdays_until_expiry\trisk\trotation_mode\trotation_reason\towner_name\towner_email\towner_confidence\tstatus\ttenant_id\tsubscription_id\tresource_group\tparent_id\tcredential_id\tnatural_key\tlast_seen_at",
       ...rows.map((item) =>
         [
           SOURCE_LABELS[item.source],
@@ -230,6 +244,8 @@ export function Dashboard({
           item.expiresAt ?? "",
           item.daysUntilExpiry ?? "",
           item.riskBucket,
+          ROTATION_LABELS[item.rotationMode],
+          item.rotationModeReason,
           item.ownerName ?? "",
           item.ownerEmail ?? "",
           item.ownerConfidence,
@@ -278,8 +294,7 @@ export function Dashboard({
   }
 
   function copyRenewalRequest() {
-    const rows = selectedItems.length ? selectedItems : filtered;
-    const text = rows
+    const text = actionableRenewalItems
       .map((item) =>
         [
           `Owner: ${item.ownerName ?? "Unassigned"}${item.ownerEmail ? ` <${item.ownerEmail}>` : ""}`,
@@ -297,13 +312,12 @@ export function Dashboard({
         ].join("\n")
       )
       .join("\n---\n\n");
-    void copyText("Renewal request draft", text);
+    void copyText("Renewal request draft", withExclusionNote(text, excludedRenewalItems));
   }
 
   function copyOwnerPackets() {
-    const rows = selectedItems.length ? selectedItems : filtered;
     const groups = new Map<string, DashboardItem[]>();
-    for (const item of rows) {
+    for (const item of actionableRenewalItems) {
       const key = item.ownerName ? `${item.ownerName}${item.ownerEmail ? ` <${item.ownerEmail}>` : ""}` : "Unassigned owner";
       groups.set(key, [...(groups.get(key) ?? []), item]);
     }
@@ -312,7 +326,7 @@ export function Dashboard({
       .sort((a, b) => b[1].length - a[1].length)
       .map(([owner, ownerItems]) => renewalPacket(owner, ownerItems))
       .join("\n\n---\n\n");
-    void copyText("Owner renewal packets", text);
+    void copyText("Owner renewal packets", withExclusionNote(text, excludedRenewalItems));
   }
 
   function copyUnknownOwners() {
@@ -371,6 +385,7 @@ export function Dashboard({
         <Metric label="31-60 days" value={summary.next60} icon={<Clock size={18} />} />
         <Metric label="61-90 days" value={summary.next90} icon={<Clock size={18} />} />
         <Metric label="Unknown owners" value={summary.unknownOwners} tone="warning" icon={<UserRound size={18} />} />
+        <Metric label="Excluded" value={summary.excludedFromRenewal} icon={<Ban size={18} />} />
         <Metric label="Coverage gaps" value={summary.coverageGaps} tone="danger" icon={<ShieldAlert size={18} />} />
       </section>
 
@@ -422,6 +437,15 @@ export function Dashboard({
           <option value="unknown">Unknown only</option>
           <option value="low">Low confidence</option>
         </Select>
+        <Select label="Rotation" value={rotationScope} onChange={(value) => setRotationScope(value as RotationScope)}>
+          <option value="actionable">Actionable only</option>
+          <option value="all">All rotation modes</option>
+          {Object.entries(ROTATION_LABELS).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </Select>
         <Select
           label="Workflow"
           value={workflowMode}
@@ -440,6 +464,7 @@ export function Dashboard({
           <Filter size={16} />
           <span>{filtered.length} visible</span>
           <span>{selectedIds.length} selected</span>
+          {excludedRenewalItems ? <span>{excludedRenewalItems} excluded from renewal exports</span> : null}
         </div>
         <form action={saveBulkOwnerOverride} className="owner-bulk-form">
           {selectedItems.map((item) => (
@@ -462,15 +487,15 @@ export function Dashboard({
             <Download size={15} />
             Copy unknowns
           </button>
-          <button type="button" onClick={copyRenewalRequest} disabled={!filtered.length}>
+          <button type="button" onClick={copyRenewalRequest} disabled={!actionableRenewalItems.length}>
             <Download size={15} />
             Copy renewal request
           </button>
-          <button type="button" onClick={copyOwnerPackets} disabled={!filtered.length}>
+          <button type="button" onClick={copyOwnerPackets} disabled={!actionableRenewalItems.length}>
             <Download size={15} />
             Copy owner packets
           </button>
-          <button type="button" onClick={copyOwnerSummary}>
+          <button type="button" onClick={copyOwnerSummary} disabled={!actionableRenewalItems.length}>
             <Download size={15} />
             Copy by owner
           </button>
@@ -525,6 +550,7 @@ export function Dashboard({
                 <th>Source</th>
                 <th>App / vault</th>
                 <th>Credential</th>
+                <th>Rotation</th>
                 <th>Expires</th>
                 <th>Owner</th>
                 <th>Status</th>
@@ -557,6 +583,9 @@ export function Dashboard({
                       {item.credentialName}
                     </span>
                     <span className="muted">{item.credentialType}</span>
+                  </td>
+                  <td>
+                    <RotationBadge item={item} />
                   </td>
                   <td>
                     <strong>{formatDate(item.expiresAt)}</strong>
@@ -650,6 +679,8 @@ function CredentialDetailDrawer({
             value={item.daysUntilExpiry === null ? "No expiry metadata" : String(item.daysUntilExpiry)}
           />
           <DetailRow label="Status" value={STATUS_LABELS[item.status]} />
+          <DetailRow label="Rotation" value={<RotationBadge item={item} />} />
+          <DetailRow label="Rotation reason" value={item.rotationModeReason} />
         </dl>
       </section>
 
@@ -937,6 +968,19 @@ function RiskBadge({ item }: { item: DashboardItem }) {
   );
 }
 
+function RotationBadge({ item }: { item: DashboardItem }) {
+  const actionable = isRenewalActionable(item.rotationMode);
+  return (
+    <span
+      className={`rotation-mode ${actionable ? "actionable" : "excluded"}`}
+      title={item.rotationModeReason}
+    >
+      {actionable ? <CheckCircle2 size={14} /> : <Ban size={14} />}
+      {ROTATION_LABELS[item.rotationMode]}
+    </span>
+  );
+}
+
 function OwnerCell({ item }: { item: DashboardItem }) {
   if (!item.ownerName) {
     return (
@@ -1035,6 +1079,8 @@ function detailCopyText(item: DashboardItem): string {
     `Subscription ID: ${item.subscriptionId ?? "unknown"}`,
     `Resource group: ${item.resourceGroup ?? "not applicable"}`,
     `Expires: ${formatDate(item.expiresAt)}`,
+    `Rotation mode: ${ROTATION_LABELS[item.rotationMode]}`,
+    `Rotation reason: ${item.rotationModeReason}`,
     `Owner: ${item.ownerName ?? "Unassigned"}${item.ownerEmail ? ` <${item.ownerEmail}>` : ""}`,
     `Owner evidence: ${item.ownerEvidence ?? "none"}`,
     `Status: ${STATUS_LABELS[item.status]}`
@@ -1051,6 +1097,7 @@ function renewalCopyText(item: DashboardItem): string {
       item.daysUntilExpiry === null ? "" : ` (${item.daysUntilExpiry} days)`
     }`,
     `Current status: ${STATUS_LABELS[item.status]}`,
+    `Rotation mode: ${ROTATION_LABELS[item.rotationMode]}`,
     `Identifier: ${item.credentialId}`,
     "",
     "Requested action: rotate or replace this credential before the expiration date, then reply with the completion date and the new rotation owner.",
@@ -1093,6 +1140,15 @@ function renewalPacket(owner: string, items: DashboardItem[]): string {
   ].join("\n");
 }
 
+function withExclusionNote(text: string, excludedCount: number): string {
+  if (!excludedCount) return text;
+  return [
+    text,
+    "",
+    `Note: ${excludedCount} selected or visible credential${excludedCount === 1 ? " was" : "s were"} excluded because the dashboard classified them as not owner-rotatable. Use the Rotation filter and inventory export for audit details.`
+  ].join("\n");
+}
+
 function riskRank(bucket: RiskBucket): number {
   return ["expired", "0-30", "31-60", "61-90", "90+", "no-expiry"].indexOf(bucket);
 }
@@ -1108,10 +1164,17 @@ function matchesWorkflowMode(
   workflowMode: WorkflowMode
 ): boolean {
   if (workflowMode === "all") return true;
+  if (!isRenewalActionable(item.rotationMode)) return false;
   if (workflowMode === "urgent") return item.riskBucket === "expired" || item.riskBucket === "0-30";
   if (workflowMode === "due60") {
     return item.riskBucket === "expired" || item.riskBucket === "0-30" || item.riskBucket === "31-60";
   }
   if (workflowMode === "unknown") return !item.ownerName;
   return item.status === "owner_contacted";
+}
+
+function matchesRotationScope(item: DashboardItem, rotationScope: RotationScope): boolean {
+  if (rotationScope === "all") return true;
+  if (rotationScope === "actionable") return isRenewalActionable(item.rotationMode);
+  return item.rotationMode === rotationScope;
 }

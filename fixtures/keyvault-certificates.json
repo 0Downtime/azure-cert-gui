@@ -11,6 +11,8 @@
     "enabled": true,
     "updatedAt": "2026-01-10T00:00:00Z",
     "contentType": "application/x-pkcs12",
+    "certificateIssuerName": "DigiCert",
+    "certificateLifetimeAction": "AutoRenew",
     "tags": {
       "owner": "Shared Services",
       "ownerEmail": "shared-services@example.com"

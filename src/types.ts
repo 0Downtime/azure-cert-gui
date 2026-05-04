@@ -27,6 +27,13 @@ export type OwnerSignalSource =
 
 export type OwnerMatchType = "credential_id" | "parent_id" | "parent_name" | "vault_name";
 
+export type RotationMode =
+  | "owner_rotates"
+  | "platform_managed"
+  | "rotate_in_source_system"
+  | "coordinated_high_risk"
+  | "federated_no_secret";
+
 export interface NormalizedCredential {
   naturalKey: string;
   source: InventorySource;
@@ -72,6 +79,8 @@ export interface DashboardItem {
   sourceUpdatedAt: string | null;
   removedAt: string | null;
   metadata: Record<string, string | number | boolean | null>;
+  rotationMode: RotationMode;
+  rotationModeReason: string;
   coverageState: "ok" | "stale" | "failed" | "unknown";
   statusHistory: DashboardStatusHistory[];
 }
@@ -92,6 +101,7 @@ export interface DashboardSummary {
   next90: number;
   unknownOwners: number;
   lowConfidenceOwners: number;
+  excludedFromRenewal: number;
   coverageGaps: number;
   lastSuccessfulSyncAt: string | null;
 }

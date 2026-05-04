@@ -19,5 +19,23 @@
       }
     ],
     "keyCredentials": []
+  },
+  {
+    "tenantId": "tenant-fixture",
+    "id": "sp-managed-identity-api",
+    "appId": "00000000-0000-0000-0000-000000000202",
+    "displayName": "Managed Identity API",
+    "servicePrincipalType": "ManagedIdentity",
+    "tags": {},
+    "owners": [],
+    "passwordCredentials": [
+      {
+        "keyId": "cred-mi-platform-01",
+        "displayName": "Azure-managed credential",
+        "startDateTime": "2025-01-01T00:00:00Z",
+        "endDateTime": "2026-05-20T00:00:00Z"
+      }
+    ],
+    "keyCredentials": []
   }
 ]

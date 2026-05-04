@@ -149,7 +149,7 @@ h1 {
 
 .metrics {
   display: grid;
-  grid-template-columns: repeat(7, minmax(120px, 1fr));
+  grid-template-columns: repeat(8, minmax(120px, 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -513,7 +513,7 @@ input::placeholder {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 1120px;
+  min-width: 1240px;
 }
 
 th,
@@ -563,6 +563,7 @@ tr.selected-row {
 }
 
 .risk,
+.rotation-mode,
 .confidence {
   display: inline-flex;
   align-items: center;
@@ -594,6 +595,16 @@ tr.selected-row {
 .risk.bucket-no-expiry {
   color: var(--teal);
   background: var(--teal-soft);
+}
+
+.rotation-mode.actionable {
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+.rotation-mode.excluded {
+  color: var(--muted);
+  background: var(--code-bg);
 }
 
 .confidence.high {

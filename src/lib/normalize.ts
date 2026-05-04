@@ -21,6 +21,7 @@ export interface GraphApplicationInput {
   id: string;
   appId: string;
   displayName: string;
+  appOwnerOrganizationId?: string | null;
   tags?: Record<string, string>;
   owners?: GraphOwnerInput[];
   passwordCredentials?: GraphCredentialInput[];
@@ -44,6 +45,10 @@ export interface KeyVaultItemInput {
   updatedAt?: string | null;
   tags?: Record<string, string>;
   contentType?: string;
+  certificateIssuerName?: string | null;
+  certificateReuseKey?: boolean | null;
+  certificateLifetimeAction?: string | null;
+  certificatePolicyKeyType?: string | null;
 }
 
 function ownerFromGraph(
@@ -112,7 +117,7 @@ function unknownOwner(): Pick<
 
 function normalizeGraphCredential(
   source: "entra_application" | "service_principal",
-  parent: GraphApplicationInput,
+  parent: GraphApplicationInput | GraphServicePrincipalInput,
   credential: GraphCredentialInput,
   credentialType: "client_secret" | "certificate"
 ): NormalizedCredential {
@@ -133,13 +138,20 @@ function normalizeGraphCredential(
     credentialType,
     expiresAt: credential.endDateTime ?? null,
     sourceUpdatedAt: null,
-    metadata: pickMetadata(credential as unknown as Record<string, unknown>, [
-      "keyId",
-      "displayName",
-      "startDateTime",
-      "usage",
-      "type"
-    ]),
+    metadata: {
+      ...pickMetadata(credential as unknown as Record<string, unknown>, [
+        "keyId",
+        "displayName",
+        "startDateTime",
+        "usage",
+        "type"
+      ]),
+      ...pickMetadata(parent as unknown as Record<string, unknown>, [
+        "servicePrincipalType",
+        "appOwnerOrganizationId"
+      ]),
+      ...rotationMetadataFromTags(parent.tags)
+    },
     ...owner
   };
 }
@@ -185,11 +197,14 @@ export function normalizeKeyVaultSecrets(secrets: KeyVaultItemInput[]): Normaliz
       credentialType: "secret",
       expiresAt: secret.expiresAt ?? null,
       sourceUpdatedAt: secret.updatedAt ?? null,
-      metadata: pickMetadata(secret as unknown as Record<string, unknown>, [
-        "version",
-        "enabled",
-        "contentType"
-      ]),
+      metadata: {
+        ...pickMetadata(secret as unknown as Record<string, unknown>, [
+          "version",
+          "enabled",
+          "contentType"
+        ]),
+        ...rotationMetadataFromTags(secret.tags)
+      },
       ...owner
     };
   });
@@ -214,12 +229,30 @@ export function normalizeKeyVaultCertificates(
       credentialType: "certificate",
       expiresAt: certificate.expiresAt ?? null,
       sourceUpdatedAt: certificate.updatedAt ?? null,
-      metadata: pickMetadata(certificate as unknown as Record<string, unknown>, [
-        "version",
-        "enabled",
-        "contentType"
-      ]),
+      metadata: {
+        ...pickMetadata(certificate as unknown as Record<string, unknown>, [
+          "version",
+          "enabled",
+          "contentType",
+          "certificateIssuerName",
+          "certificateReuseKey",
+          "certificateLifetimeAction",
+          "certificatePolicyKeyType"
+        ]),
+        ...rotationMetadataFromTags(certificate.tags)
+      },
       ...owner
     };
   });
+}
+
+function rotationMetadataFromTags(
+  tags: Record<string, string> | undefined
+): Record<string, string> {
+  const rotationMode = tags?.rotationMode ?? tags?.RotationMode;
+  if (!rotationMode) return {};
+  return {
+    rotationMode,
+    rotationModeReason: tags?.rotationModeReason ?? tags?.RotationModeReason ?? "Rotation mode set by Azure tag"
+  };
 }

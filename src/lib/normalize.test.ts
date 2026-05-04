@@ -53,6 +53,32 @@ describe("normalization", () => {
     expect(rows).toHaveLength(0);
   });
 
+  it("preserves service principal rotation classification metadata", () => {
+    const [row] = normalizeServicePrincipals([
+      {
+        tenantId: "tenant",
+        id: "sp-object",
+        appId: "app-id",
+        displayName: "SP",
+        servicePrincipalType: "ManagedIdentity",
+        appOwnerOrganizationId: "first-party-tenant",
+        passwordCredentials: [
+          {
+            keyId: "secret-key",
+            displayName: "Secret",
+            endDateTime: "2026-06-01T00:00:00Z"
+          }
+        ],
+        keyCredentials: []
+      }
+    ]);
+
+    expect(row.metadata).toMatchObject({
+      servicePrincipalType: "ManagedIdentity",
+      appOwnerOrganizationId: "first-party-tenant"
+    });
+  });
+
   it("rejects poison secret value fields", () => {
     expect(() =>
       normalizeKeyVaultSecrets([

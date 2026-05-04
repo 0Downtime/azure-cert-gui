@@ -44,6 +44,8 @@ interface GraphApplicationRaw {
   id?: string | null;
   appId?: string | null;
   displayName?: string | null;
+  appOwnerOrganizationId?: string | null;
+  servicePrincipalType?: string | null;
   tags?: unknown;
   passwordCredentials?: GraphCredentialRaw[];
   keyCredentials?: GraphCredentialRaw[];
@@ -66,6 +68,20 @@ interface KeyVaultRawItem {
     enabled?: boolean | null;
     expires?: string | number | null;
     updated?: string | number | null;
+  };
+  policy?: {
+    issuerParameters?: {
+      name?: string | null;
+    };
+    keyProperties?: {
+      reuseKey?: boolean | null;
+      keyType?: string | null;
+    };
+    lifetimeActions?: Array<{
+      action?: {
+        actionType?: string | null;
+      };
+    }>;
   };
   contentType?: string | null;
   tags?: unknown;
@@ -169,7 +185,7 @@ export async function collectServicePrincipals(
 ): Promise<GraphServicePrincipalInput[]> {
   const tenantId = await currentTenantId(config);
   const principals = await graphList<GraphApplicationRaw>(
-    "/servicePrincipals?$select=id,appId,displayName,passwordCredentials,keyCredentials,tags&$top=999"
+    "/servicePrincipals?$select=id,appId,displayName,servicePrincipalType,appOwnerOrganizationId,passwordCredentials,keyCredentials,tags&$top=999"
   );
 
   return Promise.all(
@@ -178,6 +194,8 @@ export async function collectServicePrincipals(
       id: required(principal.id, "servicePrincipal.id"),
       appId: principal.appId ?? "",
       displayName: principal.displayName ?? principal.appId ?? principal.id ?? "Unnamed service principal",
+      appOwnerOrganizationId: principal.appOwnerOrganizationId ?? null,
+      servicePrincipalType: principal.servicePrincipalType ?? undefined,
       tags: coerceTagMap(principal.tags),
       owners: config.includeGraphOwners
         ? await graphOwners("servicePrincipals", required(principal.id, "servicePrincipal.id"))
@@ -303,6 +321,15 @@ export async function collectKeyVaultCertificates(
     "100"
   ]);
 
+  const detailsByName = new Map(
+    await Promise.all(
+      currentCertificates.map(async (certificate) => {
+        const name = required(certificate.name, "certificate.name");
+        return [name, await keyVaultCertificateDetail(context.vaultName, context.subscriptionId, name)] as const;
+      })
+    )
+  );
+
   const rows = config.includeKeyVaultVersions
     ? (
         await Promise.all(
@@ -325,7 +352,42 @@ export async function collectKeyVaultCertificates(
       ).flat()
     : currentCertificates;
 
-  return rows.map((certificate) => toKeyVaultItem(certificate, context, "certificates"));
+  return rows.map((certificate) => {
+    const name = required(certificate.name, "certificate.name");
+    const detail = detailsByName.get(name);
+    return toKeyVaultItem(
+      {
+        ...certificate,
+        policy: certificate.policy ?? detail?.policy,
+        tags: certificate.tags ?? detail?.tags,
+        contentType: certificate.contentType ?? detail?.contentType
+      },
+      context,
+      "certificates"
+    );
+  });
+}
+
+async function keyVaultCertificateDetail(
+  vaultName: string,
+  subscriptionId: string,
+  name: string
+): Promise<KeyVaultRawItem | null> {
+  try {
+    return await azJson<KeyVaultRawItem>([
+      "keyvault",
+      "certificate",
+      "show",
+      "--vault-name",
+      vaultName,
+      "--name",
+      name,
+      "--subscription",
+      subscriptionId
+    ]);
+  } catch {
+    return null;
+  }
 }
 
 function vaultContext(vault: AzureVault): {
@@ -366,7 +428,11 @@ function toKeyVaultItem(
     enabled: item.attributes?.enabled ?? undefined,
     updatedAt: normalizeDate(item.attributes?.updated),
     tags: { ...context.vaultTags, ...coerceTagMap(item.tags) },
-    contentType: item.contentType ?? undefined
+    contentType: item.contentType ?? undefined,
+    certificateIssuerName: item.policy?.issuerParameters?.name ?? undefined,
+    certificateReuseKey: item.policy?.keyProperties?.reuseKey ?? undefined,
+    certificateLifetimeAction: item.policy?.lifetimeActions?.[0]?.action?.actionType ?? undefined,
+    certificatePolicyKeyType: item.policy?.keyProperties?.keyType ?? undefined
   };
 }
 
