@@ -1,3 +1,17 @@
 # Project-local Gstack install and generated skill links
 /.agents/skills/gstack/
 /.agents/skills/gstack-*
+
+# Dependencies and build output
+node_modules/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+
+# Local runtime state
+.env
+.env.local
+/data/*.sqlite
+/data/*.sqlite-*
+.gstack/

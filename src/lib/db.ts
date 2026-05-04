@@ -1,0 +1,118 @@
+import { mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+
+const DEFAULT_DB_PATH = "./data/gstack.sqlite";
+
+export function dbPath(): string {
+  return resolve(process.env.GSTACK_DB_PATH ?? DEFAULT_DB_PATH);
+}
+
+export function openDatabase(): DatabaseSync {
+  const path = dbPath();
+  mkdirSync(dirname(path), { recursive: true });
+  return new DatabaseSync(path);
+}
+
+export function migrate(db = openDatabase()): void {
+  db.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA foreign_keys = ON;
+
+    CREATE TABLE IF NOT EXISTS credential_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      natural_key TEXT NOT NULL UNIQUE,
+      source TEXT NOT NULL,
+      source_tenant_id TEXT,
+      subscription_id TEXT,
+      resource_group TEXT,
+      parent_id TEXT NOT NULL,
+      parent_name TEXT NOT NULL,
+      credential_id TEXT NOT NULL,
+      credential_name TEXT NOT NULL,
+      credential_type TEXT NOT NULL,
+      expires_at TEXT,
+      owner_hint TEXT,
+      owner_override_id INTEGER,
+      status TEXT NOT NULL DEFAULT 'not_started',
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      source_updated_at TEXT,
+      removed_at TEXT,
+      removal_reason TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      FOREIGN KEY(owner_override_id) REFERENCES owner_overrides(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS owner_overrides (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      match_type TEXT NOT NULL,
+      match_value TEXT NOT NULL,
+      owner_name TEXT NOT NULL,
+      owner_email TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(match_type, match_value)
+    );
+
+    CREATE TABLE IF NOT EXISTS owner_signals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      credential_item_id INTEGER NOT NULL,
+      source TEXT NOT NULL,
+      owner_name TEXT,
+      owner_email TEXT,
+      confidence TEXT NOT NULL,
+      evidence TEXT NOT NULL,
+      observed_at TEXT NOT NULL,
+      FOREIGN KEY(credential_item_id) REFERENCES credential_items(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS sync_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      finished_at TEXT,
+      status TEXT NOT NULL,
+      items_seen INTEGER NOT NULL DEFAULT 0,
+      items_changed INTEGER NOT NULL DEFAULT 0,
+      error_code TEXT,
+      error_message TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS source_coverage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source TEXT NOT NULL,
+      tenant_id TEXT,
+      subscription_id TEXT,
+      resource_id TEXT,
+      resource_name TEXT NOT NULL,
+      configured INTEGER NOT NULL,
+      reachable INTEGER NOT NULL,
+      last_successful_sync_at TEXT,
+      last_attempt_at TEXT NOT NULL,
+      items_seen INTEGER NOT NULL DEFAULT 0,
+      items_skipped INTEGER NOT NULL DEFAULT 0,
+      skip_reason TEXT,
+      error_code TEXT,
+      UNIQUE(source, resource_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS status_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      credential_item_id INTEGER NOT NULL,
+      from_status TEXT,
+      to_status TEXT NOT NULL,
+      note TEXT,
+      changed_at TEXT NOT NULL,
+      changed_by TEXT NOT NULL,
+      FOREIGN KEY(credential_item_id) REFERENCES credential_items(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_credential_items_expires_at ON credential_items(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_credential_items_source ON credential_items(source);
+    CREATE INDEX IF NOT EXISTS idx_credential_items_status ON credential_items(status);
+    CREATE INDEX IF NOT EXISTS idx_credential_items_parent_name ON credential_items(parent_name);
+    CREATE INDEX IF NOT EXISTS idx_owner_overrides_match ON owner_overrides(match_type, match_value);
+  `);
+}

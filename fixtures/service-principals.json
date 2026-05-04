@@ -1,0 +1,23 @@
+[
+  {
+    "tenantId": "tenant-fixture",
+    "id": "sp-deploy-agent",
+    "appId": "00000000-0000-0000-0000-000000000201",
+    "displayName": "Deploy Agent Enterprise App",
+    "servicePrincipalType": "Application",
+    "tags": {
+      "owner": "Release Engineering",
+      "ownerEmail": "release@example.com"
+    },
+    "owners": [],
+    "passwordCredentials": [
+      {
+        "keyId": "cred-sp-deploy-secret-01",
+        "displayName": "pipeline-secret",
+        "startDateTime": "2025-01-15T00:00:00Z",
+        "endDateTime": "2026-06-10T00:00:00Z"
+      }
+    ],
+    "keyCredentials": []
+  }
+]

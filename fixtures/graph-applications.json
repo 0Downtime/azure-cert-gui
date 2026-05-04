@@ -1,0 +1,52 @@
+[
+  {
+    "tenantId": "tenant-fixture",
+    "id": "app-ops-api",
+    "appId": "00000000-0000-0000-0000-000000000101",
+    "displayName": "Operations API",
+    "tags": {
+      "owner": "Platform Ops",
+      "ownerEmail": "platform-ops@example.com"
+    },
+    "owners": [
+      {
+        "displayName": "Chris Brien",
+        "mail": "chris@example.com"
+      }
+    ],
+    "passwordCredentials": [
+      {
+        "keyId": "cred-ops-api-secret-01",
+        "displayName": "client-secret-primary",
+        "startDateTime": "2025-05-01T00:00:00Z",
+        "endDateTime": "2026-05-19T00:00:00Z"
+      }
+    ],
+    "keyCredentials": [
+      {
+        "keyId": "cred-ops-api-cert-01",
+        "displayName": "ops-api-signing-cert",
+        "startDateTime": "2025-07-01T00:00:00Z",
+        "endDateTime": "2026-08-15T00:00:00Z",
+        "usage": "Verify",
+        "type": "AsymmetricX509Cert"
+      }
+    ]
+  },
+  {
+    "tenantId": "tenant-fixture",
+    "id": "app-legacy-reports",
+    "appId": "00000000-0000-0000-0000-000000000102",
+    "displayName": "Legacy Reports Exporter",
+    "owners": [],
+    "passwordCredentials": [
+      {
+        "keyId": "cred-legacy-secret-01",
+        "displayName": "legacy-exporter-secret",
+        "startDateTime": "2024-01-01T00:00:00Z",
+        "endDateTime": "2026-05-07T00:00:00Z"
+      }
+    ],
+    "keyCredentials": []
+  }
+]

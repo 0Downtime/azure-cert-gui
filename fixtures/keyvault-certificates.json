@@ -1,0 +1,19 @@
+[
+  {
+    "tenantId": "tenant-fixture",
+    "subscriptionId": "sub-fixture",
+    "resourceGroup": "rg-prod",
+    "vaultResourceId": "/subscriptions/sub-fixture/resourceGroups/rg-prod/providers/Microsoft.KeyVault/vaults/kv-shared-prod",
+    "vaultName": "kv-shared-prod",
+    "name": "api-contoso-internal",
+    "version": "v7",
+    "expiresAt": "2026-07-02T00:00:00Z",
+    "enabled": true,
+    "updatedAt": "2026-01-10T00:00:00Z",
+    "contentType": "application/x-pkcs12",
+    "tags": {
+      "owner": "Shared Services",
+      "ownerEmail": "shared-services@example.com"
+    }
+  }
+]
