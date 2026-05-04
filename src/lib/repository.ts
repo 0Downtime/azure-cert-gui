@@ -10,8 +10,13 @@ import type {
   DashboardSummary,
   InventorySource,
   NormalizedCredential,
+  RenewalCase,
+  RenewalCaseStatus,
+  RenewalEvent,
+  RenewalEventType,
   WorkflowStatus
 } from "@/types";
+import { assertNoSecretValueFields } from "./secret-guard";
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -240,6 +245,10 @@ export function listDashboardItems(db: DatabaseSync = openDatabase()): Dashboard
     rows.map((row) => Number(row.id)),
     db
   );
+  const renewalCases = renewalCasesByItemId(
+    rows.map((row) => Number(row.id)),
+    db
+  );
 
   return rows.map((row) => {
     const days = daysUntilExpiry(row.expires_at as string | null);
@@ -276,6 +285,7 @@ export function listDashboardItems(db: DatabaseSync = openDatabase()): Dashboard
       metadata,
       rotationMode: rotation.mode,
       rotationModeReason: rotation.reason,
+      renewalCase: renewalCases.get(id) ?? null,
       coverageState: "ok",
       statusHistory: histories.get(id) ?? []
     };
@@ -330,6 +340,99 @@ function statusHistoryByItemId(ids: number[], db: DatabaseSync): Map<number, Das
   }
 
   return histories;
+}
+
+function renewalCasesByItemId(ids: number[], db: DatabaseSync): Map<number, RenewalCase> {
+  const uniqueIds = [...new Set(ids)].filter((id) => Number.isFinite(id));
+  const cases = new Map<number, RenewalCase>();
+  if (!uniqueIds.length) return cases;
+
+  const placeholders = uniqueIds.map(() => "?").join(", ");
+  const rows = db
+    .prepare(
+      `
+      SELECT
+        id, credential_item_id, status, due_at, owner_name, owner_email, notes,
+        replacement_credential_id, replacement_expires_at,
+        key_vault_copy_vault_name, key_vault_copy_secret_name,
+        created_at, updated_at, closed_at
+      FROM renewal_cases
+      WHERE credential_item_id IN (${placeholders})
+        AND closed_at IS NULL
+      ORDER BY updated_at DESC, id DESC
+    `
+    )
+    .all(...uniqueIds) as Array<Record<string, unknown>>;
+
+  const events = renewalEventsByCaseId(
+    rows.map((row) => Number(row.id)),
+    db
+  );
+  for (const row of rows) {
+    const credentialItemId = Number(row.credential_item_id);
+    if (cases.has(credentialItemId)) continue;
+    cases.set(credentialItemId, renewalCaseFromRow(row, events.get(Number(row.id)) ?? []));
+  }
+  return cases;
+}
+
+function renewalEventsByCaseId(caseIds: number[], db: DatabaseSync): Map<number, RenewalEvent[]> {
+  const uniqueIds = [...new Set(caseIds)].filter((id) => Number.isFinite(id));
+  const events = new Map<number, RenewalEvent[]>();
+  if (!uniqueIds.length) return events;
+
+  const placeholders = uniqueIds.map(() => "?").join(", ");
+  const rows = db
+    .prepare(
+      `
+      SELECT id, renewal_case_id, event_type, note, details_json, created_at, created_by
+      FROM renewal_events
+      WHERE renewal_case_id IN (${placeholders})
+      ORDER BY created_at DESC, id DESC
+    `
+    )
+    .all(...uniqueIds) as Array<Record<string, unknown>>;
+
+  for (const row of rows) {
+    const renewalCaseId = Number(row.renewal_case_id);
+    const existing = events.get(renewalCaseId) ?? [];
+    if (existing.length >= 6) continue;
+    existing.push(renewalEventFromRow(row));
+    events.set(renewalCaseId, existing);
+  }
+  return events;
+}
+
+function renewalCaseFromRow(row: Record<string, unknown>, events: RenewalEvent[]): RenewalCase {
+  return {
+    id: Number(row.id),
+    credentialItemId: Number(row.credential_item_id),
+    status: row.status as RenewalCaseStatus,
+    dueAt: row.due_at as string | null,
+    ownerName: row.owner_name as string | null,
+    ownerEmail: row.owner_email as string | null,
+    notes: row.notes as string | null,
+    replacementCredentialId: row.replacement_credential_id as string | null,
+    replacementExpiresAt: row.replacement_expires_at as string | null,
+    keyVaultCopyVaultName: row.key_vault_copy_vault_name as string | null,
+    keyVaultCopySecretName: row.key_vault_copy_secret_name as string | null,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+    closedAt: row.closed_at as string | null,
+    events
+  };
+}
+
+function renewalEventFromRow(row: Record<string, unknown>): RenewalEvent {
+  return {
+    id: Number(row.id),
+    renewalCaseId: Number(row.renewal_case_id),
+    eventType: row.event_type as RenewalEventType,
+    note: row.note as string | null,
+    details: parseMetadata(row.details_json),
+    createdAt: String(row.created_at),
+    createdBy: String(row.created_by)
+  };
 }
 
 export function dashboardSummary(db: DatabaseSync = openDatabase()): DashboardSummary {
@@ -448,22 +551,278 @@ function coverageHealth(reachable: boolean, itemsSkipped: number, lastAttemptAt:
 export function updateStatus(id: number, toStatus: WorkflowStatus, note = "Updated from dashboard"): void {
   const db = openDatabase();
   migrate(db);
-  const existing = db.prepare("SELECT status FROM credential_items WHERE id = ?").get(id) as
-    | { status: WorkflowStatus }
-    | undefined;
-  if (!existing) return;
-  const timestamp = nowIso();
   try {
     db.exec("BEGIN");
-    db.prepare("UPDATE credential_items SET status = ? WHERE id = ?").run(toStatus, id);
-    db.prepare(
-      "INSERT INTO status_history (credential_item_id, from_status, to_status, note, changed_at, changed_by) VALUES (?, ?, ?, ?, ?, 'operator')"
-    ).run(id, existing.status, toStatus, note, timestamp);
+    updateStatusInTransaction(db, id, toStatus, note);
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
     throw error;
   }
+}
+
+function updateStatusInTransaction(db: DatabaseSync, id: number, toStatus: WorkflowStatus, note: string): void {
+  const existing = db.prepare("SELECT status FROM credential_items WHERE id = ?").get(id) as
+    | { status: WorkflowStatus }
+    | undefined;
+  if (!existing || existing.status === toStatus) return;
+  const timestamp = nowIso();
+  db.prepare("UPDATE credential_items SET status = ? WHERE id = ?").run(toStatus, id);
+  db.prepare(
+    "INSERT INTO status_history (credential_item_id, from_status, to_status, note, changed_at, changed_by) VALUES (?, ?, ?, ?, ?, 'operator')"
+  ).run(id, existing.status, toStatus, note, timestamp);
+}
+
+export function createRenewalCase(input: {
+  credentialItemId: number;
+  dueAt?: string | null;
+  ownerName?: string | null;
+  ownerEmail?: string | null;
+  notes?: string | null;
+}): RenewalCase {
+  const db = openDatabase();
+  migrate(db);
+  const timestamp = nowIso();
+  try {
+    db.exec("BEGIN");
+    const existing = activeRenewalCaseRow(db, input.credentialItemId);
+    let caseId: number;
+    if (existing) {
+      caseId = Number(existing.id);
+      db.prepare(
+        `
+        UPDATE renewal_cases
+        SET due_at = ?, owner_name = ?, owner_email = ?, notes = ?, updated_at = ?
+        WHERE id = ?
+      `
+      ).run(
+        input.dueAt ?? (existing.due_at as string | null) ?? null,
+        input.ownerName ?? (existing.owner_name as string | null) ?? null,
+        input.ownerEmail ?? (existing.owner_email as string | null) ?? null,
+        input.notes ?? (existing.notes as string | null) ?? null,
+        timestamp,
+        caseId
+      );
+      appendRenewalEventInTransaction(db, caseId, "case_updated", "Renewal case updated", {
+        dueAt: input.dueAt ?? null,
+        ownerName: input.ownerName ?? null
+      });
+    } else {
+      const result = db
+        .prepare(
+          `
+          INSERT INTO renewal_cases (
+            credential_item_id, status, due_at, owner_name, owner_email, notes, created_at, updated_at
+          ) VALUES (?, 'open', ?, ?, ?, ?, ?, ?)
+        `
+        )
+        .run(
+          input.credentialItemId,
+          input.dueAt ?? null,
+          input.ownerName ?? null,
+          input.ownerEmail ?? null,
+          input.notes ?? null,
+          timestamp,
+          timestamp
+        );
+      caseId = Number(result.lastInsertRowid);
+      appendRenewalEventInTransaction(db, caseId, "case_created", "Renewal case opened", {
+        dueAt: input.dueAt ?? null,
+        ownerName: input.ownerName ?? null
+      });
+    }
+    updateStatusInTransaction(db, input.credentialItemId, "owner_contacted", "Renewal case opened");
+    db.exec("COMMIT");
+    return getRenewalCase(caseId, db);
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function updateRenewalCase(input: {
+  caseId: number;
+  dueAt?: string | null;
+  ownerName?: string | null;
+  ownerEmail?: string | null;
+  notes?: string | null;
+  keyVaultCopyVaultName?: string | null;
+  keyVaultCopySecretName?: string | null;
+}): RenewalCase {
+  const db = openDatabase();
+  migrate(db);
+  const existing = getRenewalCase(input.caseId, db);
+  const timestamp = nowIso();
+  try {
+    db.exec("BEGIN");
+    db.prepare(
+      `
+      UPDATE renewal_cases
+      SET due_at = ?, owner_name = ?, owner_email = ?, notes = ?,
+          key_vault_copy_vault_name = ?, key_vault_copy_secret_name = ?, updated_at = ?
+      WHERE id = ?
+    `
+    ).run(
+      input.dueAt ?? existing.dueAt,
+      input.ownerName ?? existing.ownerName,
+      input.ownerEmail ?? existing.ownerEmail,
+      input.notes ?? existing.notes,
+      input.keyVaultCopyVaultName ?? existing.keyVaultCopyVaultName,
+      input.keyVaultCopySecretName ?? existing.keyVaultCopySecretName,
+      timestamp,
+      input.caseId
+    );
+    appendRenewalEventInTransaction(db, input.caseId, "case_updated", "Renewal case updated", {
+      dueAt: input.dueAt ?? existing.dueAt,
+      ownerName: input.ownerName ?? existing.ownerName,
+      keyVaultCopyVaultName: input.keyVaultCopyVaultName ?? existing.keyVaultCopyVaultName,
+      keyVaultCopySecretName: input.keyVaultCopySecretName ?? existing.keyVaultCopySecretName
+    });
+    db.exec("COMMIT");
+    return getRenewalCase(input.caseId, db);
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function recordRenewalRotation(input: {
+  caseId: number;
+  replacementCredentialId?: string | null;
+  replacementExpiresAt?: string | null;
+  keyVaultCopyVaultName?: string | null;
+  keyVaultCopySecretName?: string | null;
+  note?: string | null;
+  details?: Record<string, string | number | boolean | null>;
+}): RenewalCase {
+  const db = openDatabase();
+  migrate(db);
+  const existing = getRenewalCase(input.caseId, db);
+  const timestamp = nowIso();
+  try {
+    db.exec("BEGIN");
+    db.prepare(
+      `
+      UPDATE renewal_cases
+      SET status = 'rotation_created',
+          replacement_credential_id = ?,
+          replacement_expires_at = ?,
+          key_vault_copy_vault_name = ?,
+          key_vault_copy_secret_name = ?,
+          updated_at = ?
+      WHERE id = ?
+    `
+    ).run(
+      input.replacementCredentialId ?? existing.replacementCredentialId,
+      input.replacementExpiresAt ?? existing.replacementExpiresAt,
+      input.keyVaultCopyVaultName ?? existing.keyVaultCopyVaultName,
+      input.keyVaultCopySecretName ?? existing.keyVaultCopySecretName,
+      timestamp,
+      input.caseId
+    );
+    appendRenewalEventInTransaction(db, input.caseId, "rotation_executed", input.note ?? "Replacement created", {
+      replacementCredentialId: input.replacementCredentialId ?? null,
+      replacementExpiresAt: input.replacementExpiresAt ?? null,
+      keyVaultCopyVaultName: input.keyVaultCopyVaultName ?? null,
+      keyVaultCopySecretName: input.keyVaultCopySecretName ?? null,
+      ...(input.details ?? {})
+    });
+    updateStatusInTransaction(db, existing.credentialItemId, "rotation_scheduled", "Replacement created; pending validation");
+    db.exec("COMMIT");
+    return getRenewalCase(input.caseId, db);
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function markRenewalValidated(caseId: number, note = "Replacement validated"): RenewalCase {
+  const db = openDatabase();
+  migrate(db);
+  const existing = getRenewalCase(caseId, db);
+  const timestamp = nowIso();
+  try {
+    db.exec("BEGIN");
+    db.prepare("UPDATE renewal_cases SET status = 'validated', updated_at = ? WHERE id = ?").run(timestamp, caseId);
+    appendRenewalEventInTransaction(db, caseId, "validated", note, {});
+    updateStatusInTransaction(db, existing.credentialItemId, "rotated", "Replacement validated");
+    db.exec("COMMIT");
+    return getRenewalCase(caseId, db);
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function closeRenewalCase(caseId: number, note = "Renewal case closed"): RenewalCase {
+  const db = openDatabase();
+  migrate(db);
+  const existing = getRenewalCase(caseId, db);
+  const timestamp = nowIso();
+  try {
+    db.exec("BEGIN");
+    db.prepare("UPDATE renewal_cases SET status = 'closed', updated_at = ?, closed_at = ? WHERE id = ?").run(
+      timestamp,
+      timestamp,
+      caseId
+    );
+    appendRenewalEventInTransaction(db, caseId, "closed", note, {});
+    updateStatusInTransaction(db, existing.credentialItemId, "rotated", "Renewal case closed");
+    db.exec("COMMIT");
+    return getRenewalCase(caseId, db, true);
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function getCredentialForRenewal(id: number): DashboardItem | null {
+  return listDashboardItems().find((item) => item.id === id) ?? null;
+}
+
+export function getRenewalCase(id: number, db: DatabaseSync = openDatabase(), includeClosed = false): RenewalCase {
+  migrate(db);
+  const row = db
+    .prepare(
+      `
+      SELECT
+        id, credential_item_id, status, due_at, owner_name, owner_email, notes,
+        replacement_credential_id, replacement_expires_at,
+        key_vault_copy_vault_name, key_vault_copy_secret_name,
+        created_at, updated_at, closed_at
+      FROM renewal_cases
+      WHERE id = ?
+        ${includeClosed ? "" : "AND closed_at IS NULL"}
+    `
+    )
+    .get(id) as Record<string, unknown> | undefined;
+  if (!row) throw new Error("RenewalCaseNotFound");
+  return renewalCaseFromRow(row, renewalEventsByCaseId([id], db).get(id) ?? []);
+}
+
+function activeRenewalCaseRow(db: DatabaseSync, credentialItemId: number): Record<string, unknown> | null {
+  return (
+    (db
+      .prepare("SELECT * FROM renewal_cases WHERE credential_item_id = ? AND closed_at IS NULL ORDER BY id DESC LIMIT 1")
+      .get(credentialItemId) as Record<string, unknown> | undefined) ?? null
+  );
+}
+
+function appendRenewalEventInTransaction(
+  db: DatabaseSync,
+  renewalCaseId: number,
+  eventType: RenewalEventType,
+  note: string | null,
+  details: Record<string, string | number | boolean | null>
+): void {
+  assertNoSecretValueFields({ note, details }, "renewalEvent");
+  const timestamp = nowIso();
+  db.prepare(
+    `
+    INSERT INTO renewal_events (renewal_case_id, event_type, note, details_json, created_at, created_by)
+    VALUES (?, ?, ?, ?, ?, 'operator')
+  `
+  ).run(renewalCaseId, eventType, note, JSON.stringify(details), timestamp);
 }
 
 export function upsertOwnerOverride(input: {

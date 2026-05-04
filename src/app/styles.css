@@ -347,7 +347,9 @@ h1 {
   gap: 3px;
 }
 
-.mapping-form label span {
+.mapping-form label span,
+.renewal-form label span,
+.one-time-secret > span {
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
@@ -489,7 +491,9 @@ h1 {
 .owner-form input,
 .owner-bulk-form input,
 .mapping-form input,
-.mapping-form select {
+.mapping-form select,
+.renewal-form input,
+.renewal-form select {
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--field);
@@ -621,6 +625,17 @@ tr.selected-row {
 .confidence.unknown {
   color: var(--amber);
   background: var(--amber-soft);
+}
+
+.renewal-pill {
+  background: var(--blue-soft);
+  border-radius: 999px;
+  color: var(--blue);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 8px;
+  width: fit-content;
 }
 
 .owner {
@@ -768,6 +783,57 @@ tr.selected-row {
   display: block;
   font-size: 12px;
   padding: 5px 6px;
+}
+
+.renewal-case,
+.renewal-form,
+.renewal-result,
+.one-time-secret {
+  display: grid;
+  gap: 8px;
+}
+
+.renewal-form {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.renewal-form label {
+  display: grid;
+  gap: 3px;
+}
+
+.renewal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.renewal-result {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.renewal-result.ok {
+  border-color: var(--green);
+}
+
+.renewal-result.failed {
+  border-color: var(--red);
+}
+
+.one-time-secret textarea {
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  min-height: 70px;
+  padding: 8px;
+  resize: vertical;
+  width: 100%;
 }
 
 .detail-coverage-list,

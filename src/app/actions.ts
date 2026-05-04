@@ -2,9 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import type { OwnerMatchType, WorkflowStatus } from "@/types";
+import { executeAzureRotation as rotateInAzure } from "@/lib/azure-rotation";
 import {
+  closeRenewalCase as closeCase,
+  createRenewalCase as openRenewalCase,
   deleteOwnerOverride as removeOwnerOverride,
+  getCredentialForRenewal,
+  getRenewalCase,
+  markRenewalValidated as validateRenewalCase,
+  recordRenewalRotation,
   updateStatus,
+  updateRenewalCase as saveRenewalCase,
   upsertOwnerOverride,
   upsertOwnerOverridesForParents
 } from "@/lib/repository";
@@ -63,4 +71,97 @@ export async function deleteOwnerOverride(formData: FormData): Promise<void> {
   if (!Number.isFinite(id)) return;
   removeOwnerOverride(id);
   revalidatePath("/");
+}
+
+export async function createRenewalCase(formData: FormData): Promise<void> {
+  const credentialItemId = Number(formData.get("credentialItemId"));
+  if (!Number.isFinite(credentialItemId)) return;
+  openRenewalCase({
+    credentialItemId,
+    dueAt: clean(formData.get("dueAt")),
+    ownerName: clean(formData.get("ownerName")),
+    ownerEmail: clean(formData.get("ownerEmail")),
+    notes: clean(formData.get("notes"))
+  });
+  revalidatePath("/");
+}
+
+export async function updateRenewalCase(formData: FormData): Promise<void> {
+  const caseId = Number(formData.get("caseId"));
+  if (!Number.isFinite(caseId)) return;
+  saveRenewalCase({
+    caseId,
+    dueAt: clean(formData.get("dueAt")),
+    ownerName: clean(formData.get("ownerName")),
+    ownerEmail: clean(formData.get("ownerEmail")),
+    notes: clean(formData.get("notes")),
+    keyVaultCopyVaultName: clean(formData.get("keyVaultCopyVaultName")),
+    keyVaultCopySecretName: clean(formData.get("keyVaultCopySecretName"))
+  });
+  revalidatePath("/");
+}
+
+export async function executeRenewalRotation(formData: FormData): Promise<{
+  ok: boolean;
+  message: string;
+  oneTimeSecretValue: string | null;
+}> {
+  const caseId = Number(formData.get("caseId"));
+  if (!Number.isFinite(caseId)) {
+    return { ok: false, message: "Missing renewal case", oneTimeSecretValue: null };
+  }
+  const renewalCase = getRenewalCase(caseId);
+  const item = getCredentialForRenewal(renewalCase.credentialItemId);
+  if (!item) {
+    return { ok: false, message: "Credential is no longer active", oneTimeSecretValue: null };
+  }
+
+  try {
+    const result = await rotateInAzure({
+      item,
+      confirmation: String(formData.get("confirmation") ?? ""),
+      secretMode: clean(formData.get("secretMode")) === "provided" ? "provided" : "generated",
+      providedSecretValue: String(formData.get("providedSecretValue") ?? ""),
+      newCredentialDisplayName: clean(formData.get("newCredentialDisplayName")) ?? undefined,
+      replacementExpiresAt: clean(formData.get("replacementExpiresAt")),
+      keyVaultCopyVaultName: clean(formData.get("keyVaultCopyVaultName")),
+      keyVaultCopySecretName: clean(formData.get("keyVaultCopySecretName"))
+    });
+    recordRenewalRotation({
+      caseId,
+      replacementCredentialId: result.replacementCredentialId,
+      replacementExpiresAt: result.replacementExpiresAt,
+      keyVaultCopyVaultName: result.keyVaultCopyVaultName,
+      keyVaultCopySecretName: result.keyVaultCopySecretName,
+      note: result.summary,
+      details: result.details
+    });
+    revalidatePath("/");
+    return { ok: true, message: result.summary, oneTimeSecretValue: result.oneTimeSecretValue };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : String(error),
+      oneTimeSecretValue: null
+    };
+  }
+}
+
+export async function markRenewalValidated(formData: FormData): Promise<void> {
+  const caseId = Number(formData.get("caseId"));
+  if (!Number.isFinite(caseId)) return;
+  validateRenewalCase(caseId, clean(formData.get("note")) ?? "Replacement validated");
+  revalidatePath("/");
+}
+
+export async function closeRenewalCase(formData: FormData): Promise<void> {
+  const caseId = Number(formData.get("caseId"));
+  if (!Number.isFinite(caseId)) return;
+  closeCase(caseId, clean(formData.get("note")) ?? "Renewal case closed");
+  revalidatePath("/");
+}
+
+function clean(value: FormDataEntryValue | null): string | null {
+  const text = String(value ?? "").trim();
+  return text || null;
 }

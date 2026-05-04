@@ -49,6 +49,9 @@ export interface KeyVaultItemInput {
   certificateReuseKey?: boolean | null;
   certificateLifetimeAction?: string | null;
   certificatePolicyKeyType?: string | null;
+  keyType?: string | null;
+  keyOperations?: string | null;
+  keyRotationPolicy?: string | null;
 }
 
 function ownerFromGraph(
@@ -240,6 +243,38 @@ export function normalizeKeyVaultCertificates(
           "certificatePolicyKeyType"
         ]),
         ...rotationMetadataFromTags(certificate.tags)
+      },
+      ...owner
+    };
+  });
+}
+
+export function normalizeKeyVaultKeys(keys: KeyVaultItemInput[]): NormalizedCredential[] {
+  return keys.map((key) => {
+    assertNoSecretValueFields(key, `keyVaultKey.${key.vaultName}.${key.name}`);
+    const owner = ownerFromVault(key.tags);
+    return {
+      naturalKey: `${key.subscriptionId}:${key.vaultResourceId}:key:${key.name}:${key.version}`,
+      source: "key_vault_key",
+      sourceTenantId: key.tenantId,
+      subscriptionId: key.subscriptionId,
+      resourceGroup: key.resourceGroup,
+      parentId: key.vaultResourceId,
+      parentName: key.vaultName,
+      credentialId: `${key.name}/${key.version}`,
+      credentialName: key.name,
+      credentialType: "key",
+      expiresAt: key.expiresAt ?? null,
+      sourceUpdatedAt: key.updatedAt ?? null,
+      metadata: {
+        ...pickMetadata(key as unknown as Record<string, unknown>, [
+          "version",
+          "enabled",
+          "keyType",
+          "keyOperations",
+          "keyRotationPolicy"
+        ]),
+        ...rotationMetadataFromTags(key.tags)
       },
       ...owner
     };

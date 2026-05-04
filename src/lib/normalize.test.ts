@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   normalizeGraphApplications,
+  normalizeKeyVaultKeys,
   normalizeKeyVaultSecrets,
   normalizeServicePrincipals
 } from "./normalize";
@@ -115,5 +116,28 @@ describe("normalization", () => {
     expect(row.ownerHint).toBe("Payments");
     expect(row.ownerEmail).toBe("payments@example.com");
     expect(row.ownerConfidence).toBe("medium");
+  });
+
+  it("normalizes Key Vault keys as key inventory", () => {
+    const [row] = normalizeKeyVaultKeys([
+      {
+        tenantId: "tenant",
+        subscriptionId: "sub",
+        resourceGroup: "rg",
+        vaultResourceId: "vault-id",
+        vaultName: "vault",
+        name: "cmk-orders",
+        version: "v3",
+        expiresAt: "2026-06-01T00:00:00Z",
+        keyType: "RSA",
+        keyOperations: "encrypt,decrypt",
+        tags: { owner: "Data", ownerEmail: "data@example.com" }
+      }
+    ]);
+
+    expect(row.source).toBe("key_vault_key");
+    expect(row.credentialType).toBe("key");
+    expect(row.naturalKey).toBe("sub:vault-id:key:cmk-orders:v3");
+    expect(row.metadata).toMatchObject({ keyType: "RSA", keyOperations: "encrypt,decrypt" });
   });
 });

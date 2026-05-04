@@ -69,6 +69,9 @@ interface KeyVaultRawItem {
     expires?: string | number | null;
     updated?: string | number | null;
   };
+  kty?: string | null;
+  keyOps?: string[] | null;
+  keyRotationPolicy?: string | null;
   policy?: {
     issuerParameters?: {
       name?: string | null;
@@ -368,6 +371,66 @@ export async function collectKeyVaultCertificates(
   });
 }
 
+export async function collectKeyVaultKeys(
+  vault: AzureVault,
+  config: AzureSyncConfig
+): Promise<KeyVaultItemInput[]> {
+  const context = vaultContext(vault);
+  const currentKeys = await azJson<KeyVaultRawItem[]>([
+    "keyvault",
+    "key",
+    "list",
+    "--vault-name",
+    context.vaultName,
+    "--subscription",
+    context.subscriptionId,
+    "--maxresults",
+    "100"
+  ]);
+
+  const rows = config.includeKeyVaultVersions
+    ? (
+        await Promise.all(
+          currentKeys.map((key) =>
+            azJson<KeyVaultRawItem[]>([
+              "keyvault",
+              "key",
+              "list-versions",
+              "--vault-name",
+              context.vaultName,
+              "--name",
+              required(key.name, "key.name"),
+              "--subscription",
+              context.subscriptionId,
+              "--maxresults",
+              "100"
+            ])
+          )
+        )
+      ).flat()
+    : currentKeys;
+
+  const rotationPoliciesByName = new Map(
+    await Promise.all(
+      currentKeys.map(async (key) => {
+        const name = required(key.name, "key.name");
+        return [name, await keyVaultKeyRotationPolicy(context.vaultName, context.subscriptionId, name)] as const;
+      })
+    )
+  );
+
+  return rows.map((key) =>
+    toKeyVaultItem(
+      {
+        ...key,
+        keyRotationPolicy: rotationPoliciesByName.get(required(key.name, "key.name")) ?? undefined
+      },
+      context,
+      "keys"
+    )
+  );
+}
+
 async function keyVaultCertificateDetail(
   vaultName: string,
   subscriptionId: string,
@@ -385,6 +448,30 @@ async function keyVaultCertificateDetail(
       "--subscription",
       subscriptionId
     ]);
+  } catch {
+    return null;
+  }
+}
+
+async function keyVaultKeyRotationPolicy(
+  vaultName: string,
+  subscriptionId: string,
+  name: string
+): Promise<string | null> {
+  try {
+    const policy = await azJson<unknown>([
+      "keyvault",
+      "key",
+      "rotation-policy",
+      "show",
+      "--vault-name",
+      vaultName,
+      "--name",
+      name,
+      "--subscription",
+      subscriptionId
+    ]);
+    return JSON.stringify(policy);
   } catch {
     return null;
   }
@@ -413,7 +500,7 @@ function vaultContext(vault: AzureVault): {
 function toKeyVaultItem(
   item: KeyVaultRawItem,
   context: ReturnType<typeof vaultContext>,
-  collection: "secrets" | "certificates"
+  collection: "secrets" | "certificates" | "keys"
 ): KeyVaultItemInput {
   const name = item.name ?? nameFromKeyVaultId(item.id, collection) ?? "unnamed";
   return {
@@ -432,7 +519,10 @@ function toKeyVaultItem(
     certificateIssuerName: item.policy?.issuerParameters?.name ?? undefined,
     certificateReuseKey: item.policy?.keyProperties?.reuseKey ?? undefined,
     certificateLifetimeAction: item.policy?.lifetimeActions?.[0]?.action?.actionType ?? undefined,
-    certificatePolicyKeyType: item.policy?.keyProperties?.keyType ?? undefined
+    certificatePolicyKeyType: item.policy?.keyProperties?.keyType ?? undefined,
+    keyType: item.kty ?? undefined,
+    keyOperations: item.keyOps?.join(",") ?? undefined,
+    keyRotationPolicy: item.keyRotationPolicy ?? undefined
   };
 }
 
@@ -498,13 +588,13 @@ export function normalizeDate(value: string | number | null | undefined): string
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-function nameFromKeyVaultId(id: string | null | undefined, collection: "secrets" | "certificates"): string | null {
+function nameFromKeyVaultId(id: string | null | undefined, collection: "secrets" | "certificates" | "keys"): string | null {
   const parts = id?.split("/").filter(Boolean) ?? [];
   const index = parts.findIndex((part) => part.toLowerCase() === collection);
   return index >= 0 ? parts[index + 1] ?? null : null;
 }
 
-function versionFromKeyVaultId(id: string | null | undefined, collection: "secrets" | "certificates"): string | null {
+function versionFromKeyVaultId(id: string | null | undefined, collection: "secrets" | "certificates" | "keys"): string | null {
   const parts = id?.split("/").filter(Boolean) ?? [];
   const index = parts.findIndex((part) => part.toLowerCase() === collection);
   return index >= 0 ? parts[index + 2] ?? null : null;

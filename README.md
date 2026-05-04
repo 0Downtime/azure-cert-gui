@@ -67,18 +67,18 @@ In the dashboard:
 - Select rows and use `Copy renewal request` to draft owner-facing rotation requests.
 - Use `Copy owner packets` to generate owner-grouped renewal packets with subject lines and credential tables.
 - Use `Copy by owner` to create an owner-grouped renewal worklist.
+- Open a credential detail drawer to create a renewal case, record due dates and notes, run a typed-confirmation rotation, and validate or close the case.
 - Use `Audit exports` to copy inventory TSV, status audit TSV, source coverage JSON, and owner mapping TSV.
 
 ## What It Stores
 
-The app stores metadata only: resource names, source IDs, expiration dates, owner hints, local owner overrides, workflow status, and sync health.
+The app stores metadata only: resource names, source IDs, expiration dates, owner hints, local owner overrides, workflow status, renewal case metadata, and sync health.
 
-It must never store secret values, certificate private keys, or raw Key Vault secret contents.
+It must never store secret values, certificate private keys, raw Key Vault secret contents, or one-time Entra `secretText` values. Rotation output values are shown once in the browser so the operator can copy them, then discarded.
 
 ## Real Azure Setup
 
-The Azure sync uses your local Azure CLI session. It reads metadata only and does not request Key Vault
-secret values or certificate private keys.
+The Azure sync and renewal actions use your local Azure CLI session. Sync reads metadata only and does not request Key Vault secret values or certificate private keys. Renewal actions require typing the credential name before any Azure mutation runs.
 
 ```bash
 az login

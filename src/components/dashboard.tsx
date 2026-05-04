@@ -29,11 +29,22 @@ import type {
   DashboardSummary,
   InventorySource,
   OwnerMatchType,
+  RenewalCaseStatus,
   RiskBucket,
   RotationMode,
   WorkflowStatus
 } from "@/types";
-import { deleteOwnerOverride, saveBulkOwnerOverride, saveOwnerOverride, updateCredentialStatus } from "@/app/actions";
+import {
+  closeRenewalCase,
+  createRenewalCase,
+  deleteOwnerOverride,
+  executeRenewalRotation,
+  markRenewalValidated,
+  saveBulkOwnerOverride,
+  saveOwnerOverride,
+  updateCredentialStatus,
+  updateRenewalCase
+} from "@/app/actions";
 import { isRenewalActionable } from "@/lib/rotation";
 
 type WorkflowMode = "all" | "urgent" | "due60" | "unknown" | "contacted_pending";
@@ -43,7 +54,8 @@ const SOURCE_LABELS: Record<InventorySource, string> = {
   entra_application: "Entra app",
   service_principal: "Service principal",
   key_vault_secret: "Key Vault secret",
-  key_vault_certificate: "Key Vault cert"
+  key_vault_certificate: "Key Vault cert",
+  key_vault_key: "Key Vault key"
 };
 
 const STATUS_LABELS: Record<WorkflowStatus, string> = {
@@ -91,6 +103,14 @@ const ROTATION_LABELS: Record<RotationMode, string> = {
   rotate_in_source_system: "Source system",
   coordinated_high_risk: "Coordinated",
   federated_no_secret: "Federated"
+};
+
+const RENEWAL_CASE_LABELS: Record<RenewalCaseStatus, string> = {
+  open: "Open",
+  rotation_created: "Pending validation",
+  validated: "Validated",
+  closed: "Closed",
+  blocked: "Blocked"
 };
 
 export function Dashboard({
@@ -645,6 +665,21 @@ function CredentialDetailDrawer({
   onCopy: (title: string, text: string) => Promise<void>;
 }) {
   const metadata = Object.entries(item.metadata);
+  const [rotationResult, setRotationResult] = useState<{
+    ok: boolean;
+    message: string;
+    oneTimeSecretValue: string | null;
+  } | null>(null);
+  const [isRotating, startRotation] = useTransition();
+
+  function runRotation(formData: FormData) {
+    setRotationResult(null);
+    startRotation(async () => {
+      const result = await executeRenewalRotation(formData);
+      setRotationResult(result);
+    });
+  }
+
   return (
     <aside className="detail-drawer" aria-label="Credential detail">
       <div className="detail-header">
@@ -692,6 +727,163 @@ function CredentialDetailDrawer({
           <DetailRow label="Confidence" value={item.ownerConfidence} />
           <DetailRow label="Evidence" value={item.ownerEvidence ?? "No owner evidence"} />
         </dl>
+      </section>
+
+      <section className="detail-section">
+        <h3>Renewal case</h3>
+        {item.renewalCase ? (
+          <div className="renewal-case">
+            <dl className="detail-list">
+              <DetailRow label="Case status" value={RENEWAL_CASE_LABELS[item.renewalCase.status]} />
+              <DetailRow label="Due" value={item.renewalCase.dueAt ? formatDate(item.renewalCase.dueAt) : "No due date"} />
+              <DetailRow label="Replacement" value={item.renewalCase.replacementCredentialId ?? "Not created"} />
+              <DetailRow label="Replacement expiry" value={formatDate(item.renewalCase.replacementExpiresAt)} />
+              <DetailRow
+                label="Key Vault copy"
+                value={
+                  item.renewalCase.keyVaultCopyVaultName && item.renewalCase.keyVaultCopySecretName
+                    ? `${item.renewalCase.keyVaultCopyVaultName}/${item.renewalCase.keyVaultCopySecretName}`
+                    : "None"
+                }
+              />
+            </dl>
+
+            <form action={updateRenewalCase} className="renewal-form">
+              <input type="hidden" name="caseId" value={item.renewalCase.id} />
+              <label>
+                <span>Due</span>
+                <input type="date" name="dueAt" defaultValue={dateInputValue(item.renewalCase.dueAt)} />
+              </label>
+              <label>
+                <span>Owner</span>
+                <input name="ownerName" defaultValue={item.renewalCase.ownerName ?? ""} />
+              </label>
+              <label>
+                <span>Email</span>
+                <input name="ownerEmail" defaultValue={item.renewalCase.ownerEmail ?? ""} />
+              </label>
+              <label>
+                <span>Notes</span>
+                <input name="notes" defaultValue={item.renewalCase.notes ?? ""} />
+              </label>
+              <label>
+                <span>KV copy vault</span>
+                <input name="keyVaultCopyVaultName" defaultValue={item.renewalCase.keyVaultCopyVaultName ?? ""} />
+              </label>
+              <label>
+                <span>KV copy secret</span>
+                <input name="keyVaultCopySecretName" defaultValue={item.renewalCase.keyVaultCopySecretName ?? ""} />
+              </label>
+              <button type="submit">Save case</button>
+            </form>
+
+            <form action={runRotation} className="renewal-form">
+              <input type="hidden" name="caseId" value={item.renewalCase.id} />
+              <label>
+                <span>Type credential name</span>
+                <input name="confirmation" placeholder={item.credentialName} autoComplete="off" />
+              </label>
+              <label>
+                <span>New display name</span>
+                <input name="newCredentialDisplayName" placeholder={`${item.credentialName} renewal`} />
+              </label>
+              <label>
+                <span>New expiry</span>
+                <input type="datetime-local" name="replacementExpiresAt" />
+              </label>
+              {item.source === "key_vault_secret" ? (
+                <>
+                  <label>
+                    <span>Secret mode</span>
+                    <select name="secretMode" defaultValue="generated">
+                      <option value="generated">Generate value</option>
+                      <option value="provided">Use provided value</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Provided value</span>
+                    <input type="password" name="providedSecretValue" autoComplete="new-password" />
+                  </label>
+                </>
+              ) : null}
+              {(item.source === "entra_application" || item.source === "service_principal") && item.credentialType === "client_secret" ? (
+                <>
+                  <label>
+                    <span>Copy vault</span>
+                    <input name="keyVaultCopyVaultName" defaultValue={item.renewalCase.keyVaultCopyVaultName ?? ""} />
+                  </label>
+                  <label>
+                    <span>Copy secret</span>
+                    <input name="keyVaultCopySecretName" defaultValue={item.renewalCase.keyVaultCopySecretName ?? ""} />
+                  </label>
+                </>
+              ) : null}
+              <button type="submit" disabled={isRotating}>
+                {isRotating ? "Rotating" : "Run confirmed rotation"}
+              </button>
+            </form>
+
+            {rotationResult ? (
+              <div className={`renewal-result ${rotationResult.ok ? "ok" : "failed"}`}>
+                <strong>{rotationResult.ok ? "Rotation action complete" : "Rotation action failed"}</strong>
+                <span>{rotationResult.message}</span>
+                {rotationResult.oneTimeSecretValue ? (
+                  <div className="one-time-secret">
+                    <span>One-time secret value</span>
+                    <textarea readOnly value={rotationResult.oneTimeSecretValue} />
+                    <button
+                      type="button"
+                      onClick={() => navigator.clipboard.writeText(rotationResult.oneTimeSecretValue ?? "")}
+                    >
+                      <Copy size={15} />
+                      Copy value
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="renewal-actions">
+              <form action={markRenewalValidated}>
+                <input type="hidden" name="caseId" value={item.renewalCase.id} />
+                <button type="submit">Mark validated</button>
+              </form>
+              <form action={closeRenewalCase}>
+                <input type="hidden" name="caseId" value={item.renewalCase.id} />
+                <button type="submit">Close case</button>
+              </form>
+            </div>
+
+            {item.renewalCase.events.length ? (
+              <ol className="detail-history">
+                {item.renewalCase.events.map((event) => (
+                  <li key={event.id}>
+                    <strong>{event.eventType.replaceAll("_", " ")}</strong>
+                    <span className="muted">
+                      {event.createdBy} {formatDateTime(event.createdAt)}
+                      {event.note ? ` - ${event.note}` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            ) : null}
+          </div>
+        ) : (
+          <form action={createRenewalCase} className="renewal-form">
+            <input type="hidden" name="credentialItemId" value={item.id} />
+            <input type="hidden" name="ownerName" value={item.ownerName ?? ""} />
+            <input type="hidden" name="ownerEmail" value={item.ownerEmail ?? ""} />
+            <label>
+              <span>Due</span>
+              <input type="date" name="dueAt" defaultValue={dateInputValue(item.expiresAt)} />
+            </label>
+            <label>
+              <span>Notes</span>
+              <input name="notes" placeholder="Renewal context, dependency, or rollout note" />
+            </label>
+            <button type="submit">Open renewal case</button>
+          </form>
+        )}
       </section>
 
       <section className="detail-section">
@@ -1031,6 +1223,7 @@ function StatusForm({ item }: { item: DashboardItem }) {
       ) : (
         <span className="muted">No status updates</span>
       )}
+      {item.renewalCase ? <span className="renewal-pill">{RENEWAL_CASE_LABELS[item.renewalCase.status]}</span> : null}
     </div>
   );
 }
@@ -1057,6 +1250,12 @@ function formatDateTime(value: string): string {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function dateInputValue(value: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
 }
 
 function coverageMatchesItem(row: DashboardCoverage, item: DashboardItem): boolean {

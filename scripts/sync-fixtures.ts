@@ -4,6 +4,7 @@ import { migrate, openDatabase } from "../src/lib/db";
 import {
   normalizeGraphApplications,
   normalizeKeyVaultCertificates,
+  normalizeKeyVaultKeys,
   normalizeKeyVaultSecrets,
   normalizeServicePrincipals
 } from "../src/lib/normalize";
@@ -23,12 +24,14 @@ const graphApps = normalizeGraphApplications(readJson("graph-applications.json")
 const servicePrincipals = normalizeServicePrincipals(readJson("service-principals.json"));
 const keyVaultSecrets = normalizeKeyVaultSecrets(readJson("keyvault-secrets.json"));
 const keyVaultCertificates = normalizeKeyVaultCertificates(readJson("keyvault-certificates.json"));
+const keyVaultKeys = normalizeKeyVaultKeys(readJson("keyvault-keys.json"));
 
 const results = [
   ["entra_application", graphApps] as const,
   ["service_principal", servicePrincipals] as const,
   ["key_vault_secret", keyVaultSecrets] as const,
-  ["key_vault_certificate", keyVaultCertificates] as const
+  ["key_vault_certificate", keyVaultCertificates] as const,
+  ["key_vault_key", keyVaultKeys] as const
 ].map(([source, credentials]) => {
   clearCoverageForSource(source, db);
   const result = upsertCredentials(credentials, source, db);
@@ -87,6 +90,20 @@ recordCoverage(
     configured: true,
     reachable: true,
     itemsSeen: keyVaultCertificates.length
+  },
+  db
+);
+
+recordCoverage(
+  {
+    source: "key_vault_key",
+    tenantId: "tenant-fixture",
+    subscriptionId: "sub-fixture",
+    resourceId: "/subscriptions/sub-fixture/resourceGroups/rg-prod/providers/Microsoft.KeyVault/vaults/kv-shared-prod",
+    resourceName: "kv-shared-prod",
+    configured: true,
+    reachable: true,
+    itemsSeen: keyVaultKeys.length
   },
   db
 );

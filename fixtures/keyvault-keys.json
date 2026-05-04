@@ -1,0 +1,21 @@
+[
+  {
+    "tenantId": "tenant-fixture",
+    "subscriptionId": "sub-fixture",
+    "resourceGroup": "rg-prod",
+    "vaultResourceId": "/subscriptions/sub-fixture/resourceGroups/rg-prod/providers/Microsoft.KeyVault/vaults/kv-shared-prod",
+    "vaultName": "kv-shared-prod",
+    "name": "cmk-orders",
+    "version": "v3",
+    "expiresAt": "2026-06-22T00:00:00Z",
+    "enabled": true,
+    "updatedAt": "2026-02-15T00:00:00Z",
+    "keyType": "RSA",
+    "keyOperations": "encrypt,decrypt,wrapKey,unwrapKey",
+    "keyRotationPolicy": "{\"lifetimeActions\":[{\"action\":{\"type\":\"Rotate\"}}]}",
+    "tags": {
+      "owner": "Data Platform",
+      "ownerEmail": "data-platform@example.com"
+    }
+  }
+]

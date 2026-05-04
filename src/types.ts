@@ -2,7 +2,8 @@ export type InventorySource =
   | "entra_application"
   | "service_principal"
   | "key_vault_secret"
-  | "key_vault_certificate";
+  | "key_vault_certificate"
+  | "key_vault_key";
 
 export type CredentialType = "client_secret" | "certificate" | "key" | "secret" | "unknown";
 
@@ -33,6 +34,21 @@ export type RotationMode =
   | "rotate_in_source_system"
   | "coordinated_high_risk"
   | "federated_no_secret";
+
+export type RenewalCaseStatus =
+  | "open"
+  | "rotation_created"
+  | "validated"
+  | "closed"
+  | "blocked";
+
+export type RenewalEventType =
+  | "case_created"
+  | "case_updated"
+  | "rotation_executed"
+  | "validated"
+  | "closed"
+  | "blocked";
 
 export interface NormalizedCredential {
   naturalKey: string;
@@ -81,8 +97,37 @@ export interface DashboardItem {
   metadata: Record<string, string | number | boolean | null>;
   rotationMode: RotationMode;
   rotationModeReason: string;
+  renewalCase: RenewalCase | null;
   coverageState: "ok" | "stale" | "failed" | "unknown";
   statusHistory: DashboardStatusHistory[];
+}
+
+export interface RenewalCase {
+  id: number;
+  credentialItemId: number;
+  status: RenewalCaseStatus;
+  dueAt: string | null;
+  ownerName: string | null;
+  ownerEmail: string | null;
+  notes: string | null;
+  replacementCredentialId: string | null;
+  replacementExpiresAt: string | null;
+  keyVaultCopyVaultName: string | null;
+  keyVaultCopySecretName: string | null;
+  createdAt: string;
+  updatedAt: string;
+  closedAt: string | null;
+  events: RenewalEvent[];
+}
+
+export interface RenewalEvent {
+  id: number;
+  renewalCaseId: number;
+  eventType: RenewalEventType;
+  note: string | null;
+  details: Record<string, string | number | boolean | null>;
+  createdAt: string;
+  createdBy: string;
 }
 
 export interface DashboardStatusHistory {

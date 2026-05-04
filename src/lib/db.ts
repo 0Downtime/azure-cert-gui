@@ -109,10 +109,43 @@ export function migrate(db = openDatabase()): void {
       FOREIGN KEY(credential_item_id) REFERENCES credential_items(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS renewal_cases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      credential_item_id INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      due_at TEXT,
+      owner_name TEXT,
+      owner_email TEXT,
+      notes TEXT,
+      replacement_credential_id TEXT,
+      replacement_expires_at TEXT,
+      key_vault_copy_vault_name TEXT,
+      key_vault_copy_secret_name TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      closed_at TEXT,
+      FOREIGN KEY(credential_item_id) REFERENCES credential_items(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS renewal_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      renewal_case_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL,
+      note TEXT,
+      details_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      created_by TEXT NOT NULL,
+      FOREIGN KEY(renewal_case_id) REFERENCES renewal_cases(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_credential_items_expires_at ON credential_items(expires_at);
     CREATE INDEX IF NOT EXISTS idx_credential_items_source ON credential_items(source);
     CREATE INDEX IF NOT EXISTS idx_credential_items_status ON credential_items(status);
     CREATE INDEX IF NOT EXISTS idx_credential_items_parent_name ON credential_items(parent_name);
     CREATE INDEX IF NOT EXISTS idx_owner_overrides_match ON owner_overrides(match_type, match_value);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_renewal_cases_active_credential
+      ON renewal_cases(credential_item_id)
+      WHERE closed_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_renewal_events_case ON renewal_events(renewal_case_id, created_at DESC);
   `);
 }

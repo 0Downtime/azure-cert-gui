@@ -4,6 +4,7 @@ import {
   azureSyncConfigFromEnv,
   collectGraphApplications,
   collectKeyVaultCertificates,
+  collectKeyVaultKeys,
   collectKeyVaultSecrets,
   collectServicePrincipals,
   currentTenantId,
@@ -13,6 +14,7 @@ import {
 import {
   normalizeGraphApplications,
   normalizeKeyVaultCertificates,
+  normalizeKeyVaultKeys,
   normalizeKeyVaultSecrets,
   normalizeServicePrincipals
 } from "../src/lib/normalize";
@@ -31,7 +33,7 @@ if (args.has("--help")) {
 
 Uses the current Azure CLI login to sync metadata only:
 - Microsoft Graph application/service principal credentials
-- Azure Key Vault secret/certificate metadata
+- Azure Key Vault secret/certificate/key metadata
 
 Configure scope with AZURE_SUBSCRIPTION_IDS and AZURE_KEYVAULT_RESOURCE_IDS.`);
   process.exit(0);
@@ -113,20 +115,24 @@ async function syncKeyVaultSources(
 ): Promise<void> {
   clearCoverageForSource("key_vault_secret", db);
   clearCoverageForSource("key_vault_certificate", db);
+  clearCoverageForSource("key_vault_key", db);
   let vaults: AzureVault[];
   try {
     vaults = await listKeyVaults(config);
   } catch (error) {
     recordCoverageFailure("key_vault_secret", "keyvault-list", "Azure Key Vault discovery", error);
     recordCoverageFailure("key_vault_certificate", "keyvault-list", "Azure Key Vault discovery", error);
+    recordCoverageFailure("key_vault_key", "keyvault-list", "Azure Key Vault discovery", error);
     console.error(`key_vault: failed to list vaults: ${error instanceof Error ? error.message : String(error)}`);
     return;
   }
 
   const allSecrets = [];
   const allCertificates = [];
+  const allKeys = [];
   let secretFailures = 0;
   let certificateFailures = 0;
+  let keyFailures = 0;
 
   if (vaults.length === 0) {
     const resourceId = `keyvault-discovery:${config.subscriptionIds.join(",") || "default"}`;
@@ -147,6 +153,19 @@ async function syncKeyVaultSources(
     recordCoverage(
       {
         source: "key_vault_certificate",
+        tenantId: fallbackTenantId,
+        resourceId,
+        resourceName: "No Key Vaults discovered",
+        configured: true,
+        reachable: true,
+        itemsSeen: 0,
+        skipReason
+      },
+      db
+    );
+    recordCoverage(
+      {
+        source: "key_vault_key",
         tenantId: fallbackTenantId,
         resourceId,
         resourceName: "No Key Vaults discovered",
@@ -198,6 +217,25 @@ async function syncKeyVaultSources(
       certificateFailures += 1;
       recordCoverageFailure("key_vault_certificate", coverage.resourceId, coverage.resourceName, error, coverage);
     }
+
+    try {
+      const keys = normalizeKeyVaultKeys(await collectKeyVaultKeys(vault, config));
+      allKeys.push(...keys);
+      recordCoverage(
+        {
+          ...coverage,
+          source: "key_vault_key",
+          itemsSeen: keys.length,
+          itemsSkipped: keys.filter((key) => !key.expiresAt).length,
+          skipReason: keyVaultCoverageNote("keys", keys, config)
+        },
+        db
+      );
+      if (verbose) console.log(`key_vault_key:${coverage.resourceName}: ${keys.length} seen`);
+    } catch (error) {
+      keyFailures += 1;
+      recordCoverageFailure("key_vault_key", coverage.resourceId, coverage.resourceName, error, coverage);
+    }
   }
 
   const secretResult = upsertCredentials(allSecrets, "key_vault_secret", db, {
@@ -205,6 +243,9 @@ async function syncKeyVaultSources(
   });
   const certificateResult = upsertCredentials(allCertificates, "key_vault_certificate", db, {
     markMissingRemoved: certificateFailures === 0
+  });
+  const keyResult = upsertCredentials(allKeys, "key_vault_key", db, {
+    markMissingRemoved: keyFailures === 0
   });
 
   console.log(
@@ -217,10 +258,15 @@ async function syncKeyVaultSources(
       certificateFailures ? `, ${certificateFailures} vault failures` : ""
     }`
   );
+  console.log(
+    `key_vault_key: ${keyResult.seen} seen, ${keyResult.changed} upserted${
+      keyFailures ? `, ${keyFailures} vault failures` : ""
+    }`
+  );
 }
 
 function keyVaultCoverageNote(
-  label: "secrets" | "certificates",
+  label: "secrets" | "certificates" | "keys",
   credentials: NormalizedCredential[],
   config: ReturnType<typeof azureSyncConfigFromEnv>
 ): string {
