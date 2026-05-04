@@ -25,6 +25,8 @@ export type OwnerSignalSource =
   | "manual_override"
   | "unknown";
 
+export type OwnerMatchType = "credential_id" | "parent_id" | "parent_name" | "vault_name";
+
 export interface NormalizedCredential {
   naturalKey: string;
   source: InventorySource;
@@ -92,6 +94,18 @@ export interface DashboardSummary {
   lowConfidenceOwners: number;
   coverageGaps: number;
   lastSuccessfulSyncAt: string | null;
+}
+
+export interface DashboardOwnerOverride {
+  id: number;
+  matchType: OwnerMatchType;
+  matchValue: string;
+  ownerName: string;
+  ownerEmail: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  activeCredentialCount: number;
 }
 
 export type CoverageHealth = "ok" | "warning" | "failed" | "stale";

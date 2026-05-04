@@ -1,8 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import type { WorkflowStatus } from "@/types";
-import { updateStatus, upsertOwnerOverride, upsertOwnerOverridesForParents } from "@/lib/repository";
+import type { OwnerMatchType, WorkflowStatus } from "@/types";
+import {
+  deleteOwnerOverride as removeOwnerOverride,
+  updateStatus,
+  upsertOwnerOverride,
+  upsertOwnerOverridesForParents
+} from "@/lib/repository";
 
 const VALID_STATUSES: WorkflowStatus[] = [
   "not_started",
@@ -11,6 +16,7 @@ const VALID_STATUSES: WorkflowStatus[] = [
   "rotated",
   "ignored"
 ];
+const VALID_MATCH_TYPES: OwnerMatchType[] = ["credential_id", "parent_id", "parent_name", "vault_name"];
 
 export async function updateCredentialStatus(formData: FormData): Promise<void> {
   const id = Number(formData.get("id"));
@@ -21,17 +27,18 @@ export async function updateCredentialStatus(formData: FormData): Promise<void> 
 }
 
 export async function saveOwnerOverride(formData: FormData): Promise<void> {
-  const matchType = String(formData.get("matchType") ?? "");
+  const matchType = String(formData.get("matchType") ?? "") as OwnerMatchType;
   const matchValue = String(formData.get("matchValue") ?? "");
   const ownerName = String(formData.get("ownerName") ?? "").trim();
   const ownerEmail = String(formData.get("ownerEmail") ?? "").trim();
-  if (!matchType || !matchValue || !ownerName) return;
+  const notes = String(formData.get("notes") ?? "").trim();
+  if (!VALID_MATCH_TYPES.includes(matchType) || !matchValue || !ownerName) return;
   upsertOwnerOverride({
     matchType,
     matchValue,
     ownerName,
     ownerEmail: ownerEmail || null,
-    notes: "Created from dashboard"
+    notes: notes || "Created from dashboard"
   });
   revalidatePath("/");
 }
@@ -48,5 +55,12 @@ export async function saveBulkOwnerOverride(formData: FormData): Promise<void> {
     ownerEmail: ownerEmail || null,
     notes: "Bulk assigned from dashboard"
   });
+  revalidatePath("/");
+}
+
+export async function deleteOwnerOverride(formData: FormData): Promise<void> {
+  const id = Number(formData.get("id"));
+  if (!Number.isFinite(id)) return;
+  removeOwnerOverride(id);
   revalidatePath("/");
 }

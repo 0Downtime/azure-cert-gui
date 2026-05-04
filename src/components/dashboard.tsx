@@ -22,12 +22,14 @@ import type {
   CoverageHealth,
   DashboardCoverage,
   DashboardItem,
+  DashboardOwnerOverride,
   DashboardSummary,
   InventorySource,
+  OwnerMatchType,
   RiskBucket,
   WorkflowStatus
 } from "@/types";
-import { saveBulkOwnerOverride, saveOwnerOverride, updateCredentialStatus } from "@/app/actions";
+import { deleteOwnerOverride, saveBulkOwnerOverride, saveOwnerOverride, updateCredentialStatus } from "@/app/actions";
 
 const SOURCE_LABELS: Record<InventorySource, string> = {
   entra_application: "Entra app",
@@ -60,14 +62,23 @@ const HEALTH_LABELS: Record<CoverageHealth, string> = {
   stale: "Stale"
 };
 
+const MATCH_LABELS: Record<OwnerMatchType, string> = {
+  credential_id: "Credential ID",
+  parent_id: "App / principal ID",
+  parent_name: "App / vault name",
+  vault_name: "Vault name"
+};
+
 export function Dashboard({
   items,
   summary,
-  coverage
+  coverage,
+  ownerOverrides
 }: {
   items: DashboardItem[];
   summary: DashboardSummary;
   coverage: DashboardCoverage[];
+  ownerOverrides: DashboardOwnerOverride[];
 }) {
   const [query, setQuery] = useState("");
   const [source, setSource] = useState<InventorySource | "all">("all");
@@ -145,6 +156,24 @@ export function Dashboard({
       })
       .join("\n\n");
     void copyText("Owner grouped renewal worklist", text);
+  }
+
+  function copyOwnerMappings() {
+    const text = [
+      "match_type\tmatch_value\towner_name\towner_email\tactive_credentials\tnotes\tupdated_at",
+      ...ownerOverrides.map((override) =>
+        [
+          MATCH_LABELS[override.matchType],
+          override.matchValue,
+          override.ownerName,
+          override.ownerEmail ?? "",
+          override.activeCredentialCount,
+          override.notes ?? "",
+          override.updatedAt
+        ].join("\t")
+      )
+    ].join("\n");
+    void copyText("Owner mapping directory", text);
   }
 
   function copyRenewalRequest() {
@@ -322,6 +351,7 @@ export function Dashboard({
       ) : null}
 
       <CoveragePanel coverage={coverage} />
+      <OwnerDirectory ownerOverrides={ownerOverrides} onCopy={copyOwnerMappings} />
 
       <section className="table-wrap">
         {items.length === 0 ? (
@@ -554,6 +584,90 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
 
 function CodeValue({ value }: { value: string }) {
   return <code className="detail-code">{value}</code>;
+}
+
+function OwnerDirectory({
+  ownerOverrides,
+  onCopy
+}: {
+  ownerOverrides: DashboardOwnerOverride[];
+  onCopy: () => void;
+}) {
+  return (
+    <section className="owner-directory" aria-label="Owner mapping directory">
+      <div className="section-heading">
+        <h2>Owner directory</h2>
+        <span>{ownerOverrides.length} saved mapping{ownerOverrides.length === 1 ? "" : "s"}</span>
+      </div>
+
+      <form action={saveOwnerOverride} className="mapping-form">
+        <label>
+          <span>Match</span>
+          <select name="matchType" defaultValue="parent_id" aria-label="Owner mapping match type">
+            {Object.entries(MATCH_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Value</span>
+          <input name="matchValue" placeholder="Application ID, credential ID, app name, or vault name" />
+        </label>
+        <label>
+          <span>Owner</span>
+          <input name="ownerName" placeholder="Owner name" />
+        </label>
+        <label>
+          <span>Email</span>
+          <input name="ownerEmail" placeholder="owner@example.com" />
+        </label>
+        <label>
+          <span>Notes</span>
+          <input name="notes" placeholder="Team, escalation, or renewal context" />
+        </label>
+        <button type="submit">Save mapping</button>
+      </form>
+
+      <div className="owner-directory-actions">
+        <button type="button" onClick={onCopy} disabled={!ownerOverrides.length}>
+          <Download size={15} />
+          Copy mappings
+        </button>
+      </div>
+
+      {ownerOverrides.length ? (
+        <div className="owner-mapping-list">
+          {ownerOverrides.map((override) => (
+            <div key={override.id} className="owner-mapping-row">
+              <div>
+                <span className="match-pill">{MATCH_LABELS[override.matchType]}</span>
+                <strong>{override.ownerName}</strong>
+                <span className="muted">{override.ownerEmail ?? "No email"}</span>
+              </div>
+              <div>
+                <code className="mapping-value">{override.matchValue}</code>
+                <span className="muted">
+                  {override.activeCredentialCount} active credential{override.activeCredentialCount === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div>
+                <span>{override.notes ?? "No notes"}</span>
+                <span className="muted">Updated {formatDateTime(override.updatedAt)}</span>
+              </div>
+              <form action={deleteOwnerOverride}>
+                <input type="hidden" name="id" value={override.id} />
+                <button type="submit">Remove</button>
+              </form>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <span className="muted">No owner mappings saved yet</span>
+      )}
+    </section>
+  );
 }
 
 function CoveragePanel({ coverage }: { coverage: DashboardCoverage[] }) {

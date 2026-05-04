@@ -212,7 +212,8 @@ h1 {
   justify-self: end;
 }
 
-.coverage-panel {
+.coverage-panel,
+.owner-directory {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -242,6 +243,71 @@ h1 {
 .coverage-grid {
   display: grid;
   gap: 8px;
+}
+
+.mapping-form {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(220px, 2fr) minmax(140px, 1fr) minmax(160px, 1fr) minmax(180px, 1.3fr) auto;
+}
+
+.mapping-form label {
+  display: grid;
+  gap: 3px;
+}
+
+.mapping-form label span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.owner-directory-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.owner-mapping-list {
+  display: grid;
+  gap: 8px;
+}
+
+.owner-mapping-row {
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(170px, 1fr) minmax(260px, 2fr) minmax(160px, 1fr) auto;
+  padding: 10px;
+}
+
+.owner-mapping-row > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.match-pill {
+  background: var(--blue-soft);
+  border-radius: 999px;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 7px;
+  width: fit-content;
+}
+
+.mapping-value {
+  background: #eef2f5;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  display: block;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  padding: 5px 6px;
 }
 
 .coverage-row {
@@ -329,7 +395,9 @@ h1 {
 .select select,
 .status-form select,
 .owner-form input,
-.owner-bulk-form input {
+.owner-bulk-form input,
+.mapping-form input,
+.mapping-form select {
   border: 1px solid var(--line);
   border-radius: 6px;
   background: #fff;
@@ -626,6 +694,11 @@ tr.selected-row {
   }
 
   .coverage-row {
+    grid-template-columns: 1fr;
+  }
+
+  .mapping-form,
+  .owner-mapping-row {
     grid-template-columns: 1fr;
   }
 

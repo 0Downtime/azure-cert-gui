@@ -4,6 +4,7 @@ import { daysUntilExpiry, riskBucket } from "./risk";
 import type {
   DashboardCoverage,
   DashboardItem,
+  DashboardOwnerOverride,
   DashboardStatusHistory,
   DashboardSummary,
   InventorySource,
@@ -388,6 +389,43 @@ export function listCoverage(db: DatabaseSync = openDatabase()): DashboardCovera
   });
 }
 
+export function listOwnerOverrides(db: DatabaseSync = openDatabase()): DashboardOwnerOverride[] {
+  migrate(db);
+  const rows = db
+    .prepare(
+      `
+      SELECT
+        oo.id, oo.match_type, oo.match_value, oo.owner_name, oo.owner_email, oo.notes, oo.created_at, oo.updated_at,
+        (
+          SELECT COUNT(*)
+          FROM credential_items ci
+          WHERE ci.removed_at IS NULL
+            AND (
+              (oo.match_type = 'credential_id' AND oo.match_value = ci.credential_id) OR
+              (oo.match_type = 'parent_id' AND oo.match_value = ci.parent_id) OR
+              (oo.match_type = 'parent_name' AND oo.match_value = ci.parent_name) OR
+              (oo.match_type = 'vault_name' AND oo.match_value = ci.parent_name)
+            )
+        ) AS active_credential_count
+      FROM owner_overrides oo
+      ORDER BY oo.owner_name ASC, oo.match_type ASC, oo.match_value ASC
+    `
+    )
+    .all() as Array<Record<string, unknown>>;
+
+  return rows.map((row) => ({
+    id: Number(row.id),
+    matchType: row.match_type as DashboardOwnerOverride["matchType"],
+    matchValue: String(row.match_value),
+    ownerName: String(row.owner_name),
+    ownerEmail: row.owner_email as string | null,
+    notes: row.notes as string | null,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+    activeCredentialCount: Number(row.active_credential_count)
+  }));
+}
+
 function coverageHealth(reachable: boolean, itemsSkipped: number, lastAttemptAt: string): DashboardCoverage["health"] {
   if (!reachable) return "failed";
   const attempted = new Date(lastAttemptAt).getTime();
@@ -491,4 +529,10 @@ export function upsertOwnerOverridesForParents(input: {
   }
 
   return parentIds.length;
+}
+
+export function deleteOwnerOverride(id: number): void {
+  const db = openDatabase();
+  migrate(db);
+  db.prepare("DELETE FROM owner_overrides WHERE id = ?").run(id);
 }

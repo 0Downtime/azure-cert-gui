@@ -48,6 +48,7 @@ npm run sync:azure -- --verbose
 In the dashboard:
 
 - Select rows and use `Assign owner` to bulk map credentials by app, service principal, or vault.
+- Use `Owner directory` to review, add, export, and remove manual owner mappings.
 - Use the `Workflow` filter for urgent, 60-day, unknown-owner, and contacted-but-unscheduled queues.
 - Review `Source coverage` to confirm Graph and Key Vault syncs are reachable, current, and not skipping metadata.
 - Use `Copy unknowns` to copy a tab-separated worklist of rows that still need owner mapping.
