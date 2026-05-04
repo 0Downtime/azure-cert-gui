@@ -206,6 +206,91 @@ h1 {
   justify-self: end;
 }
 
+.coverage-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 10px;
+}
+
+.section-heading {
+  align-items: baseline;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.section-heading h2 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.section-heading span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.coverage-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.coverage-row {
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(90px, 1fr));
+  padding: 10px;
+}
+
+.coverage-row.warning,
+.coverage-row.failed,
+.coverage-row.stale {
+  border-color: #d8bd8a;
+}
+
+.coverage-row.failed {
+  border-color: #e2a8a4;
+}
+
+.coverage-row > div {
+  display: grid;
+  gap: 3px;
+}
+
+.coverage-note {
+  grid-column: 1 / -1;
+}
+
+.health {
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 7px;
+  width: fit-content;
+}
+
+.health.ok {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.health.warning,
+.health.stale {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.health.failed {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
 .search {
   flex: 1 1 320px;
   display: flex;
@@ -426,5 +511,9 @@ tr.removed {
 
   .metrics {
     grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+
+  .coverage-row {
+    grid-template-columns: 1fr;
   }
 }

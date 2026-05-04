@@ -2,9 +2,11 @@ import type { DatabaseSync } from "node:sqlite";
 import { migrate, openDatabase } from "./db";
 import { daysUntilExpiry, riskBucket } from "./risk";
 import type {
+  DashboardCoverage,
   DashboardItem,
   DashboardStatusHistory,
   DashboardSummary,
+  InventorySource,
   NormalizedCredential,
   WorkflowStatus
 } from "@/types";
@@ -318,6 +320,58 @@ export function dashboardSummary(db: DatabaseSync = openDatabase()): DashboardSu
     coverageGaps: coverageRows.filter((row) => !row.reachable || row.items_skipped > 0).length,
     lastSuccessfulSyncAt: lastRun?.finished_at ?? null
   };
+}
+
+export function listCoverage(db: DatabaseSync = openDatabase()): DashboardCoverage[] {
+  migrate(db);
+  const rows = db
+    .prepare(
+      `
+      SELECT
+        source, tenant_id, subscription_id, resource_id, resource_name, configured, reachable,
+        last_successful_sync_at, last_attempt_at, items_seen, items_skipped, skip_reason, error_code
+      FROM source_coverage
+      ORDER BY
+        CASE
+          WHEN reachable = 0 THEN 0
+          WHEN items_skipped > 0 THEN 1
+          ELSE 2
+        END,
+        source ASC,
+        resource_name ASC
+    `
+    )
+    .all() as Array<Record<string, unknown>>;
+
+  return rows.map((row) => {
+    const reachable = Boolean(row.reachable);
+    const itemsSkipped = Number(row.items_skipped);
+    const lastAttemptAt = String(row.last_attempt_at);
+    return {
+      source: row.source as InventorySource,
+      tenantId: row.tenant_id as string | null,
+      subscriptionId: row.subscription_id as string | null,
+      resourceId: row.resource_id as string | null,
+      resourceName: String(row.resource_name),
+      configured: Boolean(row.configured),
+      reachable,
+      itemsSeen: Number(row.items_seen),
+      itemsSkipped,
+      skipReason: row.skip_reason as string | null,
+      errorCode: row.error_code as string | null,
+      lastSuccessfulSyncAt: row.last_successful_sync_at as string | null,
+      lastAttemptAt,
+      health: coverageHealth(reachable, itemsSkipped, lastAttemptAt)
+    };
+  });
+}
+
+function coverageHealth(reachable: boolean, itemsSkipped: number, lastAttemptAt: string): DashboardCoverage["health"] {
+  if (!reachable) return "failed";
+  const attempted = new Date(lastAttemptAt).getTime();
+  if (!Number.isFinite(attempted) || Date.now() - attempted > 36 * 60 * 60 * 1000) return "stale";
+  if (itemsSkipped > 0) return "warning";
+  return "ok";
 }
 
 export function updateStatus(id: number, toStatus: WorkflowStatus, note = "Updated from dashboard"): void {

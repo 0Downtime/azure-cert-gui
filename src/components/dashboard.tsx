@@ -15,7 +15,15 @@ import {
   XCircle
 } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
-import type { DashboardItem, DashboardSummary, InventorySource, RiskBucket, WorkflowStatus } from "@/types";
+import type {
+  CoverageHealth,
+  DashboardCoverage,
+  DashboardItem,
+  DashboardSummary,
+  InventorySource,
+  RiskBucket,
+  WorkflowStatus
+} from "@/types";
 import { saveBulkOwnerOverride, saveOwnerOverride, updateCredentialStatus } from "@/app/actions";
 
 const SOURCE_LABELS: Record<InventorySource, string> = {
@@ -42,7 +50,22 @@ const BUCKET_LABELS: Record<RiskBucket, string> = {
   "no-expiry": "No expiry"
 };
 
-export function Dashboard({ items, summary }: { items: DashboardItem[]; summary: DashboardSummary }) {
+const HEALTH_LABELS: Record<CoverageHealth, string> = {
+  ok: "Healthy",
+  warning: "Skipped items",
+  failed: "Failed",
+  stale: "Stale"
+};
+
+export function Dashboard({
+  items,
+  summary,
+  coverage
+}: {
+  items: DashboardItem[];
+  summary: DashboardSummary;
+  coverage: DashboardCoverage[];
+}) {
   const [query, setQuery] = useState("");
   const [source, setSource] = useState<InventorySource | "all">("all");
   const [bucket, setBucket] = useState<RiskBucket | "all">("all");
@@ -286,6 +309,8 @@ export function Dashboard({ items, summary }: { items: DashboardItem[]; summary:
         </section>
       ) : null}
 
+      <CoveragePanel coverage={coverage} />
+
       <section className="table-wrap">
         {items.length === 0 ? (
           <EmptyState />
@@ -353,6 +378,61 @@ export function Dashboard({ items, summary }: { items: DashboardItem[]; summary:
         )}
       </section>
     </main>
+  );
+}
+
+function CoveragePanel({ coverage }: { coverage: DashboardCoverage[] }) {
+  if (!coverage.length) {
+    return (
+      <section className="coverage-panel" aria-label="Source coverage">
+        <div className="section-heading">
+          <h2>Source coverage</h2>
+          <span>No sync coverage recorded</span>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="coverage-panel" aria-label="Source coverage">
+      <div className="section-heading">
+        <h2>Source coverage</h2>
+        <span>{coverage.length} monitored source{coverage.length === 1 ? "" : "s"}</span>
+      </div>
+      <div className="coverage-grid">
+        {coverage.map((row) => (
+          <div key={`${row.source}:${row.resourceId ?? row.resourceName}`} className={`coverage-row ${row.health}`}>
+            <div>
+              <span className={`health ${row.health}`}>{HEALTH_LABELS[row.health]}</span>
+              <strong>{row.resourceName}</strong>
+              <span className="muted">{SOURCE_LABELS[row.source]}</span>
+            </div>
+            <div>
+              <strong>{row.itemsSeen}</strong>
+              <span className="muted">seen</span>
+            </div>
+            <div>
+              <strong>{row.itemsSkipped}</strong>
+              <span className="muted">skipped</span>
+            </div>
+            <div>
+              <strong>{formatDateTime(row.lastAttemptAt)}</strong>
+              <span className="muted">last attempt</span>
+            </div>
+            <div>
+              <strong>{row.lastSuccessfulSyncAt ? formatDateTime(row.lastSuccessfulSyncAt) : "Never"}</strong>
+              <span className="muted">last success</span>
+            </div>
+            {row.errorCode || row.skipReason ? (
+              <div className="coverage-note">
+                {row.errorCode ? <strong>{row.errorCode}</strong> : null}
+                <span className="muted">{row.skipReason}</span>
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

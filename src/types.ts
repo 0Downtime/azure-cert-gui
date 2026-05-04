@@ -88,3 +88,22 @@ export interface DashboardSummary {
   coverageGaps: number;
   lastSuccessfulSyncAt: string | null;
 }
+
+export type CoverageHealth = "ok" | "warning" | "failed" | "stale";
+
+export interface DashboardCoverage {
+  source: InventorySource;
+  tenantId: string | null;
+  subscriptionId: string | null;
+  resourceId: string | null;
+  resourceName: string;
+  configured: boolean;
+  reachable: boolean;
+  itemsSeen: number;
+  itemsSkipped: number;
+  skipReason: string | null;
+  errorCode: string | null;
+  lastSuccessfulSyncAt: string | null;
+  lastAttemptAt: string;
+  health: CoverageHealth;
+}
