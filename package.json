@@ -13,7 +13,9 @@
     "db:reset": "tsx scripts/reset-db.ts",
     "fixtures:sync": "tsx scripts/sync-fixtures.ts",
     "sync:fixtures": "tsx scripts/sync-fixtures.ts",
-    "sync:azure": "tsx scripts/sync-azure.ts"
+    "sync:azure": "tsx scripts/sync-azure.ts",
+    "local:azure": "npm run db:migrate && npm run sync:azure -- --verbose && npm run dev",
+    "local:fixtures": "npm run db:reset && npm run fixtures:sync -- --verbose && npm run dev"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",

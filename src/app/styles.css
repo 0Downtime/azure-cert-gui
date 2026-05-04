@@ -152,12 +152,21 @@ h1 {
   justify-content: space-between;
 }
 
-.actionbar > div {
+.actionbar > div,
+.action-buttons,
+.owner-bulk-form {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+}
+
+.actionbar > div:first-child {
   color: var(--muted);
   font-size: 14px;
+}
+
+.action-buttons {
+  flex-wrap: wrap;
 }
 
 .search {
@@ -191,7 +200,8 @@ h1 {
 
 .select select,
 .status-form select,
-.owner-form input {
+.owner-form input,
+.owner-bulk-form input {
   border: 1px solid var(--line);
   border-radius: 6px;
   background: #fff;
@@ -313,6 +323,15 @@ tr.removed {
   display: grid;
   grid-template-columns: minmax(110px, 1fr) minmax(110px, 1fr) auto;
   gap: 6px;
+}
+
+.owner-bulk-form {
+  flex: 1 1 440px;
+  flex-wrap: wrap;
+}
+
+.owner-bulk-form input {
+  min-width: 160px;
 }
 
 .status-form {

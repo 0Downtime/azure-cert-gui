@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import type { WorkflowStatus } from "@/types";
-import { updateStatus, upsertOwnerOverride } from "@/lib/repository";
+import { updateStatus, upsertOwnerOverride, upsertOwnerOverridesForParents } from "@/lib/repository";
 
 const VALID_STATUSES: WorkflowStatus[] = [
   "not_started",
@@ -32,6 +32,21 @@ export async function saveOwnerOverride(formData: FormData): Promise<void> {
     ownerName,
     ownerEmail: ownerEmail || null,
     notes: "Created from dashboard"
+  });
+  revalidatePath("/");
+}
+
+export async function saveBulkOwnerOverride(formData: FormData): Promise<void> {
+  const parentIds = formData.getAll("parentId").map((value) => String(value));
+  const ownerName = String(formData.get("ownerName") ?? "").trim();
+  const ownerEmail = String(formData.get("ownerEmail") ?? "").trim();
+  if (!parentIds.length || !ownerName) return;
+
+  upsertOwnerOverridesForParents({
+    parentIds,
+    ownerName,
+    ownerEmail: ownerEmail || null,
+    notes: "Bulk assigned from dashboard"
   });
   revalidatePath("/");
 }

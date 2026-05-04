@@ -324,3 +324,48 @@ export function upsertOwnerOverride(input: {
     timestamp
   );
 }
+
+export function upsertOwnerOverridesForParents(input: {
+  parentIds: string[];
+  ownerName: string;
+  ownerEmail?: string | null;
+  notes?: string | null;
+}): number {
+  const db = openDatabase();
+  migrate(db);
+  const timestamp = nowIso();
+  const parentIds = [...new Set(input.parentIds.map((id) => id.trim()).filter(Boolean))];
+  if (!parentIds.length) return 0;
+
+  const upsert = db.prepare(
+    `
+    INSERT INTO owner_overrides (match_type, match_value, owner_name, owner_email, notes, created_at, updated_at)
+    VALUES ('parent_id', ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(match_type, match_value) DO UPDATE SET
+      owner_name = excluded.owner_name,
+      owner_email = excluded.owner_email,
+      notes = excluded.notes,
+      updated_at = excluded.updated_at
+  `
+  );
+
+  try {
+    db.exec("BEGIN");
+    for (const parentId of parentIds) {
+      upsert.run(
+        parentId,
+        input.ownerName,
+        input.ownerEmail ?? null,
+        input.notes ?? null,
+        timestamp,
+        timestamp
+      );
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+
+  return parentIds.length;
+}

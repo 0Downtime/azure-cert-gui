@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import type { DashboardItem, DashboardSummary, InventorySource, RiskBucket, WorkflowStatus } from "@/types";
-import { saveOwnerOverride, updateCredentialStatus } from "@/app/actions";
+import { saveBulkOwnerOverride, saveOwnerOverride, updateCredentialStatus } from "@/app/actions";
 
 const SOURCE_LABELS: Record<InventorySource, string> = {
   entra_application: "Entra app",
@@ -77,6 +77,11 @@ export function Dashboard({ items, summary }: { items: DashboardItem[]; summary:
     return [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
   }, [filtered]);
 
+  const selectedItems = useMemo(
+    () => items.filter((item) => selectedIds.includes(item.id)),
+    [items, selectedIds]
+  );
+
   function toggleSelection(id: number) {
     setSelectedIds((current) =>
       current.includes(id) ? current.filter((selected) => selected !== id) : [...current, id]
@@ -92,6 +97,24 @@ export function Dashboard({ items, summary }: { items: DashboardItem[]; summary:
         return `${owner}\n${rows}`;
       })
       .join("\n\n");
+    void navigator.clipboard.writeText(text);
+  }
+
+  function copyUnknownOwners() {
+    const unknownRows = filtered.filter((item) => !item.ownerName);
+    const text = [
+      "source\tapp_or_vault\tcredential\texpires\trisk\tparent_id",
+      ...unknownRows.map((item) =>
+        [
+          SOURCE_LABELS[item.source],
+          item.parentName,
+          item.credentialName,
+          formatDate(item.expiresAt),
+          item.riskBucket,
+          item.parentId
+        ].join("\t")
+      )
+    ].join("\n");
     void navigator.clipboard.writeText(text);
   }
 
@@ -172,16 +195,32 @@ export function Dashboard({ items, summary }: { items: DashboardItem[]; summary:
           <span>{filtered.length} visible</span>
           <span>{selectedIds.length} selected</span>
         </div>
-        <button type="button" onClick={() => bulkUpdate("owner_contacted")} disabled={!selectedIds.length || isPending}>
-          Owner contacted
-        </button>
-        <button type="button" onClick={() => bulkUpdate("rotation_scheduled")} disabled={!selectedIds.length || isPending}>
-          Rotation scheduled
-        </button>
-        <button type="button" onClick={copyOwnerSummary}>
-          <Download size={15} />
-          Copy by owner
-        </button>
+        <form action={saveBulkOwnerOverride} className="owner-bulk-form">
+          {selectedItems.map((item) => (
+            <input key={item.id} type="hidden" name="parentId" value={item.parentId} />
+          ))}
+          <input name="ownerName" placeholder="Owner for selected" aria-label="Owner for selected" />
+          <input name="ownerEmail" placeholder="email" aria-label="Owner email for selected" />
+          <button type="submit" disabled={!selectedIds.length || isPending}>
+            Assign owner
+          </button>
+        </form>
+        <div className="action-buttons">
+          <button type="button" onClick={() => bulkUpdate("owner_contacted")} disabled={!selectedIds.length || isPending}>
+            Owner contacted
+          </button>
+          <button type="button" onClick={() => bulkUpdate("rotation_scheduled")} disabled={!selectedIds.length || isPending}>
+            Rotation scheduled
+          </button>
+          <button type="button" onClick={copyUnknownOwners}>
+            <Download size={15} />
+            Copy unknowns
+          </button>
+          <button type="button" onClick={copyOwnerSummary}>
+            <Download size={15} />
+            Copy by owner
+          </button>
+        </div>
       </section>
 
       <section className="table-wrap">

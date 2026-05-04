@@ -8,12 +8,16 @@ The MVP uses synthetic fixture data first. It does not need Azure credentials to
 
 ```bash
 npm install
-npm run db:migrate
-npm run fixtures:sync
-npm run dev
+npm run local:azure
 ```
 
 Open `http://localhost:3000`.
+
+For demo data instead of your current Azure CLI tenant/subscription:
+
+```bash
+npm run local:fixtures
+```
 
 If you run `npm run build` while `npm run dev` is already running, restart the dev server before
 testing forms again. Next dev and Next build both write to `.next`, so a live dev server can serve
@@ -26,6 +30,26 @@ npm run db:reset
 npm run fixtures:sync -- --verbose
 npm test
 ```
+
+## Daily Use
+
+Refresh live Azure metadata and start the dashboard:
+
+```bash
+npm run local:azure
+```
+
+Run the sync without starting the UI:
+
+```bash
+npm run sync:azure -- --verbose
+```
+
+In the dashboard:
+
+- Select rows and use `Assign owner` to bulk map credentials by app, service principal, or vault.
+- Use `Copy unknowns` to copy a tab-separated worklist of rows that still need owner mapping.
+- Use `Copy by owner` to create an owner-grouped renewal worklist.
 
 ## What It Stores
 
