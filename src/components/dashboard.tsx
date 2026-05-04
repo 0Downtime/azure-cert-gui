@@ -665,6 +665,8 @@ function CredentialDetailDrawer({
   onCopy: (title: string, text: string) => Promise<void>;
 }) {
   const metadata = Object.entries(item.metadata);
+  const inAppRotationSupported = supportsInAppRotation(item);
+  const checklist = item.renewalCase ? renewalChecklist(item) : [];
   const [rotationResult, setRotationResult] = useState<{
     ok: boolean;
     message: string;
@@ -748,6 +750,18 @@ function CredentialDetailDrawer({
               />
             </dl>
 
+            <ol className="renewal-checklist" aria-label="Renewal checklist">
+              {checklist.map((step) => (
+                <li key={step.label} className={step.complete ? "complete" : ""}>
+                  {step.complete ? <CheckCircle2 size={15} /> : <Clock size={15} />}
+                  <div>
+                    <strong>{step.label}</strong>
+                    <span>{step.detail}</span>
+                  </div>
+                </li>
+              ))}
+            </ol>
+
             <form action={updateRenewalCase} className="renewal-form">
               <input type="hidden" name="caseId" value={item.renewalCase.id} />
               <label>
@@ -777,8 +791,13 @@ function CredentialDetailDrawer({
               <button type="submit">Save case</button>
             </form>
 
+            {inAppRotationSupported ? (
             <form action={runRotation} className="renewal-form">
               <input type="hidden" name="caseId" value={item.renewalCase.id} />
+              <div className="renewal-safety-note">
+                <ShieldAlert size={15} />
+                <span>Replacement is created first. Old credential stays active in v1.</span>
+              </div>
               <label>
                 <span>Type credential name</span>
                 <input name="confirmation" placeholder={item.credentialName} autoComplete="off" />
@@ -822,6 +841,12 @@ function CredentialDetailDrawer({
                 {isRotating ? "Rotating" : "Run confirmed rotation"}
               </button>
             </form>
+            ) : (
+              <div className="renewal-safety-note blocked">
+                <Ban size={15} />
+                <span>Workflow-only case. This credential is excluded from in-app rotation.</span>
+              </div>
+            )}
 
             {rotationResult ? (
               <div className={`renewal-result ${rotationResult.ok ? "ok" : "failed"}`}>
@@ -1228,6 +1253,57 @@ function StatusForm({ item }: { item: DashboardItem }) {
   );
 }
 
+function supportsInAppRotation(item: DashboardItem): boolean {
+  if (!isRenewalActionable(item.rotationMode)) return false;
+  if ((item.source === "entra_application" || item.source === "service_principal") && item.credentialType === "client_secret") {
+    return true;
+  }
+  if (item.source === "key_vault_secret" || item.source === "key_vault_key") return true;
+  if (item.source !== "key_vault_certificate") return false;
+  const lifetimeAction = String(item.metadata.certificateLifetimeAction ?? "").toLowerCase();
+  const issuerName = String(item.metadata.certificateIssuerName ?? "").toLowerCase();
+  return lifetimeAction === "autorenew" || Boolean(issuerName && issuerName !== "self");
+}
+
+function renewalChecklist(item: DashboardItem): { label: string; detail: string; complete: boolean }[] {
+  const renewalCase = item.renewalCase;
+  if (!renewalCase) return [];
+  const replacementCreated = Boolean(
+    renewalCase.replacementCredentialId ||
+      renewalCase.status === "rotation_created" ||
+      renewalCase.status === "validated" ||
+      renewalCase.status === "closed"
+  );
+  const validated = renewalCase.status === "validated" || renewalCase.status === "closed";
+  return [
+    {
+      label: "Owner assigned",
+      detail: renewalCase.ownerName || item.ownerName || "Owner needed",
+      complete: Boolean(renewalCase.ownerName || item.ownerName)
+    },
+    {
+      label: "Due date set",
+      detail: renewalCase.dueAt ? formatDate(renewalCase.dueAt) : "No due date",
+      complete: Boolean(renewalCase.dueAt)
+    },
+    {
+      label: "Replacement created",
+      detail: renewalCase.replacementCredentialId ?? "No replacement recorded",
+      complete: replacementCreated
+    },
+    {
+      label: "Old credential retained",
+      detail: replacementCreated ? "Pending owner validation" : "Awaiting replacement",
+      complete: replacementCreated
+    },
+    {
+      label: "Validated",
+      detail: validated ? RENEWAL_CASE_LABELS[renewalCase.status] : "Validation pending",
+      complete: validated
+    }
+  ];
+}
+
 function EmptyState() {
   return (
     <div className="empty">
@@ -1240,7 +1316,9 @@ function EmptyState() {
 
 function formatDate(value: string | null): string {
   if (!value) return "No expiry";
-  return new Intl.DateTimeFormat("en", { month: "short", day: "2-digit", year: "numeric" }).format(new Date(value));
+  const dateOnly = dateOnlyParts(value);
+  const date = dateOnly ? new Date(dateOnly.year, dateOnly.month - 1, dateOnly.day) : new Date(value);
+  return new Intl.DateTimeFormat("en", { month: "short", day: "2-digit", year: "numeric" }).format(date);
 }
 
 function formatDateTime(value: string): string {
@@ -1254,8 +1332,19 @@ function formatDateTime(value: string): string {
 
 function dateInputValue(value: string | null): string {
   if (!value) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+}
+
+function dateOnlyParts(value: string): { year: number; month: number; day: number } | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  return {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3])
+  };
 }
 
 function coverageMatchesItem(row: DashboardCoverage, item: DashboardItem): boolean {

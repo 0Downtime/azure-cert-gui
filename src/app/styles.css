@@ -787,6 +787,7 @@ tr.selected-row {
 
 .renewal-case,
 .renewal-form,
+.renewal-checklist,
 .renewal-result,
 .one-time-secret {
   display: grid;
@@ -802,6 +803,58 @@ tr.selected-row {
 .renewal-form label {
   display: grid;
   gap: 3px;
+}
+
+.renewal-checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.renewal-checklist li {
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto 1fr;
+  padding: 8px;
+}
+
+.renewal-checklist li svg {
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.renewal-checklist li.complete svg {
+  color: var(--green);
+}
+
+.renewal-checklist li div {
+  display: grid;
+  gap: 2px;
+}
+
+.renewal-checklist li span {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.renewal-safety-note {
+  align-items: center;
+  background: var(--amber-soft);
+  border: 1px solid var(--amber);
+  border-radius: 6px;
+  color: var(--text);
+  display: flex;
+  gap: 7px;
+  padding: 8px;
+}
+
+.renewal-safety-note.blocked {
+  background: var(--red-soft);
+  border-color: var(--red);
 }
 
 .renewal-actions {
