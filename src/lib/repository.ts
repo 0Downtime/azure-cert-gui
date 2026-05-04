@@ -201,9 +201,10 @@ export function listDashboardItems(db: DatabaseSync = openDatabase()): Dashboard
     .prepare(
       `
       SELECT
-        ci.id, ci.natural_key, ci.source, ci.parent_id, ci.parent_name,
+        ci.id, ci.natural_key, ci.source, ci.source_tenant_id, ci.subscription_id, ci.resource_group,
+        ci.parent_id, ci.parent_name,
         ci.credential_id, ci.credential_name, ci.credential_type,
-        ci.expires_at, ci.status, ci.last_seen_at, ci.removed_at,
+        ci.expires_at, ci.status, ci.last_seen_at, ci.source_updated_at, ci.removed_at, ci.metadata_json,
         COALESCE(oo.owner_name, os.owner_name) AS owner_name,
         COALESCE(oo.owner_email, os.owner_email) AS owner_email,
         CASE WHEN oo.id IS NOT NULL THEN 'high' ELSE COALESCE(os.confidence, 'unknown') END AS owner_confidence,
@@ -245,6 +246,9 @@ export function listDashboardItems(db: DatabaseSync = openDatabase()): Dashboard
       id,
       naturalKey: String(row.natural_key),
       source: row.source as DashboardItem["source"],
+      sourceTenantId: row.source_tenant_id as string | null,
+      subscriptionId: row.subscription_id as string | null,
+      resourceGroup: row.resource_group as string | null,
       parentId: String(row.parent_id),
       parentName: String(row.parent_name),
       credentialId: String(row.credential_id),
@@ -259,11 +263,29 @@ export function listDashboardItems(db: DatabaseSync = openDatabase()): Dashboard
       ownerEvidence: row.owner_evidence as string | null,
       status: row.status as WorkflowStatus,
       lastSeenAt: String(row.last_seen_at),
+      sourceUpdatedAt: row.source_updated_at as string | null,
       removedAt: row.removed_at as string | null,
+      metadata: parseMetadata(row.metadata_json),
       coverageState: "ok",
       statusHistory: histories.get(id) ?? []
     };
   });
+}
+
+function parseMetadata(value: unknown): DashboardItem["metadata"] {
+  if (typeof value !== "string" || !value) return {};
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed).filter((entry): entry is [string, string | number | boolean | null] => {
+        const item = entry[1];
+        return item === null || ["string", "number", "boolean"].includes(typeof item);
+      })
+    );
+  } catch {
+    return {};
+  }
 }
 
 function statusHistoryByItemId(ids: number[], db: DatabaseSync): Map<number, DashboardStatusHistory[]> {

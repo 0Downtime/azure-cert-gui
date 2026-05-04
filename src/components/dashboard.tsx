@@ -4,14 +4,17 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  Copy,
   Database,
   Download,
   Filter,
   KeyRound,
+  PanelRightOpen,
   RefreshCw,
   Search,
   ShieldAlert,
   UserRound,
+  X,
   XCircle
 } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
@@ -73,6 +76,7 @@ export function Dashboard({
   const [ownerMode, setOwnerMode] = useState<"all" | "unknown" | "low">("all");
   const [workflowMode, setWorkflowMode] = useState<"all" | "urgent" | "due60" | "unknown" | "contacted_pending">("all");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [selectedDetailId, setSelectedDetailId] = useState<number | null>(null);
   const [copyPanel, setCopyPanel] = useState<{ title: string; text: string; copied: boolean } | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -106,6 +110,14 @@ export function Dashboard({
   const selectedItems = useMemo(
     () => items.filter((item) => selectedIds.includes(item.id)),
     [items, selectedIds]
+  );
+  const selectedDetail = useMemo(
+    () => items.find((item) => item.id === selectedDetailId) ?? null,
+    [items, selectedDetailId]
+  );
+  const detailCoverage = useMemo(
+    () => (selectedDetail ? coverage.filter((row) => coverageMatchesItem(row, selectedDetail)) : []),
+    [coverage, selectedDetail]
   );
 
   function toggleSelection(id: number) {
@@ -327,11 +339,12 @@ export function Dashboard({
                 <th>Owner</th>
                 <th>Status</th>
                 <th>Updated</th>
+                <th aria-label="Credential details" />
               </tr>
             </thead>
             <tbody>
               {filtered.map((item) => (
-                <tr key={item.id} className={item.removedAt ? "removed" : ""}>
+                <tr key={item.id} className={`${item.removedAt ? "removed" : ""} ${selectedDetailId === item.id ? "selected-row" : ""}`}>
                   <td>
                     <input
                       type="checkbox"
@@ -371,14 +384,176 @@ export function Dashboard({
                     <span>{formatDate(item.lastSeenAt)}</span>
                     {item.removedAt ? <span className="muted danger-text">Removed from source</span> : null}
                   </td>
+                  <td>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      onClick={() => setSelectedDetailId(item.id)}
+                      aria-label={`Open details for ${item.credentialName}`}
+                      title="Open details"
+                    >
+                      <PanelRightOpen size={15} />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </section>
+
+      {selectedDetail ? (
+        <CredentialDetailDrawer
+          item={selectedDetail}
+          coverage={detailCoverage}
+          onClose={() => setSelectedDetailId(null)}
+          onCopy={copyText}
+        />
+      ) : null}
     </main>
   );
+}
+
+function CredentialDetailDrawer({
+  item,
+  coverage,
+  onClose,
+  onCopy
+}: {
+  item: DashboardItem;
+  coverage: DashboardCoverage[];
+  onClose: () => void;
+  onCopy: (title: string, text: string) => Promise<void>;
+}) {
+  const metadata = Object.entries(item.metadata);
+  return (
+    <aside className="detail-drawer" aria-label="Credential detail">
+      <div className="detail-header">
+        <div>
+          <p className="eyebrow">{SOURCE_LABELS[item.source]}</p>
+          <h2>{item.parentName}</h2>
+          <span className="muted">{item.credentialName}</span>
+        </div>
+        <button type="button" className="icon-button" onClick={onClose} aria-label="Close details" title="Close details">
+          <X size={16} />
+        </button>
+      </div>
+
+      <div className="detail-actions">
+        <button type="button" onClick={() => void onCopy("Credential identifiers", detailCopyText(item))}>
+          <Copy size={15} />
+          Copy identifiers
+        </button>
+        <button type="button" onClick={() => void onCopy("Renewal request draft", renewalCopyText(item))}>
+          <Download size={15} />
+          Copy renewal request
+        </button>
+      </div>
+
+      <section className="detail-section">
+        <h3>Expiration</h3>
+        <dl className="detail-list">
+          <DetailRow label="Risk" value={<RiskBadge item={item} />} />
+          <DetailRow label="Expires" value={formatDate(item.expiresAt)} />
+          <DetailRow
+            label="Days remaining"
+            value={item.daysUntilExpiry === null ? "No expiry metadata" : String(item.daysUntilExpiry)}
+          />
+          <DetailRow label="Status" value={STATUS_LABELS[item.status]} />
+        </dl>
+      </section>
+
+      <section className="detail-section">
+        <h3>Owner</h3>
+        <dl className="detail-list">
+          <DetailRow label="Name" value={item.ownerName ?? "Unassigned"} />
+          <DetailRow label="Email" value={item.ownerEmail ?? "No email"} />
+          <DetailRow label="Confidence" value={item.ownerConfidence} />
+          <DetailRow label="Evidence" value={item.ownerEvidence ?? "No owner evidence"} />
+        </dl>
+      </section>
+
+      <section className="detail-section">
+        <h3>Identifiers</h3>
+        <dl className="detail-list">
+          <DetailRow label="Natural key" value={<CodeValue value={item.naturalKey} />} />
+          <DetailRow label="Parent ID" value={<CodeValue value={item.parentId} />} />
+          <DetailRow label="Credential ID" value={<CodeValue value={item.credentialId} />} />
+          <DetailRow label="Tenant" value={item.sourceTenantId ? <CodeValue value={item.sourceTenantId} /> : "Unknown"} />
+          <DetailRow label="Subscription" value={item.subscriptionId ? <CodeValue value={item.subscriptionId} /> : "Unknown"} />
+          <DetailRow label="Resource group" value={item.resourceGroup ?? "Not applicable"} />
+          <DetailRow label="Type" value={item.credentialType} />
+        </dl>
+      </section>
+
+      <section className="detail-section">
+        <h3>Source state</h3>
+        <dl className="detail-list">
+          <DetailRow label="Last seen" value={formatDateTime(item.lastSeenAt)} />
+          <DetailRow label="Source updated" value={item.sourceUpdatedAt ? formatDateTime(item.sourceUpdatedAt) : "Unknown"} />
+          <DetailRow label="Removed" value={item.removedAt ? formatDateTime(item.removedAt) : "No"} />
+        </dl>
+        <div className="detail-coverage-list">
+          {coverage.length ? (
+            coverage.map((row) => (
+              <div key={`${row.source}:${row.resourceId ?? row.resourceName}`} className="detail-coverage-row">
+                <span className={`health ${row.health}`}>{HEALTH_LABELS[row.health]}</span>
+                <strong>{row.resourceName}</strong>
+                <span className="muted">
+                  {row.itemsSeen} seen, {row.itemsSkipped} skipped
+                </span>
+              </div>
+            ))
+          ) : (
+            <span className="muted">No matching source coverage row</span>
+          )}
+        </div>
+      </section>
+
+      <section className="detail-section">
+        <h3>Status history</h3>
+        {item.statusHistory.length ? (
+          <ol className="detail-history">
+            {item.statusHistory.map((history) => (
+              <li key={`${history.changedAt}-${history.toStatus}`}>
+                <strong>{STATUS_LABELS[history.toStatus]}</strong>
+                <span className="muted">
+                  {history.changedBy} {formatDateTime(history.changedAt)}
+                  {history.note ? ` - ${history.note}` : ""}
+                </span>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <span className="muted">No status updates</span>
+        )}
+      </section>
+
+      {metadata.length ? (
+        <section className="detail-section">
+          <h3>Metadata</h3>
+          <dl className="detail-list">
+            {metadata.map(([key, value]) => (
+              <DetailRow key={key} label={key} value={formatMetadataValue(value)} />
+            ))}
+          </dl>
+        </section>
+      ) : null}
+    </aside>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  );
+}
+
+function CodeValue({ value }: { value: string }) {
+  return <code className="detail-code">{value}</code>;
 }
 
 function CoveragePanel({ coverage }: { coverage: DashboardCoverage[] }) {
@@ -564,6 +739,55 @@ function formatDateTime(value: string): string {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function coverageMatchesItem(row: DashboardCoverage, item: DashboardItem): boolean {
+  if (row.source !== item.source) return false;
+  if (row.resourceId?.startsWith("graph-")) return true;
+  if (!row.resourceId) return true;
+  return row.resourceId === item.parentId || row.resourceName === item.parentName;
+}
+
+function detailCopyText(item: DashboardItem): string {
+  return [
+    `Source: ${SOURCE_LABELS[item.source]}`,
+    `Application/resource: ${item.parentName}`,
+    `Credential: ${item.credentialName}`,
+    `Credential type: ${item.credentialType}`,
+    `Natural key: ${item.naturalKey}`,
+    `Parent ID: ${item.parentId}`,
+    `Credential ID: ${item.credentialId}`,
+    `Tenant ID: ${item.sourceTenantId ?? "unknown"}`,
+    `Subscription ID: ${item.subscriptionId ?? "unknown"}`,
+    `Resource group: ${item.resourceGroup ?? "not applicable"}`,
+    `Expires: ${formatDate(item.expiresAt)}`,
+    `Owner: ${item.ownerName ?? "Unassigned"}${item.ownerEmail ? ` <${item.ownerEmail}>` : ""}`,
+    `Owner evidence: ${item.ownerEvidence ?? "none"}`,
+    `Status: ${STATUS_LABELS[item.status]}`
+  ].join("\n");
+}
+
+function renewalCopyText(item: DashboardItem): string {
+  return [
+    `Owner: ${item.ownerName ?? "Unassigned"}${item.ownerEmail ? ` <${item.ownerEmail}>` : ""}`,
+    `Application/resource: ${item.parentName}`,
+    `Credential: ${item.credentialName} (${item.credentialType})`,
+    `Source: ${SOURCE_LABELS[item.source]}`,
+    `Expiration: ${formatDate(item.expiresAt)}${
+      item.daysUntilExpiry === null ? "" : ` (${item.daysUntilExpiry} days)`
+    }`,
+    `Current status: ${STATUS_LABELS[item.status]}`,
+    `Identifier: ${item.credentialId}`,
+    "",
+    "Requested action: rotate or replace this credential before the expiration date, then reply with the completion date and the new rotation owner.",
+    "If this credential is no longer needed, confirm it can be removed or marked ignored."
+  ].join("\n");
+}
+
+function formatMetadataValue(value: string | number | boolean | null): string {
+  if (value === null) return "null";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  return String(value);
 }
 
 function matchesWorkflowMode(

@@ -8,6 +8,7 @@ node_modules/
 out/
 coverage/
 *.tsbuildinfo
+.playwright-cli/
 
 # Local runtime state
 .env

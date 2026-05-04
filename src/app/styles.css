@@ -55,6 +55,12 @@ button:disabled {
   opacity: 0.45;
 }
 
+.icon-button {
+  justify-content: center;
+  padding: 0;
+  width: 34px;
+}
+
 .shell {
   max-width: 1480px;
   margin: 0 auto;
@@ -370,6 +376,10 @@ tr.removed {
   opacity: 0.72;
 }
 
+tr.selected-row {
+  background: #f1faf8;
+}
+
 .muted {
   color: var(--muted);
   font-size: 12px;
@@ -499,6 +509,108 @@ tr.removed {
   color: var(--text);
 }
 
+.detail-drawer {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  bottom: 24px;
+  box-shadow: 0 18px 50px rgb(29 37 43 / 18%);
+  display: grid;
+  gap: 12px;
+  max-width: calc(100vw - 48px);
+  overflow: auto;
+  padding: 14px;
+  position: fixed;
+  right: 24px;
+  top: 24px;
+  width: 460px;
+  z-index: 20;
+}
+
+.detail-header,
+.detail-actions {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.detail-header h2 {
+  font-size: 20px;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.detail-actions {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.detail-section {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.detail-section h3 {
+  font-size: 13px;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.detail-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.detail-list > div {
+  display: grid;
+  gap: 4px;
+}
+
+.detail-list dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.detail-list dd {
+  font-size: 13px;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.detail-code {
+  background: #eef2f5;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  display: block;
+  font-size: 12px;
+  padding: 5px 6px;
+}
+
+.detail-coverage-list,
+.detail-history {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+
+.detail-coverage-row,
+.detail-history li {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  list-style: none;
+  padding: 8px;
+}
+
 @media (max-width: 1100px) {
   .shell {
     padding: 14px;
@@ -515,5 +627,13 @@ tr.removed {
 
   .coverage-row {
     grid-template-columns: 1fr;
+  }
+
+  .detail-drawer {
+    bottom: 14px;
+    max-width: calc(100vw - 28px);
+    right: 14px;
+    top: 14px;
+    width: calc(100vw - 28px);
   }
 }

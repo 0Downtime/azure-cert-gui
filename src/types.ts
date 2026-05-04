@@ -50,6 +50,9 @@ export interface DashboardItem {
   id: number;
   naturalKey: string;
   source: InventorySource;
+  sourceTenantId: string | null;
+  subscriptionId: string | null;
+  resourceGroup: string | null;
   parentId: string;
   parentName: string;
   credentialId: string;
@@ -64,7 +67,9 @@ export interface DashboardItem {
   ownerEvidence: string | null;
   status: WorkflowStatus;
   lastSeenAt: string;
+  sourceUpdatedAt: string | null;
   removedAt: string | null;
+  metadata: Record<string, string | number | boolean | null>;
   coverageState: "ok" | "stale" | "failed" | "unknown";
   statusHistory: DashboardStatusHistory[];
 }
