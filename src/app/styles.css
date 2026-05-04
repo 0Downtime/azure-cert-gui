@@ -172,7 +172,8 @@ h1 {
 }
 
 .toolbar,
-.actionbar {
+.actionbar,
+.exportbar {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -186,6 +187,18 @@ h1 {
 
 .actionbar {
   justify-content: space-between;
+}
+
+.exportbar {
+  justify-content: flex-start;
+}
+
+.exportbar > span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  margin-right: 4px;
+  text-transform: uppercase;
 }
 
 .actionbar > div,

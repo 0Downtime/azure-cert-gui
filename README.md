@@ -67,6 +67,7 @@ In the dashboard:
 - Select rows and use `Copy renewal request` to draft owner-facing rotation requests.
 - Use `Copy owner packets` to generate owner-grouped renewal packets with subject lines and credential tables.
 - Use `Copy by owner` to create an owner-grouped renewal worklist.
+- Use `Audit exports` to copy inventory TSV, status audit TSV, source coverage JSON, and owner mapping TSV.
 
 ## What It Stores
 

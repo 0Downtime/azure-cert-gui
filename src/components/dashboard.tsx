@@ -197,6 +197,66 @@ export function Dashboard({
     void copyText("Owner mapping directory", text);
   }
 
+  function copyInventoryExport() {
+    const rows = selectedItems.length ? selectedItems : filtered;
+    const text = [
+      "source\tparent_name\tcredential_name\tcredential_type\texpires_at\tdays_until_expiry\trisk\towner_name\towner_email\towner_confidence\tstatus\ttenant_id\tsubscription_id\tresource_group\tparent_id\tcredential_id\tnatural_key\tlast_seen_at",
+      ...rows.map((item) =>
+        [
+          SOURCE_LABELS[item.source],
+          item.parentName,
+          item.credentialName,
+          item.credentialType,
+          item.expiresAt ?? "",
+          item.daysUntilExpiry ?? "",
+          item.riskBucket,
+          item.ownerName ?? "",
+          item.ownerEmail ?? "",
+          item.ownerConfidence,
+          STATUS_LABELS[item.status],
+          item.sourceTenantId ?? "",
+          item.subscriptionId ?? "",
+          item.resourceGroup ?? "",
+          item.parentId,
+          item.credentialId,
+          item.naturalKey,
+          item.lastSeenAt
+        ].join("\t")
+      )
+    ].join("\n");
+    void copyText("Inventory export", text);
+  }
+
+  function copyStatusAudit() {
+    const rows = items.flatMap((item) =>
+      item.statusHistory.map((history) => ({
+        item,
+        history
+      }))
+    );
+    const text = [
+      "changed_at\tchanged_by\tfrom_status\tto_status\tnote\tsource\tparent_name\tcredential_name\tcredential_id",
+      ...rows.map(({ item, history }) =>
+        [
+          history.changedAt,
+          history.changedBy,
+          history.fromStatus ? STATUS_LABELS[history.fromStatus] : "",
+          STATUS_LABELS[history.toStatus],
+          history.note ?? "",
+          SOURCE_LABELS[item.source],
+          item.parentName,
+          item.credentialName,
+          item.credentialId
+        ].join("\t")
+      )
+    ].join("\n");
+    void copyText("Status audit export", text);
+  }
+
+  function copyCoverageExport() {
+    void copyText("Coverage export", JSON.stringify(coverage, null, 2));
+  }
+
   function copyRenewalRequest() {
     const rows = selectedItems.length ? selectedItems : filtered;
     const text = rows
@@ -389,6 +449,26 @@ export function Dashboard({
             Copy by owner
           </button>
         </div>
+      </section>
+
+      <section className="exportbar" aria-label="Audit exports">
+        <span>Audit exports</span>
+        <button type="button" onClick={copyInventoryExport} disabled={!filtered.length}>
+          <Download size={15} />
+          Copy inventory TSV
+        </button>
+        <button type="button" onClick={copyStatusAudit} disabled={!items.some((item) => item.statusHistory.length)}>
+          <Download size={15} />
+          Copy status audit
+        </button>
+        <button type="button" onClick={copyCoverageExport} disabled={!coverage.length}>
+          <Download size={15} />
+          Copy coverage JSON
+        </button>
+        <button type="button" onClick={copyOwnerMappings} disabled={!ownerOverrides.length}>
+          <Download size={15} />
+          Copy owner mappings
+        </button>
       </section>
 
       {copyPanel ? (
