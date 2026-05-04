@@ -15,6 +15,10 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+If you run `npm run build` while `npm run dev` is already running, restart the dev server before
+testing forms again. Next dev and Next build both write to `.next`, so a live dev server can serve
+stale asset paths after a production build.
+
 ## Local Reset
 
 ```bash
@@ -31,9 +35,36 @@ It must never store secret values, certificate private keys, or raw Key Vault se
 
 ## Real Azure Setup
 
-Real collectors are not implemented yet. The planned permissions are read-only:
+The Azure sync uses your local Azure CLI session. It reads metadata only and does not request Key Vault
+secret values or certificate private keys.
 
-- Microsoft Graph application/service principal read access.
-- Azure Key Vault secret/certificate list and metadata read access.
+```bash
+az login
+npm run db:migrate
+npm run sync:azure -- --verbose
+npm run dev
+```
+
+Useful scoped runs:
+
+```bash
+npm run sync:azure -- --graph-only
+npm run sync:azure -- --keyvault-only
+```
+
+The default behavior scans:
+
+- Microsoft Graph applications and service principals, including password/key credential metadata.
+- Key Vault secrets and certificates across enabled Azure CLI subscriptions.
+- Current Key Vault versions only. Set `AZURE_KEYVAULT_INCLUDE_VERSIONS=true` to inventory every version.
+
+Recommended read-only permissions:
+
+- Microsoft Graph: application and service principal read access, plus owner read access if you want Entra owners.
+- Azure RBAC or Key Vault access policy: vault list/read plus `secrets/list` and `certificates/list`.
 
 Use `.env.example` as the configuration template. Do not commit `.env`.
+
+For a focused rollout, set `AZURE_SUBSCRIPTION_IDS` and/or `AZURE_KEYVAULT_RESOURCE_IDS` before the first
+real sync. If a vault is unreachable, the sync records a coverage gap and avoids marking unseen Key Vault
+items as removed.

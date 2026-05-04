@@ -10,9 +10,11 @@ function nowIso(): string {
 export function upsertCredentials(
   credentials: NormalizedCredential[],
   source: string,
-  db: DatabaseSync = openDatabase()
+  db: DatabaseSync = openDatabase(),
+  options: { markMissingRemoved?: boolean } = {}
 ): { seen: number; changed: number } {
   migrate(db);
+  const markMissingRemoved = options.markMissingRemoved ?? true;
   const startedAt = nowIso();
   const syncInsert = db.prepare(
     "INSERT INTO sync_runs (source, started_at, status) VALUES (?, ?, 'partial')"
@@ -103,15 +105,17 @@ export function upsertCredentials(
       changed += 1;
     }
 
-    const staleRows = db
-      .prepare("SELECT id, natural_key FROM credential_items WHERE source = ? AND removed_at IS NULL")
-      .all(source) as { id: number; natural_key: string }[];
-    const markRemoved = db.prepare(
-      "UPDATE credential_items SET removed_at = ?, removal_reason = 'no_longer_visible' WHERE id = ?"
-    );
-    for (const row of staleRows) {
-      if (!seenKeys.has(row.natural_key)) {
-        markRemoved.run(startedAt, row.id);
+    if (markMissingRemoved) {
+      const staleRows = db
+        .prepare("SELECT id, natural_key FROM credential_items WHERE source = ? AND removed_at IS NULL")
+        .all(source) as { id: number; natural_key: string }[];
+      const markRemoved = db.prepare(
+        "UPDATE credential_items SET removed_at = ?, removal_reason = 'no_longer_visible' WHERE id = ?"
+      );
+      for (const row of staleRows) {
+        if (!seenKeys.has(row.natural_key)) {
+          markRemoved.run(startedAt, row.id);
+        }
       }
     }
 
@@ -178,6 +182,11 @@ export function recordCoverage(
   );
 }
 
+export function clearCoverageForSource(source: string, db: DatabaseSync = openDatabase()): void {
+  migrate(db);
+  db.prepare("DELETE FROM source_coverage WHERE source = ?").run(source);
+}
+
 export function listDashboardItems(db: DatabaseSync = openDatabase()): DashboardItem[] {
   migrate(db);
   const rows = db
@@ -200,6 +209,7 @@ export function listDashboardItems(db: DatabaseSync = openDatabase()): Dashboard
           (oo.match_type = 'vault_name' AND oo.match_value = ci.parent_name)
         )
       LEFT JOIN owner_signals os ON os.credential_item_id = ci.id
+      WHERE ci.removed_at IS NULL
       ORDER BY
         CASE
           WHEN ci.expires_at IS NULL THEN 5

@@ -1,13 +1,13 @@
 import type { NormalizedCredential, OwnerConfidence, OwnerSignalSource } from "@/types";
 import { assertNoSecretValueFields, pickMetadata } from "./secret-guard";
 
-interface GraphOwner {
+export interface GraphOwnerInput {
   displayName?: string;
   mail?: string;
   userPrincipalName?: string;
 }
 
-interface GraphCredential {
+export interface GraphCredentialInput {
   keyId: string;
   displayName?: string;
   endDateTime?: string | null;
@@ -16,22 +16,22 @@ interface GraphCredential {
   type?: string;
 }
 
-interface GraphApplicationFixture {
+export interface GraphApplicationInput {
   tenantId: string;
   id: string;
   appId: string;
   displayName: string;
   tags?: Record<string, string>;
-  owners?: GraphOwner[];
-  passwordCredentials?: GraphCredential[];
-  keyCredentials?: GraphCredential[];
+  owners?: GraphOwnerInput[];
+  passwordCredentials?: GraphCredentialInput[];
+  keyCredentials?: GraphCredentialInput[];
 }
 
-interface GraphServicePrincipalFixture extends GraphApplicationFixture {
+export interface GraphServicePrincipalInput extends GraphApplicationInput {
   servicePrincipalType?: string;
 }
 
-interface KeyVaultItemFixture {
+export interface KeyVaultItemInput {
   tenantId: string;
   subscriptionId: string;
   resourceGroup: string;
@@ -47,7 +47,7 @@ interface KeyVaultItemFixture {
 }
 
 function ownerFromGraph(
-  owners: GraphOwner[] | undefined,
+  owners: GraphOwnerInput[] | undefined,
   tags: Record<string, string> | undefined
 ): Pick<
   NormalizedCredential,
@@ -60,7 +60,7 @@ function ownerFromGraph(
       ownerEmail: owner.mail ?? owner.userPrincipalName ?? null,
       ownerConfidence: "high",
       ownerSignalSource: "entra_owner",
-      ownerEvidence: "First Entra owner returned by fixture"
+      ownerEvidence: "First Entra owner returned by source"
     };
   }
 
@@ -112,8 +112,8 @@ function unknownOwner(): Pick<
 
 function normalizeGraphCredential(
   source: "entra_application" | "service_principal",
-  parent: GraphApplicationFixture,
-  credential: GraphCredential,
+  parent: GraphApplicationInput,
+  credential: GraphCredentialInput,
   credentialType: "client_secret" | "certificate"
 ): NormalizedCredential {
   assertNoSecretValueFields(credential, `graph.${parent.id}.${credential.keyId}`);
@@ -144,7 +144,7 @@ function normalizeGraphCredential(
   };
 }
 
-export function normalizeGraphApplications(apps: GraphApplicationFixture[]): NormalizedCredential[] {
+export function normalizeGraphApplications(apps: GraphApplicationInput[]): NormalizedCredential[] {
   return apps.flatMap((app) => [
     ...(app.passwordCredentials ?? []).map((credential) =>
       normalizeGraphCredential("entra_application", app, credential, "client_secret")
@@ -156,7 +156,7 @@ export function normalizeGraphApplications(apps: GraphApplicationFixture[]): Nor
 }
 
 export function normalizeServicePrincipals(
-  servicePrincipals: GraphServicePrincipalFixture[]
+  servicePrincipals: GraphServicePrincipalInput[]
 ): NormalizedCredential[] {
   return servicePrincipals.flatMap((principal) => [
     ...(principal.passwordCredentials ?? []).map((credential) =>
@@ -168,7 +168,7 @@ export function normalizeServicePrincipals(
   ]);
 }
 
-export function normalizeKeyVaultSecrets(secrets: KeyVaultItemFixture[]): NormalizedCredential[] {
+export function normalizeKeyVaultSecrets(secrets: KeyVaultItemInput[]): NormalizedCredential[] {
   return secrets.map((secret) => {
     assertNoSecretValueFields(secret, `keyVaultSecret.${secret.vaultName}.${secret.name}`);
     const owner = ownerFromVault(secret.tags);
@@ -196,7 +196,7 @@ export function normalizeKeyVaultSecrets(secrets: KeyVaultItemFixture[]): Normal
 }
 
 export function normalizeKeyVaultCertificates(
-  certificates: KeyVaultItemFixture[]
+  certificates: KeyVaultItemInput[]
 ): NormalizedCredential[] {
   return certificates.map((certificate) => {
     assertNoSecretValueFields(certificate, `keyVaultCertificate.${certificate.vaultName}.${certificate.name}`);

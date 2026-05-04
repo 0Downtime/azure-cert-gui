@@ -7,7 +7,7 @@ import {
   normalizeKeyVaultSecrets,
   normalizeServicePrincipals
 } from "../src/lib/normalize";
-import { recordCoverage, upsertCredentials } from "../src/lib/repository";
+import { clearCoverageForSource, recordCoverage, upsertCredentials } from "../src/lib/repository";
 
 const verbose = process.argv.includes("--verbose");
 const fixtureRoot = join(process.cwd(), "fixtures");
@@ -30,6 +30,7 @@ const results = [
   ["key_vault_secret", keyVaultSecrets] as const,
   ["key_vault_certificate", keyVaultCertificates] as const
 ].map(([source, credentials]) => {
+  clearCoverageForSource(source, db);
   const result = upsertCredentials(credentials, source, db);
   return { source, ...result };
 });
