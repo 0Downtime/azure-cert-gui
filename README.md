@@ -45,6 +45,18 @@ Run the sync without starting the UI:
 npm run sync:azure -- --verbose
 ```
 
+Schedule the sync daily on macOS:
+
+```bash
+mkdir -p logs ~/Library/LaunchAgents
+npm run schedule:launchagent > ~/Library/LaunchAgents/com.local.azure-secret-dashboard.sync.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.local.azure-secret-dashboard.sync.plist
+launchctl kickstart -k gui/$(id -u)/com.local.azure-secret-dashboard.sync
+```
+
+By default the generated LaunchAgent runs at 7:30 AM. Set `SYNC_HOUR` and `SYNC_MINUTE`
+when generating the file to use a different local time.
+
 In the dashboard:
 
 - Select rows and use `Assign owner` to bulk map credentials by app, service principal, or vault.
