@@ -31,6 +31,8 @@ import type {
 } from "@/types";
 import { deleteOwnerOverride, saveBulkOwnerOverride, saveOwnerOverride, updateCredentialStatus } from "@/app/actions";
 
+type WorkflowMode = "all" | "urgent" | "due60" | "unknown" | "contacted_pending";
+
 const SOURCE_LABELS: Record<InventorySource, string> = {
   entra_application: "Entra app",
   service_principal: "Service principal",
@@ -69,6 +71,14 @@ const MATCH_LABELS: Record<OwnerMatchType, string> = {
   vault_name: "Vault name"
 };
 
+const QUEUE_LABELS: Record<WorkflowMode, string> = {
+  all: "All work",
+  urgent: "Expired / 30",
+  due60: "Due in 60",
+  unknown: "Needs owner",
+  contacted_pending: "Contacted"
+};
+
 export function Dashboard({
   items,
   summary,
@@ -85,7 +95,7 @@ export function Dashboard({
   const [bucket, setBucket] = useState<RiskBucket | "all">("all");
   const [status, setStatus] = useState<WorkflowStatus | "all">("all");
   const [ownerMode, setOwnerMode] = useState<"all" | "unknown" | "low">("all");
-  const [workflowMode, setWorkflowMode] = useState<"all" | "urgent" | "due60" | "unknown" | "contacted_pending">("all");
+  const [workflowMode, setWorkflowMode] = useState<WorkflowMode>("all");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [selectedDetailId, setSelectedDetailId] = useState<number | null>(null);
   const [copyPanel, setCopyPanel] = useState<{ title: string; text: string; copied: boolean } | null>(null);
@@ -117,6 +127,17 @@ export function Dashboard({
     }
     return [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
   }, [filtered]);
+
+  const queueCounts = useMemo(
+    () =>
+      Object.fromEntries(
+        (Object.keys(QUEUE_LABELS) as WorkflowMode[]).map((mode) => [
+          mode,
+          items.filter((item) => matchesWorkflowMode(item, mode)).length
+        ])
+      ) as Record<WorkflowMode, number>,
+    [items]
+  );
 
   const selectedItems = useMemo(
     () => items.filter((item) => selectedIds.includes(item.id)),
@@ -267,6 +288,20 @@ export function Dashboard({
         <Metric label="Coverage gaps" value={summary.coverageGaps} tone="danger" icon={<ShieldAlert size={18} />} />
       </section>
 
+      <section className="queuebar" aria-label="Quick queues">
+        {(Object.keys(QUEUE_LABELS) as WorkflowMode[]).map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            className={workflowMode === mode ? "active" : ""}
+            onClick={() => setWorkflowMode(mode)}
+          >
+            <span>{QUEUE_LABELS[mode]}</span>
+            <strong>{queueCounts[mode]}</strong>
+          </button>
+        ))}
+      </section>
+
       <section className="toolbar" aria-label="Filters">
         <label className="search">
           <Search size={16} />
@@ -304,13 +339,13 @@ export function Dashboard({
         <Select
           label="Workflow"
           value={workflowMode}
-          onChange={(value) => setWorkflowMode(value as "all" | "urgent" | "due60" | "unknown" | "contacted_pending")}
+          onChange={(value) => setWorkflowMode(value as WorkflowMode)}
         >
-          <option value="all">All work</option>
-          <option value="urgent">Expired / 30</option>
-          <option value="due60">Due in 60</option>
-          <option value="unknown">Needs owner</option>
-          <option value="contacted_pending">Contacted, unscheduled</option>
+          {Object.entries(QUEUE_LABELS).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
         </Select>
       </section>
 
@@ -964,7 +999,7 @@ function formatMetadataValue(value: string | number | boolean | null): string {
 
 function matchesWorkflowMode(
   item: DashboardItem,
-  workflowMode: "all" | "urgent" | "due60" | "unknown" | "contacted_pending"
+  workflowMode: WorkflowMode
 ): boolean {
   if (workflowMode === "all") return true;
   if (workflowMode === "urgent") return item.riskBucket === "expired" || item.riskBucket === "0-30";
