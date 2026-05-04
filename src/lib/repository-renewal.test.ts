@@ -48,11 +48,18 @@ describe("renewal cases", () => {
       dueAt: "2026-05-20",
       ownerName: "Owner",
       ownerEmail: "owner@example.com",
-      notes: "rotate before sprint end"
+      notes: "rotate before sprint end",
+      reminderAt: "2026-05-15",
+      lastContactedAt: "2026-05-10",
+      escalationOwner: "Security Ops",
+      handoffStatus: "waiting_on_owner"
     });
 
     const [item] = listDashboardItems();
     expect(renewalCase.status).toBe("open");
+    expect(renewalCase.handoffStatus).toBe("waiting_on_owner");
+    expect(renewalCase.reminderAt).toBe("2026-05-15");
+    expect(renewalCase.escalationOwner).toBe("Security Ops");
     expect(item.status).toBe("owner_contacted");
     expect(item.renewalCase?.events[0].eventType).toBe("case_created");
   });

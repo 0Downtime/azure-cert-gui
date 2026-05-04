@@ -14,6 +14,7 @@ import type {
   RenewalCaseStatus,
   RenewalEvent,
   RenewalEventType,
+  RenewalHandoffStatus,
   WorkflowStatus
 } from "@/types";
 import { assertNoSecretValueFields } from "./secret-guard";
@@ -353,6 +354,7 @@ function renewalCasesByItemId(ids: number[], db: DatabaseSync): Map<number, Rene
       `
       SELECT
         id, credential_item_id, status, due_at, owner_name, owner_email, notes,
+        reminder_at, last_contacted_at, escalation_owner, handoff_status,
         replacement_credential_id, replacement_expires_at,
         key_vault_copy_vault_name, key_vault_copy_secret_name,
         created_at, updated_at, closed_at
@@ -412,6 +414,10 @@ function renewalCaseFromRow(row: Record<string, unknown>, events: RenewalEvent[]
     ownerName: row.owner_name as string | null,
     ownerEmail: row.owner_email as string | null,
     notes: row.notes as string | null,
+    reminderAt: row.reminder_at as string | null,
+    lastContactedAt: row.last_contacted_at as string | null,
+    escalationOwner: row.escalation_owner as string | null,
+    handoffStatus: (row.handoff_status as RenewalHandoffStatus | null) ?? "not_contacted",
     replacementCredentialId: row.replacement_credential_id as string | null,
     replacementExpiresAt: row.replacement_expires_at as string | null,
     keyVaultCopyVaultName: row.key_vault_copy_vault_name as string | null,
@@ -579,6 +585,10 @@ export function createRenewalCase(input: {
   ownerName?: string | null;
   ownerEmail?: string | null;
   notes?: string | null;
+  reminderAt?: string | null;
+  lastContactedAt?: string | null;
+  escalationOwner?: string | null;
+  handoffStatus?: RenewalHandoffStatus | null;
 }): RenewalCase {
   const db = openDatabase();
   migrate(db);
@@ -592,7 +602,8 @@ export function createRenewalCase(input: {
       db.prepare(
         `
         UPDATE renewal_cases
-        SET due_at = ?, owner_name = ?, owner_email = ?, notes = ?, updated_at = ?
+        SET due_at = ?, owner_name = ?, owner_email = ?, notes = ?,
+            reminder_at = ?, last_contacted_at = ?, escalation_owner = ?, handoff_status = ?, updated_at = ?
         WHERE id = ?
       `
       ).run(
@@ -600,20 +611,26 @@ export function createRenewalCase(input: {
         input.ownerName ?? (existing.owner_name as string | null) ?? null,
         input.ownerEmail ?? (existing.owner_email as string | null) ?? null,
         input.notes ?? (existing.notes as string | null) ?? null,
+        input.reminderAt ?? (existing.reminder_at as string | null) ?? null,
+        input.lastContactedAt ?? (existing.last_contacted_at as string | null) ?? null,
+        input.escalationOwner ?? (existing.escalation_owner as string | null) ?? null,
+        input.handoffStatus ?? (existing.handoff_status as RenewalHandoffStatus | null) ?? "not_contacted",
         timestamp,
         caseId
       );
       appendRenewalEventInTransaction(db, caseId, "case_updated", "Renewal case updated", {
         dueAt: input.dueAt ?? null,
-        ownerName: input.ownerName ?? null
+        ownerName: input.ownerName ?? null,
+        handoffStatus: input.handoffStatus ?? null
       });
     } else {
       const result = db
         .prepare(
           `
           INSERT INTO renewal_cases (
-            credential_item_id, status, due_at, owner_name, owner_email, notes, created_at, updated_at
-          ) VALUES (?, 'open', ?, ?, ?, ?, ?, ?)
+            credential_item_id, status, due_at, owner_name, owner_email, notes,
+            reminder_at, last_contacted_at, escalation_owner, handoff_status, created_at, updated_at
+          ) VALUES (?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `
         )
         .run(
@@ -622,13 +639,18 @@ export function createRenewalCase(input: {
           input.ownerName ?? null,
           input.ownerEmail ?? null,
           input.notes ?? null,
+          input.reminderAt ?? null,
+          input.lastContactedAt ?? null,
+          input.escalationOwner ?? null,
+          input.handoffStatus ?? "not_contacted",
           timestamp,
           timestamp
         );
       caseId = Number(result.lastInsertRowid);
       appendRenewalEventInTransaction(db, caseId, "case_created", "Renewal case opened", {
         dueAt: input.dueAt ?? null,
-        ownerName: input.ownerName ?? null
+        ownerName: input.ownerName ?? null,
+        handoffStatus: input.handoffStatus ?? "not_contacted"
       });
     }
     updateStatusInTransaction(db, input.credentialItemId, "owner_contacted", "Renewal case opened");
@@ -646,6 +668,10 @@ export function updateRenewalCase(input: {
   ownerName?: string | null;
   ownerEmail?: string | null;
   notes?: string | null;
+  reminderAt?: string | null;
+  lastContactedAt?: string | null;
+  escalationOwner?: string | null;
+  handoffStatus?: RenewalHandoffStatus | null;
   keyVaultCopyVaultName?: string | null;
   keyVaultCopySecretName?: string | null;
 }): RenewalCase {
@@ -659,6 +685,7 @@ export function updateRenewalCase(input: {
       `
       UPDATE renewal_cases
       SET due_at = ?, owner_name = ?, owner_email = ?, notes = ?,
+          reminder_at = ?, last_contacted_at = ?, escalation_owner = ?, handoff_status = ?,
           key_vault_copy_vault_name = ?, key_vault_copy_secret_name = ?, updated_at = ?
       WHERE id = ?
     `
@@ -667,6 +694,10 @@ export function updateRenewalCase(input: {
       input.ownerName ?? existing.ownerName,
       input.ownerEmail ?? existing.ownerEmail,
       input.notes ?? existing.notes,
+      input.reminderAt ?? existing.reminderAt,
+      input.lastContactedAt ?? existing.lastContactedAt,
+      input.escalationOwner ?? existing.escalationOwner,
+      input.handoffStatus ?? existing.handoffStatus,
       input.keyVaultCopyVaultName ?? existing.keyVaultCopyVaultName,
       input.keyVaultCopySecretName ?? existing.keyVaultCopySecretName,
       timestamp,
@@ -675,6 +706,10 @@ export function updateRenewalCase(input: {
     appendRenewalEventInTransaction(db, input.caseId, "case_updated", "Renewal case updated", {
       dueAt: input.dueAt ?? existing.dueAt,
       ownerName: input.ownerName ?? existing.ownerName,
+      reminderAt: input.reminderAt ?? existing.reminderAt,
+      lastContactedAt: input.lastContactedAt ?? existing.lastContactedAt,
+      escalationOwner: input.escalationOwner ?? existing.escalationOwner,
+      handoffStatus: input.handoffStatus ?? existing.handoffStatus,
       keyVaultCopyVaultName: input.keyVaultCopyVaultName ?? existing.keyVaultCopyVaultName,
       keyVaultCopySecretName: input.keyVaultCopySecretName ?? existing.keyVaultCopySecretName
     });
@@ -787,6 +822,7 @@ export function getRenewalCase(id: number, db: DatabaseSync = openDatabase(), in
       `
       SELECT
         id, credential_item_id, status, due_at, owner_name, owner_email, notes,
+        reminder_at, last_contacted_at, escalation_owner, handoff_status,
         replacement_credential_id, replacement_expires_at,
         key_vault_copy_vault_name, key_vault_copy_secret_name,
         created_at, updated_at, closed_at

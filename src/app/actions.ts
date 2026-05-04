@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import type { OwnerMatchType, WorkflowStatus } from "@/types";
+import type { OwnerMatchType, RenewalHandoffStatus, WorkflowStatus } from "@/types";
 import { executeAzureRotation as rotateInAzure } from "@/lib/azure-rotation";
 import {
   closeRenewalCase as closeCase,
@@ -25,6 +25,13 @@ const VALID_STATUSES: WorkflowStatus[] = [
   "ignored"
 ];
 const VALID_MATCH_TYPES: OwnerMatchType[] = ["credential_id", "parent_id", "parent_name", "vault_name"];
+const VALID_HANDOFF_STATUSES: RenewalHandoffStatus[] = [
+  "not_contacted",
+  "contacted",
+  "waiting_on_owner",
+  "escalated",
+  "ready_to_validate"
+];
 
 export async function updateCredentialStatus(formData: FormData): Promise<void> {
   const id = Number(formData.get("id"));
@@ -81,7 +88,11 @@ export async function createRenewalCase(formData: FormData): Promise<void> {
     dueAt: clean(formData.get("dueAt")),
     ownerName: clean(formData.get("ownerName")),
     ownerEmail: clean(formData.get("ownerEmail")),
-    notes: clean(formData.get("notes"))
+    notes: clean(formData.get("notes")),
+    reminderAt: clean(formData.get("reminderAt")),
+    lastContactedAt: clean(formData.get("lastContactedAt")),
+    escalationOwner: clean(formData.get("escalationOwner")),
+    handoffStatus: cleanHandoffStatus(formData.get("handoffStatus"))
   });
   revalidatePath("/");
 }
@@ -95,6 +106,10 @@ export async function updateRenewalCase(formData: FormData): Promise<void> {
     ownerName: clean(formData.get("ownerName")),
     ownerEmail: clean(formData.get("ownerEmail")),
     notes: clean(formData.get("notes")),
+    reminderAt: clean(formData.get("reminderAt")),
+    lastContactedAt: clean(formData.get("lastContactedAt")),
+    escalationOwner: clean(formData.get("escalationOwner")),
+    handoffStatus: cleanHandoffStatus(formData.get("handoffStatus")),
     keyVaultCopyVaultName: clean(formData.get("keyVaultCopyVaultName")),
     keyVaultCopySecretName: clean(formData.get("keyVaultCopySecretName"))
   });
@@ -105,15 +120,16 @@ export async function executeRenewalRotation(formData: FormData): Promise<{
   ok: boolean;
   message: string;
   oneTimeSecretValue: string | null;
+  dryRun: boolean;
 }> {
   const caseId = Number(formData.get("caseId"));
   if (!Number.isFinite(caseId)) {
-    return { ok: false, message: "Missing renewal case", oneTimeSecretValue: null };
+    return { ok: false, message: "Missing renewal case", oneTimeSecretValue: null, dryRun: false };
   }
   const renewalCase = getRenewalCase(caseId);
   const item = getCredentialForRenewal(renewalCase.credentialItemId);
   if (!item) {
-    return { ok: false, message: "Credential is no longer active", oneTimeSecretValue: null };
+    return { ok: false, message: "Credential is no longer active", oneTimeSecretValue: null, dryRun: false };
   }
 
   try {
@@ -125,24 +141,28 @@ export async function executeRenewalRotation(formData: FormData): Promise<{
       newCredentialDisplayName: clean(formData.get("newCredentialDisplayName")) ?? undefined,
       replacementExpiresAt: clean(formData.get("replacementExpiresAt")),
       keyVaultCopyVaultName: clean(formData.get("keyVaultCopyVaultName")),
-      keyVaultCopySecretName: clean(formData.get("keyVaultCopySecretName"))
+      keyVaultCopySecretName: clean(formData.get("keyVaultCopySecretName")),
+      dryRun: formData.get("dryRun") === "on"
     });
-    recordRenewalRotation({
-      caseId,
-      replacementCredentialId: result.replacementCredentialId,
-      replacementExpiresAt: result.replacementExpiresAt,
-      keyVaultCopyVaultName: result.keyVaultCopyVaultName,
-      keyVaultCopySecretName: result.keyVaultCopySecretName,
-      note: result.summary,
-      details: result.details
-    });
+    if (!result.dryRun) {
+      recordRenewalRotation({
+        caseId,
+        replacementCredentialId: result.replacementCredentialId,
+        replacementExpiresAt: result.replacementExpiresAt,
+        keyVaultCopyVaultName: result.keyVaultCopyVaultName,
+        keyVaultCopySecretName: result.keyVaultCopySecretName,
+        note: result.summary,
+        details: result.details
+      });
+    }
     revalidatePath("/");
-    return { ok: true, message: result.summary, oneTimeSecretValue: result.oneTimeSecretValue };
+    return { ok: true, message: result.summary, oneTimeSecretValue: result.oneTimeSecretValue, dryRun: result.dryRun };
   } catch (error) {
     return {
       ok: false,
       message: error instanceof Error ? error.message : String(error),
-      oneTimeSecretValue: null
+      oneTimeSecretValue: null,
+      dryRun: false
     };
   }
 }
@@ -164,4 +184,9 @@ export async function closeRenewalCase(formData: FormData): Promise<void> {
 function clean(value: FormDataEntryValue | null): string | null {
   const text = String(value ?? "").trim();
   return text || null;
+}
+
+function cleanHandoffStatus(value: FormDataEntryValue | null): RenewalHandoffStatus | null {
+  const text = clean(value) as RenewalHandoffStatus | null;
+  return text && VALID_HANDOFF_STATUSES.includes(text) ? text : null;
 }

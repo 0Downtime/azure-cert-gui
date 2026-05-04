@@ -1,6 +1,6 @@
 # Azure Secret Expiration Dashboard
 
-Internal dashboard for tracking expiring Microsoft Entra app credentials, service principal credentials, and Azure Key Vault secrets/certificates.
+Internal dashboard for tracking expiring Microsoft Entra app credentials, service principal credentials, and Azure Key Vault secrets, certificates, and keys.
 
 The MVP uses synthetic fixture data first. It does not need Azure credentials to run locally.
 
@@ -67,7 +67,7 @@ In the dashboard:
 - Select rows and use `Copy renewal request` to draft owner-facing rotation requests.
 - Use `Copy owner packets` to generate owner-grouped renewal packets with subject lines and credential tables.
 - Use `Copy by owner` to create an owner-grouped renewal worklist.
-- Open a credential detail drawer to create a renewal case, record due dates and notes, run a typed-confirmation rotation, and validate or close the case.
+- Open a credential detail drawer to create a renewal case, track owner handoff/reminders/escalation, dry-run or run a modal-confirmed rotation, and validate or close the case.
 - Use `Audit exports` to copy inventory TSV, status audit TSV, source coverage JSON, and owner mapping TSV.
 
 ## What It Stores
@@ -75,6 +75,8 @@ In the dashboard:
 The app stores metadata only: resource names, source IDs, expiration dates, owner hints, local owner overrides, workflow status, renewal case metadata, and sync health.
 
 It must never store secret values, certificate private keys, raw Key Vault secret contents, or one-time Entra `secretText` values. Rotation output values are shown once in the browser so the operator can copy them, then discarded.
+
+V1 intentionally does not remove, disable, or delete old credentials. Use the renewal case validation and close steps to record owner confirmation first; old credential cleanup should be added later as a separate typed-confirmation action.
 
 ## Real Azure Setup
 
@@ -97,14 +99,14 @@ npm run sync:azure -- --keyvault-only
 The default behavior scans:
 
 - Microsoft Graph applications and service principals, including password/key credential metadata.
-- Key Vault secrets and certificates across enabled Azure CLI subscriptions.
+- Key Vault secrets, certificates, and keys across enabled Azure CLI subscriptions.
 - Current Key Vault versions only by default. Set `AZURE_KEYVAULT_INCLUDE_VERSIONS=true` to inventory every version.
   The `Source coverage` panel records whether a sync used current-only or all-version Key Vault collection.
 
 Recommended read-only permissions:
 
 - Microsoft Graph: application and service principal read access, plus owner read access if you want Entra owners.
-- Azure RBAC or Key Vault access policy: vault list/read plus `secrets/list` and `certificates/list`.
+- Azure RBAC or Key Vault access policy: vault list/read plus `secrets/list`, `certificates/list`, and `keys/list`.
 
 Use `.env.example` as the configuration template. Do not commit `.env`.
 

@@ -117,6 +117,10 @@ export function migrate(db = openDatabase()): void {
       owner_name TEXT,
       owner_email TEXT,
       notes TEXT,
+      reminder_at TEXT,
+      last_contacted_at TEXT,
+      escalation_owner TEXT,
+      handoff_status TEXT NOT NULL DEFAULT 'not_contacted',
       replacement_credential_id TEXT,
       replacement_expires_at TEXT,
       key_vault_copy_vault_name TEXT,
@@ -148,4 +152,14 @@ export function migrate(db = openDatabase()): void {
       WHERE closed_at IS NULL;
     CREATE INDEX IF NOT EXISTS idx_renewal_events_case ON renewal_events(renewal_case_id, created_at DESC);
   `);
+  ensureColumn(db, "renewal_cases", "reminder_at", "TEXT");
+  ensureColumn(db, "renewal_cases", "last_contacted_at", "TEXT");
+  ensureColumn(db, "renewal_cases", "escalation_owner", "TEXT");
+  ensureColumn(db, "renewal_cases", "handoff_status", "TEXT NOT NULL DEFAULT 'not_contacted'");
+}
+
+function ensureColumn(db: DatabaseSync, table: string, column: string, definition: string): void {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (columns.some((row) => row.name === column)) return;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }

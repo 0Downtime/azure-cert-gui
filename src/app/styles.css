@@ -805,6 +805,16 @@ tr.selected-row {
   gap: 3px;
 }
 
+.checkbox-row {
+  align-items: center;
+  display: flex !important;
+  gap: 8px !important;
+}
+
+.checkbox-row input {
+  margin: 0;
+}
+
 .renewal-checklist {
   list-style: none;
   margin: 0;
@@ -887,6 +897,53 @@ tr.selected-row {
   padding: 8px;
   resize: vertical;
   width: 100%;
+}
+
+.modal-backdrop {
+  align-items: center;
+  background: color-mix(in srgb, var(--text) 38%, transparent);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 18px;
+  position: fixed;
+  z-index: 20;
+}
+
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--drawer-shadow);
+  display: grid;
+  gap: 12px;
+  max-width: 520px;
+  padding: 18px;
+  width: min(100%, 520px);
+}
+
+.modal h2,
+.modal p {
+  margin: 0;
+}
+
+.modal textarea {
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  min-height: 110px;
+  padding: 8px;
+  resize: vertical;
+  width: 100%;
+}
+
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .detail-coverage-list,

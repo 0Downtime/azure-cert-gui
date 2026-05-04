@@ -20,7 +20,8 @@ import {
   X,
   XCircle
 } from "lucide-react";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { type FormEvent, useEffect, useMemo, useState, useTransition } from "react";
 import type {
   CoverageHealth,
   DashboardCoverage,
@@ -29,6 +30,7 @@ import type {
   DashboardSummary,
   InventorySource,
   OwnerMatchType,
+  RenewalHandoffStatus,
   RenewalCaseStatus,
   RiskBucket,
   RotationMode,
@@ -111,6 +113,14 @@ const RENEWAL_CASE_LABELS: Record<RenewalCaseStatus, string> = {
   validated: "Validated",
   closed: "Closed",
   blocked: "Blocked"
+};
+
+const HANDOFF_LABELS: Record<RenewalHandoffStatus, string> = {
+  not_contacted: "Not contacted",
+  contacted: "Contacted",
+  waiting_on_owner: "Waiting on owner",
+  escalated: "Escalated",
+  ready_to_validate: "Ready to validate"
 };
 
 export function Dashboard({
@@ -664,6 +674,7 @@ function CredentialDetailDrawer({
   onClose: () => void;
   onCopy: (title: string, text: string) => Promise<void>;
 }) {
+  const router = useRouter();
   const metadata = Object.entries(item.metadata);
   const inAppRotationSupported = supportsInAppRotation(item);
   const checklist = item.renewalCase ? renewalChecklist(item) : [];
@@ -671,18 +682,34 @@ function CredentialDetailDrawer({
     ok: boolean;
     message: string;
     oneTimeSecretValue: string | null;
+    dryRun: boolean;
   } | null>(null);
+  const [pendingRotation, setPendingRotation] = useState<FormData | null>(null);
+  const [oneTimeSecret, setOneTimeSecret] = useState<{ message: string; value: string } | null>(null);
   const [isRotating, startRotation] = useTransition();
+
+  function prepareRotation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setRotationResult(null);
+    setPendingRotation(new FormData(event.currentTarget));
+  }
 
   function runRotation(formData: FormData) {
     setRotationResult(null);
+    setPendingRotation(null);
     startRotation(async () => {
       const result = await executeRenewalRotation(formData);
-      setRotationResult(result);
+      const sanitized = { ...result, oneTimeSecretValue: null };
+      setRotationResult(sanitized);
+      if (result.oneTimeSecretValue) {
+        setOneTimeSecret({ message: result.message, value: result.oneTimeSecretValue });
+      }
+      router.refresh();
     });
   }
 
   return (
+    <>
     <aside className="detail-drawer" aria-label="Credential detail">
       <div className="detail-header">
         <div>
@@ -748,6 +775,10 @@ function CredentialDetailDrawer({
                     : "None"
                 }
               />
+              <DetailRow label="Handoff" value={HANDOFF_LABELS[item.renewalCase.handoffStatus]} />
+              <DetailRow label="Last contacted" value={formatOptionalDate(item.renewalCase.lastContactedAt)} />
+              <DetailRow label="Reminder" value={formatOptionalDate(item.renewalCase.reminderAt)} />
+              <DetailRow label="Escalation" value={item.renewalCase.escalationOwner ?? "None"} />
             </dl>
 
             <ol className="renewal-checklist" aria-label="Renewal checklist">
@@ -781,6 +812,28 @@ function CredentialDetailDrawer({
                 <input name="notes" defaultValue={item.renewalCase.notes ?? ""} />
               </label>
               <label>
+                <span>Handoff</span>
+                <select name="handoffStatus" defaultValue={item.renewalCase.handoffStatus}>
+                  {Object.entries(HANDOFF_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Last contacted</span>
+                <input type="date" name="lastContactedAt" defaultValue={dateInputValue(item.renewalCase.lastContactedAt)} />
+              </label>
+              <label>
+                <span>Reminder</span>
+                <input type="date" name="reminderAt" defaultValue={dateInputValue(item.renewalCase.reminderAt)} />
+              </label>
+              <label>
+                <span>Escalation</span>
+                <input name="escalationOwner" defaultValue={item.renewalCase.escalationOwner ?? ""} />
+              </label>
+              <label>
                 <span>KV copy vault</span>
                 <input name="keyVaultCopyVaultName" defaultValue={item.renewalCase.keyVaultCopyVaultName ?? ""} />
               </label>
@@ -792,12 +845,16 @@ function CredentialDetailDrawer({
             </form>
 
             {inAppRotationSupported ? (
-            <form action={runRotation} className="renewal-form">
+            <form onSubmit={prepareRotation} className="renewal-form">
               <input type="hidden" name="caseId" value={item.renewalCase.id} />
               <div className="renewal-safety-note">
                 <ShieldAlert size={15} />
                 <span>Replacement is created first. Old credential stays active in v1.</span>
               </div>
+              <label className="checkbox-row">
+                <input type="checkbox" name="dryRun" />
+                <span>Dry run only</span>
+              </label>
               <label>
                 <span>Type credential name</span>
                 <input name="confirmation" placeholder={item.credentialName} autoComplete="off" />
@@ -850,21 +907,14 @@ function CredentialDetailDrawer({
 
             {rotationResult ? (
               <div className={`renewal-result ${rotationResult.ok ? "ok" : "failed"}`}>
-                <strong>{rotationResult.ok ? "Rotation action complete" : "Rotation action failed"}</strong>
+                <strong>
+                  {rotationResult.ok
+                    ? rotationResult.dryRun
+                      ? "Dry run complete"
+                      : "Rotation action complete"
+                    : "Rotation action failed"}
+                </strong>
                 <span>{rotationResult.message}</span>
-                {rotationResult.oneTimeSecretValue ? (
-                  <div className="one-time-secret">
-                    <span>One-time secret value</span>
-                    <textarea readOnly value={rotationResult.oneTimeSecretValue} />
-                    <button
-                      type="button"
-                      onClick={() => navigator.clipboard.writeText(rotationResult.oneTimeSecretValue ?? "")}
-                    >
-                      <Copy size={15} />
-                      Copy value
-                    </button>
-                  </div>
-                ) : null}
               </div>
             ) : null}
 
@@ -978,6 +1028,46 @@ function CredentialDetailDrawer({
         </section>
       ) : null}
     </aside>
+    {pendingRotation ? (
+      <div className="modal-backdrop" role="presentation">
+        <div className="modal" role="dialog" aria-modal="true" aria-labelledby="rotation-confirm-title">
+          <h2 id="rotation-confirm-title">Confirm rotation</h2>
+          <p>
+            Type-confirmed action for <strong>{item.credentialName}</strong>.{" "}
+            {pendingRotation.get("dryRun") === "on"
+              ? "This is a dry run and will not change Azure or update the renewal case."
+              : "This will create replacement material in Azure and leave the old credential active."}
+          </p>
+          <div className="modal-actions">
+            <button type="button" onClick={() => runRotation(pendingRotation)} disabled={isRotating}>
+              {pendingRotation.get("dryRun") === "on" ? "Run dry run" : "Create replacement"}
+            </button>
+            <button type="button" onClick={() => setPendingRotation(null)} disabled={isRotating}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    ) : null}
+    {oneTimeSecret ? (
+      <div className="modal-backdrop" role="presentation">
+        <div className="modal" role="dialog" aria-modal="true" aria-labelledby="one-time-secret-title">
+          <h2 id="one-time-secret-title">One-time secret value</h2>
+          <p>{oneTimeSecret.message}</p>
+          <textarea readOnly value={oneTimeSecret.value} />
+          <div className="modal-actions">
+            <button type="button" onClick={() => navigator.clipboard.writeText(oneTimeSecret.value)}>
+              <Copy size={15} />
+              Copy value
+            </button>
+            <button type="button" onClick={() => setOneTimeSecret(null)}>
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    ) : null}
+    </>
   );
 }
 
@@ -1287,6 +1377,13 @@ function renewalChecklist(item: DashboardItem): { label: string; detail: string;
       complete: Boolean(renewalCase.dueAt)
     },
     {
+      label: "Owner handoff",
+      detail: `${HANDOFF_LABELS[renewalCase.handoffStatus]}${
+        renewalCase.lastContactedAt ? ` on ${formatDate(renewalCase.lastContactedAt)}` : ""
+      }`,
+      complete: renewalCase.handoffStatus !== "not_contacted" || Boolean(renewalCase.lastContactedAt)
+    },
+    {
       label: "Replacement created",
       detail: renewalCase.replacementCredentialId ?? "No replacement recorded",
       complete: replacementCreated
@@ -1319,6 +1416,10 @@ function formatDate(value: string | null): string {
   const dateOnly = dateOnlyParts(value);
   const date = dateOnly ? new Date(dateOnly.year, dateOnly.month - 1, dateOnly.day) : new Date(value);
   return new Intl.DateTimeFormat("en", { month: "short", day: "2-digit", year: "numeric" }).format(date);
+}
+
+function formatOptionalDate(value: string | null): string {
+  return value ? formatDate(value) : "Not set";
 }
 
 function formatDateTime(value: string): string {

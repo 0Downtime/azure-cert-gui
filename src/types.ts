@@ -42,6 +42,13 @@ export type RenewalCaseStatus =
   | "closed"
   | "blocked";
 
+export type RenewalHandoffStatus =
+  | "not_contacted"
+  | "contacted"
+  | "waiting_on_owner"
+  | "escalated"
+  | "ready_to_validate";
+
 export type RenewalEventType =
   | "case_created"
   | "case_updated"
@@ -110,6 +117,10 @@ export interface RenewalCase {
   ownerName: string | null;
   ownerEmail: string | null;
   notes: string | null;
+  reminderAt: string | null;
+  lastContactedAt: string | null;
+  escalationOwner: string | null;
+  handoffStatus: RenewalHandoffStatus;
   replacementCredentialId: string | null;
   replacementExpiresAt: string | null;
   keyVaultCopyVaultName: string | null;

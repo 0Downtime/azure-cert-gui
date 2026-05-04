@@ -21,6 +21,7 @@ export interface AzureRotationRequest {
   replacementExpiresAt?: string | null;
   keyVaultCopyVaultName?: string | null;
   keyVaultCopySecretName?: string | null;
+  dryRun?: boolean;
   runner?: AzureRotationRunner;
 }
 
@@ -30,6 +31,7 @@ export interface AzureRotationResult {
   oneTimeSecretValue: string | null;
   keyVaultCopyVaultName: string | null;
   keyVaultCopySecretName: string | null;
+  dryRun: boolean;
   summary: string;
   details: Record<string, string | number | boolean | null>;
 }
@@ -63,6 +65,10 @@ export async function executeAzureRotation(input: AzureRotationRequest): Promise
   validateConfirmation(input.item, input.confirmation);
   validateSupportedRotation(input.item);
 
+  if (input.dryRun) {
+    return previewAzureRotation(input);
+  }
+
   const runner = input.runner ?? defaultRunner;
   if (input.item.source === "entra_application" || input.item.source === "service_principal") {
     return rotateGraphClientSecret(input, runner);
@@ -77,6 +83,23 @@ export async function executeAzureRotation(input: AzureRotationRequest): Promise
     return renewKeyVaultCertificate(input, runner);
   }
   throw new Error("UnsupportedRotationSource");
+}
+
+function previewAzureRotation(input: AzureRotationRequest): AzureRotationResult {
+  return {
+    replacementCredentialId: `dry-run:${input.item.source}:${input.item.credentialName}`,
+    replacementExpiresAt: input.replacementExpiresAt ?? null,
+    oneTimeSecretValue: null,
+    keyVaultCopyVaultName: input.keyVaultCopyVaultName?.trim() || null,
+    keyVaultCopySecretName: input.keyVaultCopySecretName?.trim() || null,
+    dryRun: true,
+    summary: `Dry run complete for ${input.item.credentialName}. No Azure changes were made.`,
+    details: {
+      operation: "dry_run.rotation.preview",
+      source: input.item.source,
+      credentialType: input.item.credentialType
+    }
+  };
 }
 
 function validateConfirmation(item: DashboardItem, confirmation: string): void {
@@ -137,6 +160,7 @@ async function rotateGraphClientSecret(
     oneTimeSecretValue: secretText,
     keyVaultCopyVaultName,
     keyVaultCopySecretName,
+    dryRun: false,
     summary: `Created replacement Entra client secret for ${input.item.parentName}`,
     details: {
       operation: "graph.addPassword",
@@ -166,6 +190,7 @@ async function rotateKeyVaultSecret(
     oneTimeSecretValue: input.secretMode === "provided" ? null : secretValue,
     keyVaultCopyVaultName: null,
     keyVaultCopySecretName: null,
+    dryRun: false,
     summary: `Created new Key Vault secret version for ${input.item.credentialName}`,
     details: {
       operation: "keyvault.secret.set",
@@ -195,6 +220,7 @@ async function rotateKeyVaultKey(
     oneTimeSecretValue: null,
     keyVaultCopyVaultName: null,
     keyVaultCopySecretName: null,
+    dryRun: false,
     summary: `Rotated Key Vault key ${input.item.credentialName}`,
     details: {
       operation: "keyvault.key.rotate",
@@ -235,6 +261,7 @@ async function renewKeyVaultCertificate(
     oneTimeSecretValue: null,
     keyVaultCopyVaultName: null,
     keyVaultCopySecretName: null,
+    dryRun: false,
     summary: `Started Key Vault certificate renewal for ${input.item.credentialName}`,
     details: {
       operation: "keyvault.certificate.create",

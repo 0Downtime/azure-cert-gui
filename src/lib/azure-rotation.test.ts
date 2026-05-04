@@ -90,6 +90,20 @@ describe("Azure rotation helpers", () => {
     ).rejects.toThrow("RotationModeNotActionable");
   });
 
+  it("previews a dry run without calling Azure", async () => {
+    const fake = runner({});
+    const result = await executeAzureRotation({
+      item: item(),
+      confirmation: "client-secret",
+      dryRun: true,
+      runner: fake.runner
+    });
+
+    expect(fake.calls).toEqual([]);
+    expect(result.dryRun).toBe(true);
+    expect(result.summary).toContain("No Azure changes");
+  });
+
   it("builds Key Vault key rotation command", async () => {
     const fake = runner({ kid: "https://vault.vault.azure.net/keys/cmk/version" });
     const result = await executeAzureRotation({
