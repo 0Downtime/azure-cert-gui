@@ -9,15 +9,17 @@ import {
   Download,
   Filter,
   KeyRound,
+  Moon,
   PanelRightOpen,
   RefreshCw,
   Search,
   ShieldAlert,
+  Sun,
   UserRound,
   X,
   XCircle
 } from "lucide-react";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import type {
   CoverageHealth,
   DashboardCoverage,
@@ -96,10 +98,28 @@ export function Dashboard({
   const [status, setStatus] = useState<WorkflowStatus | "all">("all");
   const [ownerMode, setOwnerMode] = useState<"all" | "unknown" | "low">("all");
   const [workflowMode, setWorkflowMode] = useState<WorkflowMode>("all");
+  const [theme, setTheme] = useState<"light" | "dark">("light");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [selectedDetailId, setSelectedDetailId] = useState<number | null>(null);
   const [copyPanel, setCopyPanel] = useState<{ title: string; text: string; copied: boolean } | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem("gstack-theme");
+    if (stored === "dark" || stored === "light") {
+      setTheme(stored);
+      document.documentElement.dataset.theme = stored;
+    }
+  }, []);
+
+  function toggleTheme() {
+    setTheme((current) => {
+      const next = current === "dark" ? "light" : "dark";
+      document.documentElement.dataset.theme = next;
+      window.localStorage.setItem("gstack-theme", next);
+      return next;
+    });
+  }
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -332,9 +352,15 @@ export function Dashboard({
           <p className="eyebrow">Azure / Entra Inventory</p>
           <h1>Secret Expiration Dashboard</h1>
         </div>
-        <div className="sync-pill">
-          <RefreshCw size={16} />
-          <span>Last sync {summary.lastSuccessfulSyncAt ? formatDateTime(summary.lastSuccessfulSyncAt) : "never"}</span>
+        <div className="topbar-actions">
+          <button type="button" className="theme-toggle" onClick={toggleTheme} aria-pressed={theme === "dark"}>
+            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+            <span>{theme === "dark" ? "Light" : "Dark"}</span>
+          </button>
+          <div className="sync-pill">
+            <RefreshCw size={16} />
+            <span>Last sync {summary.lastSuccessfulSyncAt ? formatDateTime(summary.lastSuccessfulSyncAt) : "never"}</span>
+          </div>
         </div>
       </header>
 
