@@ -130,15 +130,17 @@ async function syncKeyVaultSources(
 
   if (vaults.length === 0) {
     const resourceId = `keyvault-discovery:${config.subscriptionIds.join(",") || "default"}`;
+    const skipReason = "No Key Vaults discovered in the configured subscription scope";
     recordCoverage(
       {
         source: "key_vault_secret",
         tenantId: fallbackTenantId,
         resourceId,
-        resourceName: "Azure Key Vault discovery",
+        resourceName: "No Key Vaults discovered",
         configured: true,
         reachable: true,
-        itemsSeen: 0
+        itemsSeen: 0,
+        skipReason
       },
       db
     );
@@ -147,10 +149,11 @@ async function syncKeyVaultSources(
         source: "key_vault_certificate",
         tenantId: fallbackTenantId,
         resourceId,
-        resourceName: "Azure Key Vault discovery",
+        resourceName: "No Key Vaults discovered",
         configured: true,
         reachable: true,
-        itemsSeen: 0
+        itemsSeen: 0,
+        skipReason
       },
       db
     );
@@ -167,9 +170,7 @@ async function syncKeyVaultSources(
           source: "key_vault_secret",
           itemsSeen: secrets.length,
           itemsSkipped: secrets.filter((secret) => !secret.expiresAt).length,
-          skipReason: secrets.some((secret) => !secret.expiresAt)
-            ? "Some secrets have no expiration metadata"
-            : null
+          skipReason: keyVaultCoverageNote("secrets", secrets, config)
         },
         db
       );
@@ -188,9 +189,7 @@ async function syncKeyVaultSources(
           source: "key_vault_certificate",
           itemsSeen: certificates.length,
           itemsSkipped: certificates.filter((certificate) => !certificate.expiresAt).length,
-          skipReason: certificates.some((certificate) => !certificate.expiresAt)
-            ? "Some certificates have no expiration metadata"
-            : null
+          skipReason: keyVaultCoverageNote("certificates", certificates, config)
         },
         db
       );
@@ -218,6 +217,22 @@ async function syncKeyVaultSources(
       certificateFailures ? `, ${certificateFailures} vault failures` : ""
     }`
   );
+}
+
+function keyVaultCoverageNote(
+  label: "secrets" | "certificates",
+  credentials: NormalizedCredential[],
+  config: ReturnType<typeof azureSyncConfigFromEnv>
+): string {
+  const notes = [
+    config.includeKeyVaultVersions
+      ? "All Key Vault versions included"
+      : "Current Key Vault versions only; set AZURE_KEYVAULT_INCLUDE_VERSIONS=true for version history"
+  ];
+  if (credentials.some((credential) => !credential.expiresAt)) {
+    notes.unshift(`Some ${label} have no expiration metadata`);
+  }
+  return notes.join("; ");
 }
 
 function vaultCoverage(vault: AzureVault, fallbackTenantId: string | null) {

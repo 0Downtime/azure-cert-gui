@@ -97,7 +97,8 @@ The default behavior scans:
 
 - Microsoft Graph applications and service principals, including password/key credential metadata.
 - Key Vault secrets and certificates across enabled Azure CLI subscriptions.
-- Current Key Vault versions only. Set `AZURE_KEYVAULT_INCLUDE_VERSIONS=true` to inventory every version.
+- Current Key Vault versions only by default. Set `AZURE_KEYVAULT_INCLUDE_VERSIONS=true` to inventory every version.
+  The `Source coverage` panel records whether a sync used current-only or all-version Key Vault collection.
 
 Recommended read-only permissions:
 
