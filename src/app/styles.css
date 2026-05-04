@@ -169,6 +169,43 @@ h1 {
   flex-wrap: wrap;
 }
 
+.copy-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 10px;
+}
+
+.copy-panel > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.copy-panel span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.copy-panel textarea {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  min-height: 160px;
+  padding: 10px;
+  resize: vertical;
+  width: 100%;
+}
+
+.copy-panel button {
+  justify-self: end;
+}
+
 .search {
   flex: 1 1 320px;
   display: flex;
@@ -343,6 +380,23 @@ tr.removed {
   width: 34px;
   justify-content: center;
   padding: 0;
+}
+
+.status-stack {
+  display: grid;
+  gap: 6px;
+  min-width: 210px;
+}
+
+.status-history {
+  display: grid;
+  gap: 3px;
+}
+
+.status-history span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.25;
 }
 
 .danger-text {

@@ -66,6 +66,15 @@ export interface DashboardItem {
   lastSeenAt: string;
   removedAt: string | null;
   coverageState: "ok" | "stale" | "failed" | "unknown";
+  statusHistory: DashboardStatusHistory[];
+}
+
+export interface DashboardStatusHistory {
+  fromStatus: WorkflowStatus | null;
+  toStatus: WorkflowStatus;
+  note: string | null;
+  changedAt: string;
+  changedBy: string;
 }
 
 export interface DashboardSummary {

@@ -48,7 +48,9 @@ export function Dashboard({ items, summary }: { items: DashboardItem[]; summary:
   const [bucket, setBucket] = useState<RiskBucket | "all">("all");
   const [status, setStatus] = useState<WorkflowStatus | "all">("all");
   const [ownerMode, setOwnerMode] = useState<"all" | "unknown" | "low">("all");
+  const [workflowMode, setWorkflowMode] = useState<"all" | "urgent" | "due60" | "unknown" | "contacted_pending">("all");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [copyPanel, setCopyPanel] = useState<{ title: string; text: string; copied: boolean } | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const filtered = useMemo(() => {
@@ -61,12 +63,13 @@ export function Dashboard({ items, summary }: { items: DashboardItem[]; summary:
       if (ownerMode === "low" && item.ownerConfidence !== "low" && item.ownerConfidence !== "unknown") {
         return false;
       }
+      if (!matchesWorkflowMode(item, workflowMode)) return false;
       if (!needle) return true;
       return [item.parentName, item.credentialName, item.ownerName, item.ownerEmail, item.naturalKey]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(needle));
     });
-  }, [bucket, items, ownerMode, query, source, status]);
+  }, [bucket, items, ownerMode, query, source, status, workflowMode]);
 
   const groupedByOwner = useMemo(() => {
     const groups = new Map<string, DashboardItem[]>();
@@ -88,6 +91,15 @@ export function Dashboard({ items, summary }: { items: DashboardItem[]; summary:
     );
   }
 
+  async function copyText(title: string, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyPanel({ title, text, copied: true });
+    } catch {
+      setCopyPanel({ title, text, copied: false });
+    }
+  }
+
   function copyOwnerSummary() {
     const text = groupedByOwner
       .map(([owner, ownerItems]) => {
@@ -97,7 +109,30 @@ export function Dashboard({ items, summary }: { items: DashboardItem[]; summary:
         return `${owner}\n${rows}`;
       })
       .join("\n\n");
-    void navigator.clipboard.writeText(text);
+    void copyText("Owner grouped renewal worklist", text);
+  }
+
+  function copyRenewalRequest() {
+    const rows = selectedItems.length ? selectedItems : filtered;
+    const text = rows
+      .map((item) =>
+        [
+          `Owner: ${item.ownerName ?? "Unassigned"}${item.ownerEmail ? ` <${item.ownerEmail}>` : ""}`,
+          `Application/resource: ${item.parentName}`,
+          `Credential: ${item.credentialName} (${item.credentialType})`,
+          `Source: ${SOURCE_LABELS[item.source]}`,
+          `Expiration: ${formatDate(item.expiresAt)}${
+            item.daysUntilExpiry === null ? "" : ` (${item.daysUntilExpiry} days)`
+          }`,
+          `Current status: ${STATUS_LABELS[item.status]}`,
+          "",
+          "Requested action: rotate or replace this credential before the expiration date, then reply with the completion date and the new rotation owner.",
+          "If this credential is no longer needed, confirm it can be removed or marked ignored.",
+          ""
+        ].join("\n")
+      )
+      .join("\n---\n\n");
+    void copyText("Renewal request draft", text);
   }
 
   function copyUnknownOwners() {
@@ -115,7 +150,7 @@ export function Dashboard({ items, summary }: { items: DashboardItem[]; summary:
         ].join("\t")
       )
     ].join("\n");
-    void navigator.clipboard.writeText(text);
+    void copyText("Unknown owner worklist", text);
   }
 
   function bulkUpdate(statusValue: WorkflowStatus) {
@@ -187,6 +222,17 @@ export function Dashboard({ items, summary }: { items: DashboardItem[]; summary:
           <option value="unknown">Unknown only</option>
           <option value="low">Low confidence</option>
         </Select>
+        <Select
+          label="Workflow"
+          value={workflowMode}
+          onChange={(value) => setWorkflowMode(value as "all" | "urgent" | "due60" | "unknown" | "contacted_pending")}
+        >
+          <option value="all">All work</option>
+          <option value="urgent">Expired / 30</option>
+          <option value="due60">Due in 60</option>
+          <option value="unknown">Needs owner</option>
+          <option value="contacted_pending">Contacted, unscheduled</option>
+        </Select>
       </section>
 
       <section className="actionbar" aria-label="Bulk actions">
@@ -216,12 +262,29 @@ export function Dashboard({ items, summary }: { items: DashboardItem[]; summary:
             <Download size={15} />
             Copy unknowns
           </button>
+          <button type="button" onClick={copyRenewalRequest} disabled={!filtered.length}>
+            <Download size={15} />
+            Copy renewal request
+          </button>
           <button type="button" onClick={copyOwnerSummary}>
             <Download size={15} />
             Copy by owner
           </button>
         </div>
       </section>
+
+      {copyPanel ? (
+        <section className="copy-panel" aria-label="Copy output">
+          <div>
+            <strong>{copyPanel.title}</strong>
+            <span>{copyPanel.copied ? "Copied to clipboard" : "Clipboard blocked; select and copy from here"}</span>
+          </div>
+          <textarea readOnly value={copyPanel.text} aria-label={copyPanel.title} />
+          <button type="button" onClick={() => setCopyPanel(null)}>
+            Close
+          </button>
+        </section>
+      ) : null}
 
       <section className="table-wrap">
         {items.length === 0 ? (
@@ -370,19 +433,32 @@ function OwnerCell({ item }: { item: DashboardItem }) {
 
 function StatusForm({ item }: { item: DashboardItem }) {
   return (
-    <form action={updateCredentialStatus} className="status-form">
-      <input type="hidden" name="id" value={item.id} />
-      <select name="status" defaultValue={item.status} aria-label={`Status for ${item.credentialName}`}>
-        {Object.entries(STATUS_LABELS).map(([value, label]) => (
-          <option key={value} value={value}>
-            {label}
-          </option>
-        ))}
-      </select>
-      <button type="submit">
-        <CheckCircle2 size={14} />
-      </button>
-    </form>
+    <div className="status-stack">
+      <form action={updateCredentialStatus} className="status-form">
+        <input type="hidden" name="id" value={item.id} />
+        <select name="status" defaultValue={item.status} aria-label={`Status for ${item.credentialName}`}>
+          {Object.entries(STATUS_LABELS).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <button type="submit">
+          <CheckCircle2 size={14} />
+        </button>
+      </form>
+      {item.statusHistory.length ? (
+        <div className="status-history">
+          {item.statusHistory.map((history) => (
+            <span key={`${history.changedAt}-${history.toStatus}`}>
+              {STATUS_LABELS[history.toStatus]} by {history.changedBy} {formatDateTime(history.changedAt)}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <span className="muted">No status updates</span>
+      )}
+    </div>
   );
 }
 
@@ -408,4 +484,17 @@ function formatDateTime(value: string): string {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function matchesWorkflowMode(
+  item: DashboardItem,
+  workflowMode: "all" | "urgent" | "due60" | "unknown" | "contacted_pending"
+): boolean {
+  if (workflowMode === "all") return true;
+  if (workflowMode === "urgent") return item.riskBucket === "expired" || item.riskBucket === "0-30";
+  if (workflowMode === "due60") {
+    return item.riskBucket === "expired" || item.riskBucket === "0-30" || item.riskBucket === "31-60";
+  }
+  if (workflowMode === "unknown") return !item.ownerName;
+  return item.status === "owner_contacted";
 }

@@ -1,7 +1,13 @@
 import type { DatabaseSync } from "node:sqlite";
 import { migrate, openDatabase } from "./db";
 import { daysUntilExpiry, riskBucket } from "./risk";
-import type { DashboardItem, DashboardSummary, NormalizedCredential, WorkflowStatus } from "@/types";
+import type {
+  DashboardItem,
+  DashboardStatusHistory,
+  DashboardSummary,
+  NormalizedCredential,
+  WorkflowStatus
+} from "@/types";
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -225,10 +231,16 @@ export function listDashboardItems(db: DatabaseSync = openDatabase()): Dashboard
     )
     .all() as Array<Record<string, unknown>>;
 
+  const histories = statusHistoryByItemId(
+    rows.map((row) => Number(row.id)),
+    db
+  );
+
   return rows.map((row) => {
     const days = daysUntilExpiry(row.expires_at as string | null);
+    const id = Number(row.id);
     return {
-      id: Number(row.id),
+      id,
       naturalKey: String(row.natural_key),
       source: row.source as DashboardItem["source"],
       parentId: String(row.parent_id),
@@ -246,9 +258,44 @@ export function listDashboardItems(db: DatabaseSync = openDatabase()): Dashboard
       status: row.status as WorkflowStatus,
       lastSeenAt: String(row.last_seen_at),
       removedAt: row.removed_at as string | null,
-      coverageState: "ok"
+      coverageState: "ok",
+      statusHistory: histories.get(id) ?? []
     };
   });
+}
+
+function statusHistoryByItemId(ids: number[], db: DatabaseSync): Map<number, DashboardStatusHistory[]> {
+  const uniqueIds = [...new Set(ids)].filter((id) => Number.isFinite(id));
+  const histories = new Map<number, DashboardStatusHistory[]>();
+  if (!uniqueIds.length) return histories;
+
+  const placeholders = uniqueIds.map(() => "?").join(", ");
+  const rows = db
+    .prepare(
+      `
+      SELECT credential_item_id, from_status, to_status, note, changed_at, changed_by
+      FROM status_history
+      WHERE credential_item_id IN (${placeholders})
+      ORDER BY changed_at DESC, id DESC
+    `
+    )
+    .all(...uniqueIds) as Array<Record<string, unknown>>;
+
+  for (const row of rows) {
+    const id = Number(row.credential_item_id);
+    const existing = histories.get(id) ?? [];
+    if (existing.length >= 3) continue;
+    existing.push({
+      fromStatus: row.from_status as WorkflowStatus | null,
+      toStatus: row.to_status as WorkflowStatus,
+      note: row.note as string | null,
+      changedAt: String(row.changed_at),
+      changedBy: String(row.changed_by)
+    });
+    histories.set(id, existing);
+  }
+
+  return histories;
 }
 
 export function dashboardSummary(db: DatabaseSync = openDatabase()): DashboardSummary {
