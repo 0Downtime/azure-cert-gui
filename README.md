@@ -19,16 +19,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/0Downtime/azure-cert-gui/commits/main">
-    <img src="https://img.shields.io/github/last-commit/0Downtime/azure-cert-gui?label=last%20commit" alt="Last Commit" />
-  </a>
-  <a href="https://github.com/0Downtime/azure-cert-gui/search?l=TypeScript">
-    <img src="https://img.shields.io/github/languages/top/0Downtime/azure-cert-gui" alt="Top Language" />
-  </a>
-  <a href="https://github.com/0Downtime/azure-cert-gui/blob/main/package.json">
-    <img src="https://img.shields.io/github/package-json/v/0Downtime/azure-cert-gui?filename=package.json&label=package" alt="Package Version" />
-  </a>
-  <img src="https://img.shields.io/badge/Next.js-15.1-black" alt="Next.js 15.1" />
+  <img src="https://img.shields.io/badge/repository-local--first-2f7d32" alt="Repository: local-first" />
+  <img src="https://img.shields.io/badge/language-TypeScript-2f7d32" alt="Language: TypeScript" />
+  <img src="https://img.shields.io/badge/package-v0.1.0-2f7d32" alt="Package Version: v0.1.0" />
+  <img src="https://img.shields.io/badge/Next.js-15.1-2f7d32" alt="Next.js 15.1" />
   <img src="https://img.shields.io/badge/Node.js-22%2B-2f7d32" alt="Node.js 22+" />
 </p>
 
