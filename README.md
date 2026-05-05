@@ -59,16 +59,12 @@ when generating the file to use a different local time.
 
 In the dashboard:
 
-- Select rows and use `Assign owner` to bulk map credentials by app, service principal, or vault.
-- Use `Owner directory` to review, add, export, and remove manual owner mappings.
-- Use the quick queue buttons or `Workflow` filter for urgent, 60-day, unknown-owner, and contacted queues.
-- Review `Source coverage` to confirm Graph and Key Vault syncs are reachable, current, and not skipping metadata.
-- Use `Copy unknowns` to copy a tab-separated worklist of rows that still need owner mapping.
-- Select rows and use `Copy renewal request` to draft owner-facing rotation requests.
-- Use `Copy owner packets` to generate owner-grouped renewal packets with subject lines and credential tables.
-- Use `Copy by owner` to create an owner-grouped renewal worklist.
-- Open a credential detail drawer to create a renewal case, track owner handoff/reminders/escalation, dry-run or run a modal-confirmed rotation, and validate or close the case.
-- Use `Audit exports` to copy inventory TSV, status audit TSV, source coverage JSON, and owner mapping TSV.
+- Use the `Inventory` tab for daily triage: quick queues, filters, row selection, bulk owner assignment, status updates, and credential table actions.
+- Use the `Renewals` tab for active renewal cases and actionable credentials due within 90 days. Open the shared detail drawer there to create a case, track owner handoff/reminders/escalation, dry-run or run a modal-confirmed rotation, and validate or close the case.
+- Use the `Owners` tab to review, add, export, and remove manual owner mappings, or copy the current owner-gap worklist.
+- Use the `Coverage & Audit` tab to confirm Graph and Key Vault syncs are reachable, current, and not skipping metadata, and to copy inventory TSV, status audit TSV, source coverage JSON, and owner mapping TSV.
+- In `Inventory`, use `Copy unknowns` to copy a tab-separated worklist of rows that still need owner mapping.
+- In `Inventory`, select rows and use `Copy renewal request`, `Copy owner packets`, or `Copy by owner` to generate owner-facing rotation drafts and owner-grouped renewal worklists.
 
 ## What It Stores
 

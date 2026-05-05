@@ -187,6 +187,63 @@ h1 {
   color: var(--red);
 }
 
+.tabs {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 6px;
+}
+
+.tabs button {
+  border-color: transparent;
+  flex: 1 1 150px;
+  justify-content: center;
+  min-height: 38px;
+}
+
+.tabs button.active,
+.tabs button[aria-selected="true"] {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+  color: var(--teal);
+  font-weight: 700;
+}
+
+.tab-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.tab-panel[hidden] {
+  display: none;
+}
+
+.tab-heading {
+  margin-bottom: 0;
+}
+
+.tab-counts {
+  align-items: end;
+  display: grid;
+  gap: 2px;
+  justify-items: end;
+}
+
+.tab-counts strong {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.tab-counts span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .queuebar {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -714,7 +771,7 @@ tr.selected-row {
   padding: 14px;
   position: fixed;
   right: 24px;
-  top: 24px;
+  top: 188px;
   width: 460px;
   z-index: 20;
 }

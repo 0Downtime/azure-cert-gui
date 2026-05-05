@@ -51,6 +51,7 @@ import { isRenewalActionable } from "@/lib/rotation";
 
 type WorkflowMode = "all" | "urgent" | "due60" | "unknown" | "contacted_pending";
 type RotationScope = "actionable" | "all" | RotationMode;
+type DashboardTab = "inventory" | "renewals" | "owners" | "coverage";
 
 const SOURCE_LABELS: Record<InventorySource, string> = {
   entra_application: "Entra app",
@@ -123,6 +124,13 @@ const HANDOFF_LABELS: Record<RenewalHandoffStatus, string> = {
   ready_to_validate: "Ready to validate"
 };
 
+const TAB_LABELS: Record<DashboardTab, string> = {
+  inventory: "Inventory",
+  renewals: "Renewals",
+  owners: "Owners",
+  coverage: "Coverage & Audit"
+};
+
 export function Dashboard({
   items,
   summary,
@@ -141,6 +149,7 @@ export function Dashboard({
   const [ownerMode, setOwnerMode] = useState<"all" | "unknown" | "low">("all");
   const [rotationScope, setRotationScope] = useState<RotationScope>("actionable");
   const [workflowMode, setWorkflowMode] = useState<WorkflowMode>("all");
+  const [activeTab, setActiveTab] = useState<DashboardTab>("inventory");
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [selectedDetailId, setSelectedDetailId] = useState<number | null>(null);
@@ -205,6 +214,20 @@ export function Dashboard({
     () => items.find((item) => item.id === selectedDetailId) ?? null,
     [items, selectedDetailId]
   );
+  const renewalWorkItems = useMemo(
+    () =>
+      items.filter(
+        (item) =>
+          Boolean(item.renewalCase) ||
+          (isRenewalActionable(item.rotationMode) &&
+            (item.riskBucket === "expired" ||
+              item.riskBucket === "0-30" ||
+              item.riskBucket === "31-60" ||
+              item.riskBucket === "61-90"))
+      ),
+    [items]
+  );
+  const ownerGapItems = useMemo(() => items.filter((item) => !item.ownerName), [items]);
   const detailCoverage = useMemo(
     () => (selectedDetail ? coverage.filter((row) => coverageMatchesItem(row, selectedDetail)) : []),
     [coverage, selectedDetail]
@@ -359,11 +382,10 @@ export function Dashboard({
     void copyText("Owner renewal packets", withExclusionNote(text, excludedRenewalItems));
   }
 
-  function copyUnknownOwners() {
-    const unknownRows = filtered.filter((item) => !item.ownerName);
+  function copyUnknownOwners(rows = filtered.filter((item) => !item.ownerName)) {
     const text = [
       "source\tapp_or_vault\tcredential\texpires\trisk\tparent_id",
-      ...unknownRows.map((item) =>
+      ...rows.map((item) =>
         [
           SOURCE_LABELS[item.source],
           item.parentName,
@@ -389,188 +411,17 @@ export function Dashboard({
     });
   }
 
-  return (
-    <main className="shell">
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">Azure / Entra Inventory</p>
-          <h1>Secret Expiration Dashboard</h1>
-        </div>
-        <div className="topbar-actions">
-          <button type="button" className="theme-toggle" onClick={toggleTheme} aria-pressed={theme === "dark"}>
-            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-            <span>{theme === "dark" ? "Light" : "Dark"}</span>
-          </button>
-          <div className="sync-pill">
-            <RefreshCw size={16} />
-            <span>Last sync {summary.lastSuccessfulSyncAt ? formatDateTime(summary.lastSuccessfulSyncAt) : "never"}</span>
-          </div>
-        </div>
-      </header>
-
-      <section className="metrics" aria-label="Inventory summary">
-        <Metric label="Total" value={summary.total} icon={<Database size={18} />} />
-        <Metric label="Expired" value={summary.expired} tone="danger" icon={<XCircle size={18} />} />
-        <Metric label="0-30 days" value={summary.next30} tone="warning" icon={<Clock size={18} />} />
-        <Metric label="31-60 days" value={summary.next60} icon={<Clock size={18} />} />
-        <Metric label="61-90 days" value={summary.next90} icon={<Clock size={18} />} />
-        <Metric label="Unknown owners" value={summary.unknownOwners} tone="warning" icon={<UserRound size={18} />} />
-        <Metric label="Excluded" value={summary.excludedFromRenewal} icon={<Ban size={18} />} />
-        <Metric label="Coverage gaps" value={summary.coverageGaps} tone="danger" icon={<ShieldAlert size={18} />} />
-      </section>
-
-      <section className="queuebar" aria-label="Quick queues">
-        {(Object.keys(QUEUE_LABELS) as WorkflowMode[]).map((mode) => (
-          <button
-            key={mode}
-            type="button"
-            className={workflowMode === mode ? "active" : ""}
-            onClick={() => setWorkflowMode(mode)}
-          >
-            <span>{QUEUE_LABELS[mode]}</span>
-            <strong>{queueCounts[mode]}</strong>
-          </button>
-        ))}
-      </section>
-
-      <section className="toolbar" aria-label="Filters">
-        <label className="search">
-          <Search size={16} />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search app, vault, owner, credential" />
-        </label>
-        <Select label="Source" value={source} onChange={(value) => setSource(value as InventorySource | "all")}>
-          <option value="all">All sources</option>
-          {Object.entries(SOURCE_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </Select>
-        <Select label="Risk" value={bucket} onChange={(value) => setBucket(value as RiskBucket | "all")}>
-          <option value="all">All risk</option>
-          {Object.entries(BUCKET_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </Select>
-        <Select label="Status" value={status} onChange={(value) => setStatus(value as WorkflowStatus | "all")}>
-          <option value="all">All status</option>
-          {Object.entries(STATUS_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </Select>
-        <Select label="Owner" value={ownerMode} onChange={(value) => setOwnerMode(value as "all" | "unknown" | "low")}>
-          <option value="all">All owners</option>
-          <option value="unknown">Unknown only</option>
-          <option value="low">Low confidence</option>
-        </Select>
-        <Select label="Rotation" value={rotationScope} onChange={(value) => setRotationScope(value as RotationScope)}>
-          <option value="actionable">Actionable only</option>
-          <option value="all">All rotation modes</option>
-          {Object.entries(ROTATION_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </Select>
-        <Select
-          label="Workflow"
-          value={workflowMode}
-          onChange={(value) => setWorkflowMode(value as WorkflowMode)}
-        >
-          {Object.entries(QUEUE_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </Select>
-      </section>
-
-      <section className="actionbar" aria-label="Bulk actions">
-        <div>
-          <Filter size={16} />
-          <span>{filtered.length} visible</span>
-          <span>{selectedIds.length} selected</span>
-          {excludedRenewalItems ? <span>{excludedRenewalItems} excluded from renewal exports</span> : null}
-        </div>
-        <form action={saveBulkOwnerOverride} className="owner-bulk-form">
-          {selectedItems.map((item) => (
-            <input key={item.id} type="hidden" name="parentId" value={item.parentId} />
-          ))}
-          <input name="ownerName" placeholder="Owner for selected" aria-label="Owner for selected" />
-          <input name="ownerEmail" placeholder="email" aria-label="Owner email for selected" />
-          <button type="submit" disabled={!selectedIds.length || isPending}>
-            Assign owner
-          </button>
-        </form>
-        <div className="action-buttons">
-          <button type="button" onClick={() => bulkUpdate("owner_contacted")} disabled={!selectedIds.length || isPending}>
-            Owner contacted
-          </button>
-          <button type="button" onClick={() => bulkUpdate("rotation_scheduled")} disabled={!selectedIds.length || isPending}>
-            Rotation scheduled
-          </button>
-          <button type="button" onClick={copyUnknownOwners}>
-            <Download size={15} />
-            Copy unknowns
-          </button>
-          <button type="button" onClick={copyRenewalRequest} disabled={!actionableRenewalItems.length}>
-            <Download size={15} />
-            Copy renewal request
-          </button>
-          <button type="button" onClick={copyOwnerPackets} disabled={!actionableRenewalItems.length}>
-            <Download size={15} />
-            Copy owner packets
-          </button>
-          <button type="button" onClick={copyOwnerSummary} disabled={!actionableRenewalItems.length}>
-            <Download size={15} />
-            Copy by owner
-          </button>
-        </div>
-      </section>
-
-      <section className="exportbar" aria-label="Audit exports">
-        <span>Audit exports</span>
-        <button type="button" onClick={copyInventoryExport} disabled={!filtered.length}>
-          <Download size={15} />
-          Copy inventory TSV
-        </button>
-        <button type="button" onClick={copyStatusAudit} disabled={!items.some((item) => item.statusHistory.length)}>
-          <Download size={15} />
-          Copy status audit
-        </button>
-        <button type="button" onClick={copyCoverageExport} disabled={!coverage.length}>
-          <Download size={15} />
-          Copy coverage JSON
-        </button>
-        <button type="button" onClick={copyOwnerMappings} disabled={!ownerOverrides.length}>
-          <Download size={15} />
-          Copy owner mappings
-        </button>
-      </section>
-
-      {copyPanel ? (
-        <section className="copy-panel" aria-label="Copy output">
-          <div>
-            <strong>{copyPanel.title}</strong>
-            <span>{copyPanel.copied ? "Copied to clipboard" : "Clipboard blocked; select and copy from here"}</span>
-          </div>
-          <textarea readOnly value={copyPanel.text} aria-label={copyPanel.title} />
-          <button type="button" onClick={() => setCopyPanel(null)}>
-            Close
-          </button>
-        </section>
-      ) : null}
-
-      <CoveragePanel coverage={coverage} />
-      <OwnerDirectory ownerOverrides={ownerOverrides} onCopy={copyOwnerMappings} />
-
-      <section className="table-wrap">
+  function credentialTable(rows: DashboardItem[], label: string) {
+    return (
+      <section className="table-wrap" aria-label={label}>
         {items.length === 0 ? (
           <EmptyState />
+        ) : rows.length === 0 ? (
+          <div className="empty compact">
+            <Database size={24} />
+            <h2>No matching credentials</h2>
+            <p>Adjust the queue or filter controls to show more rows.</p>
+          </div>
         ) : (
           <table>
             <thead>
@@ -589,7 +440,7 @@ export function Dashboard({
               </tr>
             </thead>
             <tbody>
-              {filtered.map((item) => (
+              {rows.map((item) => (
                 <tr key={item.id} className={`${item.removedAt ? "removed" : ""} ${selectedDetailId === item.id ? "selected-row" : ""}`}>
                   <td>
                     <input
@@ -650,8 +501,262 @@ export function Dashboard({
           </table>
         )}
       </section>
+    );
+  }
 
-      {selectedDetail ? (
+  return (
+    <main className="shell">
+      <header className="topbar">
+        <div>
+          <p className="eyebrow">Azure / Entra Inventory</p>
+          <h1>Secret Expiration Dashboard</h1>
+        </div>
+        <div className="topbar-actions">
+          <button type="button" className="theme-toggle" onClick={toggleTheme} aria-pressed={theme === "dark"}>
+            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+            <span>{theme === "dark" ? "Light" : "Dark"}</span>
+          </button>
+          <div className="sync-pill">
+            <RefreshCw size={16} />
+            <span>Last sync {summary.lastSuccessfulSyncAt ? formatDateTime(summary.lastSuccessfulSyncAt) : "never"}</span>
+          </div>
+        </div>
+      </header>
+
+      <section className="metrics" aria-label="Inventory summary">
+        <Metric label="Total" value={summary.total} icon={<Database size={18} />} />
+        <Metric label="Expired" value={summary.expired} tone="danger" icon={<XCircle size={18} />} />
+        <Metric label="0-30 days" value={summary.next30} tone="warning" icon={<Clock size={18} />} />
+        <Metric label="31-60 days" value={summary.next60} icon={<Clock size={18} />} />
+        <Metric label="61-90 days" value={summary.next90} icon={<Clock size={18} />} />
+        <Metric label="Unknown owners" value={summary.unknownOwners} tone="warning" icon={<UserRound size={18} />} />
+        <Metric label="Excluded" value={summary.excludedFromRenewal} icon={<Ban size={18} />} />
+        <Metric label="Coverage gaps" value={summary.coverageGaps} tone="danger" icon={<ShieldAlert size={18} />} />
+      </section>
+
+      <nav className="tabs" role="tablist" aria-label="Dashboard views">
+        {(Object.keys(TAB_LABELS) as DashboardTab[]).map((tab) => (
+          <button
+            key={tab}
+            id={`tab-${tab}`}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab}
+            aria-controls={`panel-${tab}`}
+            className={activeTab === tab ? "active" : ""}
+            onClick={() => setActiveTab(tab)}
+          >
+            {TAB_LABELS[tab]}
+          </button>
+        ))}
+      </nav>
+
+      <section
+        id="panel-inventory"
+        className="tab-panel"
+        role="tabpanel"
+        aria-labelledby="tab-inventory"
+        hidden={activeTab !== "inventory"}
+      >
+        <section className="queuebar" aria-label="Quick queues">
+          {(Object.keys(QUEUE_LABELS) as WorkflowMode[]).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              className={workflowMode === mode ? "active" : ""}
+              onClick={() => setWorkflowMode(mode)}
+            >
+              <span>{QUEUE_LABELS[mode]}</span>
+              <strong>{queueCounts[mode]}</strong>
+            </button>
+          ))}
+        </section>
+
+        <section className="toolbar" aria-label="Filters">
+          <label className="search">
+            <Search size={16} />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search app, vault, owner, credential" />
+          </label>
+          <Select label="Source" value={source} onChange={(value) => setSource(value as InventorySource | "all")}>
+            <option value="all">All sources</option>
+            {Object.entries(SOURCE_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </Select>
+          <Select label="Risk" value={bucket} onChange={(value) => setBucket(value as RiskBucket | "all")}>
+            <option value="all">All risk</option>
+            {Object.entries(BUCKET_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </Select>
+          <Select label="Status" value={status} onChange={(value) => setStatus(value as WorkflowStatus | "all")}>
+            <option value="all">All status</option>
+            {Object.entries(STATUS_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </Select>
+          <Select label="Owner" value={ownerMode} onChange={(value) => setOwnerMode(value as "all" | "unknown" | "low")}>
+            <option value="all">All owners</option>
+            <option value="unknown">Unknown only</option>
+            <option value="low">Low confidence</option>
+          </Select>
+          <Select label="Rotation" value={rotationScope} onChange={(value) => setRotationScope(value as RotationScope)}>
+            <option value="actionable">Actionable only</option>
+            <option value="all">All rotation modes</option>
+            {Object.entries(ROTATION_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </Select>
+          <Select
+            label="Workflow"
+            value={workflowMode}
+            onChange={(value) => setWorkflowMode(value as WorkflowMode)}
+          >
+            {Object.entries(QUEUE_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </Select>
+        </section>
+
+        <section className="actionbar" aria-label="Bulk actions">
+          <div>
+            <Filter size={16} />
+            <span>{filtered.length} visible</span>
+            <span>{selectedIds.length} selected</span>
+            {excludedRenewalItems ? <span>{excludedRenewalItems} excluded from renewal exports</span> : null}
+          </div>
+          <form action={saveBulkOwnerOverride} className="owner-bulk-form">
+            {selectedItems.map((item) => (
+              <input key={item.id} type="hidden" name="parentId" value={item.parentId} />
+            ))}
+            <input name="ownerName" placeholder="Owner for selected" aria-label="Owner for selected" />
+            <input name="ownerEmail" placeholder="email" aria-label="Owner email for selected" />
+            <button type="submit" disabled={!selectedIds.length || isPending}>
+              Assign owner
+            </button>
+          </form>
+          <div className="action-buttons">
+            <button type="button" onClick={() => bulkUpdate("owner_contacted")} disabled={!selectedIds.length || isPending}>
+              Owner contacted
+            </button>
+            <button type="button" onClick={() => bulkUpdate("rotation_scheduled")} disabled={!selectedIds.length || isPending}>
+              Rotation scheduled
+            </button>
+            <button type="button" onClick={() => copyUnknownOwners()}>
+              <Download size={15} />
+              Copy unknowns
+            </button>
+            <button type="button" onClick={copyRenewalRequest} disabled={!actionableRenewalItems.length}>
+              <Download size={15} />
+              Copy renewal request
+            </button>
+            <button type="button" onClick={copyOwnerPackets} disabled={!actionableRenewalItems.length}>
+              <Download size={15} />
+              Copy owner packets
+            </button>
+            <button type="button" onClick={copyOwnerSummary} disabled={!actionableRenewalItems.length}>
+              <Download size={15} />
+              Copy by owner
+            </button>
+          </div>
+        </section>
+
+        {credentialTable(filtered, "Credential inventory")}
+      </section>
+
+      <section
+        id="panel-renewals"
+        className="tab-panel"
+        role="tabpanel"
+        aria-labelledby="tab-renewals"
+        hidden={activeTab !== "renewals"}
+      >
+        <section className="section-heading tab-heading" aria-label="Renewal queue summary">
+          <div>
+            <h2>Renewal queue</h2>
+            <span>Active cases and actionable credentials due within 90 days</span>
+          </div>
+          <div className="tab-counts">
+            <strong>{renewalWorkItems.length}</strong>
+            <span>items</span>
+          </div>
+        </section>
+        {credentialTable(renewalWorkItems, "Renewal credential queue")}
+      </section>
+
+      <section
+        id="panel-owners"
+        className="tab-panel"
+        role="tabpanel"
+        aria-labelledby="tab-owners"
+        hidden={activeTab !== "owners"}
+      >
+        <section className="actionbar" aria-label="Owner gaps">
+          <div>
+            <UserRound size={16} />
+            <span>{ownerGapItems.length} credentials need owner mapping</span>
+          </div>
+          <button type="button" onClick={() => copyUnknownOwners(ownerGapItems)} disabled={!ownerGapItems.length}>
+            <Download size={15} />
+            Copy owner gaps
+          </button>
+        </section>
+        <OwnerDirectory ownerOverrides={ownerOverrides} onCopy={copyOwnerMappings} />
+      </section>
+
+      <section
+        id="panel-coverage"
+        className="tab-panel"
+        role="tabpanel"
+        aria-labelledby="tab-coverage"
+        hidden={activeTab !== "coverage"}
+      >
+        <CoveragePanel coverage={coverage} />
+        <section className="exportbar" aria-label="Audit exports">
+          <span>Audit exports</span>
+          <button type="button" onClick={copyInventoryExport} disabled={!filtered.length}>
+            <Download size={15} />
+            Copy inventory TSV
+          </button>
+          <button type="button" onClick={copyStatusAudit} disabled={!items.some((item) => item.statusHistory.length)}>
+            <Download size={15} />
+            Copy status audit
+          </button>
+          <button type="button" onClick={copyCoverageExport} disabled={!coverage.length}>
+            <Download size={15} />
+            Copy coverage JSON
+          </button>
+          <button type="button" onClick={copyOwnerMappings} disabled={!ownerOverrides.length}>
+            <Download size={15} />
+            Copy owner mappings
+          </button>
+        </section>
+      </section>
+
+      {copyPanel ? (
+        <section className="copy-panel" aria-label="Copy output">
+          <div>
+            <strong>{copyPanel.title}</strong>
+            <span>{copyPanel.copied ? "Copied to clipboard" : "Clipboard blocked; select and copy from here"}</span>
+          </div>
+          <textarea readOnly value={copyPanel.text} aria-label={copyPanel.title} />
+          <button type="button" onClick={() => setCopyPanel(null)}>
+            Close
+          </button>
+        </section>
+      ) : null}
+
+      {selectedDetail && (activeTab === "inventory" || activeTab === "renewals") ? (
         <CredentialDetailDrawer
           item={selectedDetail}
           coverage={detailCoverage}
