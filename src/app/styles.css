@@ -111,6 +111,72 @@ button:disabled {
   margin-bottom: 18px;
 }
 
+.brand-lockup {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  min-width: 0;
+}
+
+.brand-lockup > div:last-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.brand-lockup > div:last-child > span {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.azure-cert-logo {
+  align-items: center;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--teal) 18%, transparent), transparent 48%),
+    var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 10px 26px rgb(29 37 43 / 10%);
+  display: grid;
+  flex: 0 0 auto;
+  height: 56px;
+  justify-items: center;
+  width: 56px;
+}
+
+:root[data-theme="dark"] .azure-cert-logo {
+  box-shadow: 0 10px 26px rgb(0 0 0 / 28%);
+}
+
+.azure-cert-logo svg {
+  display: block;
+  height: 42px;
+  width: 42px;
+}
+
+.logo-cloud {
+  fill: var(--blue-soft);
+  stroke: var(--blue);
+  stroke-linejoin: round;
+  stroke-width: 1.4;
+}
+
+.logo-a {
+  fill: var(--teal);
+}
+
+.logo-a-cut {
+  fill: var(--blue);
+}
+
+.logo-check {
+  fill: none;
+  stroke: var(--green);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 5;
+}
+
 .topbar-actions {
   align-items: center;
   display: flex;
@@ -1158,6 +1224,10 @@ tr.selected-row {
   .topbar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .brand-lockup {
+    align-items: flex-start;
   }
 
   .topbar-actions {
