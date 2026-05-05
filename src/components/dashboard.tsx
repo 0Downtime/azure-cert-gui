@@ -152,12 +152,13 @@ export function Dashboard({
   const [status, setStatus] = useState<WorkflowStatus | "all">("all");
   const [ownerMode, setOwnerMode] = useState<"all" | "unknown" | "low">("all");
   const [rotationScope, setRotationScope] = useState<RotationScope>("actionable");
-  const [workflowMode, setWorkflowMode] = useState<WorkflowMode>("all");
+  const [workflowMode, setWorkflowMode] = useState<WorkflowMode>(() => (summary.unknownOwners > 0 ? "unknown" : "all"));
   const [activeTab, setActiveTab] = useState<DashboardTab>("inventory");
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [selectedDetailId, setSelectedDetailId] = useState<number | null>(null);
   const [copyPanel, setCopyPanel] = useState<{ title: string; text: string; copied: boolean } | null>(null);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [refreshStatus, setRefreshStatus] = useState<RefreshRunStatus | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const refreshStatusRef = useRef<string | null>(null);
@@ -295,6 +296,7 @@ export function Dashboard({
   }
 
   async function copyText(title: string, text: string) {
+    setExportMenuOpen(false);
     try {
       await navigator.clipboard.writeText(text);
       setCopyPanel({ title, text, copied: true });
@@ -530,10 +532,10 @@ export function Dashboard({
                     </span>
                   </td>
                   <td>
-                    <OwnerCell item={item} />
+                    <OwnerSummary item={item} />
                   </td>
                   <td>
-                    <StatusForm item={item} />
+                    <StatusSummary item={item} />
                   </td>
                   <td>
                     <span>{formatDate(item.lastSeenAt)}</span>
@@ -761,7 +763,13 @@ export function Dashboard({
             aria-selected={activeTab === tab}
             aria-controls={`panel-${tab}`}
             className={activeTab === tab ? "active" : ""}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => {
+              if (activeTab !== tab) {
+                setSelectedDetailId(null);
+              }
+              setExportMenuOpen(false);
+              setActiveTab(tab);
+            }}
           >
             {TAB_LABELS[tab]}
           </button>
@@ -832,17 +840,6 @@ export function Dashboard({
               </option>
             ))}
           </Select>
-          <Select
-            label="Workflow"
-            value={workflowMode}
-            onChange={(value) => setWorkflowMode(value as WorkflowMode)}
-          >
-            {Object.entries(QUEUE_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
         </section>
 
         <section className="actionbar" aria-label="Bulk actions">
@@ -852,39 +849,51 @@ export function Dashboard({
             <span>{selectedIds.length} selected</span>
             {excludedRenewalItems ? <span>{excludedRenewalItems} excluded from renewal exports</span> : null}
           </div>
-          <form action={saveBulkOwnerOverride} className="owner-bulk-form">
-            {selectedItems.map((item) => (
-              <input key={item.id} type="hidden" name="parentId" value={item.parentId} />
-            ))}
-            <input name="ownerName" placeholder="Owner for selected" aria-label="Owner for selected" />
-            <input name="ownerEmail" placeholder="email" aria-label="Owner email for selected" />
-            <button type="submit" disabled={!selectedIds.length || isPending}>
-              Assign owner
-            </button>
-          </form>
-          <div className="action-buttons">
-            <button type="button" onClick={() => bulkUpdate("owner_contacted")} disabled={!selectedIds.length || isPending}>
-              Owner contacted
-            </button>
-            <button type="button" onClick={() => bulkUpdate("rotation_scheduled")} disabled={!selectedIds.length || isPending}>
-              Rotation scheduled
-            </button>
-            <button type="button" onClick={() => copyUnknownOwners()}>
+          {selectedIds.length ? (
+            <div className="selection-actions">
+              <form action={saveBulkOwnerOverride} className="owner-bulk-form">
+                {selectedItems.map((item) => (
+                  <input key={item.id} type="hidden" name="parentId" value={item.parentId} />
+                ))}
+                <input name="ownerName" placeholder="Owner for selected" aria-label="Owner for selected" />
+                <input name="ownerEmail" placeholder="email" aria-label="Owner email for selected" />
+                <button type="submit" disabled={isPending}>
+                  Assign owner
+                </button>
+              </form>
+              <div className="action-buttons">
+                <button type="button" onClick={() => bulkUpdate("owner_contacted")} disabled={isPending}>
+                  Owner contacted
+                </button>
+                <button type="button" onClick={() => bulkUpdate("rotation_scheduled")} disabled={isPending}>
+                  Rotation scheduled
+                </button>
+              </div>
+            </div>
+          ) : (
+            <span className="selection-hint">Select rows to assign owners or update status.</span>
+          )}
+          <div className="export-menu">
+            <button type="button" onClick={() => setExportMenuOpen((current) => !current)} aria-expanded={exportMenuOpen}>
               <Download size={15} />
-              Copy unknowns
+              Copy / export
             </button>
-            <button type="button" onClick={copyRenewalRequest} disabled={!actionableRenewalItems.length}>
-              <Download size={15} />
-              Copy renewal request
-            </button>
-            <button type="button" onClick={copyOwnerPackets} disabled={!actionableRenewalItems.length}>
-              <Download size={15} />
-              Copy owner packets
-            </button>
-            <button type="button" onClick={copyOwnerSummary} disabled={!actionableRenewalItems.length}>
-              <Download size={15} />
-              Copy by owner
-            </button>
+            {exportMenuOpen ? (
+              <div className="export-menu-panel" role="menu">
+                <button type="button" role="menuitem" onClick={() => copyUnknownOwners()}>
+                  Copy unknowns
+                </button>
+                <button type="button" role="menuitem" onClick={copyRenewalRequest} disabled={!actionableRenewalItems.length}>
+                  Copy renewal request
+                </button>
+                <button type="button" role="menuitem" onClick={copyOwnerPackets} disabled={!actionableRenewalItems.length}>
+                  Copy owner packets
+                </button>
+                <button type="button" role="menuitem" onClick={copyOwnerSummary} disabled={!actionableRenewalItems.length}>
+                  Copy by owner
+                </button>
+              </div>
+            ) : null}
           </div>
         </section>
 
@@ -928,6 +937,7 @@ export function Dashboard({
             Copy owner gaps
           </button>
         </section>
+        <OwnerGapList items={ownerGapItems} onOpen={(id) => setSelectedDetailId(id)} />
         <OwnerDirectory ownerOverrides={ownerOverrides} onCopy={copyOwnerMappings} />
       </section>
 
@@ -973,7 +983,7 @@ export function Dashboard({
         </section>
       ) : null}
 
-      {selectedDetail && (activeTab === "inventory" || activeTab === "renewals") ? (
+      {selectedDetail && (activeTab === "inventory" || activeTab === "renewals" || activeTab === "owners") ? (
         <CredentialDetailDrawer
           item={selectedDetail}
           coverage={detailCoverage}
@@ -1063,6 +1073,37 @@ function CredentialDetailDrawer({
           Copy renewal request
         </button>
       </div>
+
+      <section className="detail-section">
+        <h3>Quick edit</h3>
+        <form action={saveOwnerOverride} className="owner-detail-form">
+          <input type="hidden" name="matchType" value="parent_id" />
+          <input type="hidden" name="matchValue" value={item.parentId} />
+          <label>
+            <span>Owner</span>
+            <input name="ownerName" defaultValue={item.ownerName ?? ""} placeholder="Owner name" />
+          </label>
+          <label>
+            <span>Email</span>
+            <input name="ownerEmail" defaultValue={item.ownerEmail ?? ""} placeholder="owner@example.com" />
+          </label>
+          <button type="submit">Save owner</button>
+        </form>
+        <form action={updateCredentialStatus} className="status-detail-form">
+          <input type="hidden" name="id" value={item.id} />
+          <label>
+            <span>Status</span>
+            <select name="status" defaultValue={item.status} aria-label={`Status for ${item.credentialName}`}>
+              {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="submit">Save status</button>
+        </form>
+      </section>
 
       <section className="detail-section">
         <h3>Expiration</h3>
@@ -1619,58 +1660,79 @@ function RotationBadge({ item }: { item: DashboardItem }) {
   );
 }
 
-function OwnerCell({ item }: { item: DashboardItem }) {
+function OwnerSummary({ item }: { item: DashboardItem }) {
   if (!item.ownerName) {
     return (
-      <form action={saveOwnerOverride} className="owner-form">
-        <input type="hidden" name="matchType" value="parent_id" />
-        <input type="hidden" name="matchValue" value={item.parentId} />
-        <input name="ownerName" placeholder="Owner name" aria-label="Owner name" />
-        <input name="ownerEmail" placeholder="email" aria-label="Owner email" />
-        <button type="submit">Save</button>
-      </form>
+      <div className="owner-summary missing">
+        <strong>Unassigned</strong>
+        <span className="muted">Open details to assign</span>
+      </div>
     );
   }
 
   return (
-    <div className="owner">
+    <div className="owner-summary">
       <strong>{item.ownerName}</strong>
       <span className="muted">{item.ownerEmail ?? "No email"}</span>
       <span className={`confidence ${item.ownerConfidence}`}>{item.ownerConfidence}</span>
-      <span className="muted">{item.ownerEvidence}</span>
     </div>
   );
 }
 
-function StatusForm({ item }: { item: DashboardItem }) {
+function StatusSummary({ item }: { item: DashboardItem }) {
+  const lastStatus = item.statusHistory[0];
   return (
-    <div className="status-stack">
-      <form action={updateCredentialStatus} className="status-form">
-        <input type="hidden" name="id" value={item.id} />
-        <select name="status" defaultValue={item.status} aria-label={`Status for ${item.credentialName}`}>
-          {Object.entries(STATUS_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
-        <button type="submit">
-          <CheckCircle2 size={14} />
-        </button>
-      </form>
-      {item.statusHistory.length ? (
-        <div className="status-history">
-          {item.statusHistory.map((history) => (
-            <span key={`${history.changedAt}-${history.toStatus}`}>
-              {STATUS_LABELS[history.toStatus]} by {history.changedBy} {formatDateTime(history.changedAt)}
-            </span>
+    <div className="status-summary">
+      <strong>{STATUS_LABELS[item.status]}</strong>
+      <span className="muted">
+        {lastStatus ? `${lastStatus.changedBy} ${formatDateTime(lastStatus.changedAt)}` : "No status updates"}
+      </span>
+      {item.renewalCase ? <span className="renewal-pill">{RENEWAL_CASE_LABELS[item.renewalCase.status]}</span> : null}
+    </div>
+  );
+}
+
+function OwnerGapList({ items, onOpen }: { items: DashboardItem[]; onOpen: (id: number) => void }) {
+  return (
+    <section className="owner-gap-panel" aria-label="Owner gap worklist">
+      <div className="section-heading">
+        <div>
+          <h2>Owner gaps</h2>
+          <span>Credentials with no mapped owner</span>
+        </div>
+        <span>{items.length} gaps</span>
+      </div>
+      {items.length ? (
+        <div className="owner-gap-list">
+          {items.map((item) => (
+            <div key={item.id} className="owner-gap-row">
+              <div>
+                <RiskBadge item={item} />
+                <strong>{item.parentName}</strong>
+                <span className="muted">
+                  {SOURCE_LABELS[item.source]} / {item.credentialName}
+                </span>
+              </div>
+              <div>
+                <strong>{formatDate(item.expiresAt)}</strong>
+                <span className="muted">
+                  {item.daysUntilExpiry === null ? "No expiry metadata" : `${item.daysUntilExpiry} days`}
+                </span>
+              </div>
+              <button type="button" onClick={() => onOpen(item.id)}>
+                Assign owner
+              </button>
+            </div>
           ))}
         </div>
       ) : (
-        <span className="muted">No status updates</span>
+        <div className="empty compact">
+          <CheckCircle2 size={24} />
+          <h2>No owner gaps</h2>
+          <p>All visible credentials have an owner mapping.</p>
+        </div>
       )}
-      {item.renewalCase ? <span className="renewal-pill">{RENEWAL_CASE_LABELS[item.renewalCase.status]}</span> : null}
-    </div>
+    </section>
   );
 }
 

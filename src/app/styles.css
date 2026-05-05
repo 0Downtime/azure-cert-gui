@@ -499,10 +499,23 @@ h1 {
 
 .actionbar > div,
 .action-buttons,
+.selection-actions,
 .owner-bulk-form {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.selection-actions {
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.selection-hint {
+  color: var(--muted);
+  font-size: 13px;
+  margin-left: auto;
 }
 
 .actionbar > div:first-child {
@@ -512,6 +525,35 @@ h1 {
 
 .action-buttons {
   flex-wrap: wrap;
+}
+
+.export-menu {
+  position: relative;
+}
+
+.export-menu-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--drawer-shadow);
+  display: grid;
+  gap: 4px;
+  min-width: 220px;
+  padding: 6px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 25;
+}
+
+.export-menu-panel button {
+  border-color: transparent;
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.export-menu-panel button:hover {
+  background: var(--code-bg);
 }
 
 .copy-panel {
@@ -553,6 +595,7 @@ h1 {
 }
 
 .coverage-panel,
+.owner-gap-panel,
 .owner-directory {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -609,6 +652,27 @@ h1 {
 .owner-directory-actions {
   display: flex;
   justify-content: flex-end;
+}
+
+.owner-gap-list {
+  display: grid;
+  gap: 8px;
+}
+
+.owner-gap-row {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(320px, 1fr) minmax(120px, auto) auto;
+  padding: 10px;
+}
+
+.owner-gap-row > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
 }
 
 .owner-mapping-list {
@@ -767,7 +831,7 @@ input::placeholder {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 1240px;
+  min-width: 1120px;
 }
 
 .renewal-table table {
@@ -930,9 +994,14 @@ tr.selected-row {
   color: var(--muted);
 }
 
-.owner {
+.owner-summary,
+.status-summary {
   display: grid;
   gap: 3px;
+}
+
+.owner-summary.missing strong {
+  color: var(--amber);
 }
 
 .owner-form {
@@ -961,10 +1030,15 @@ tr.selected-row {
   padding: 0;
 }
 
-.status-stack {
+.status-stack,
+.status-summary {
   display: grid;
   gap: 6px;
   min-width: 210px;
+}
+
+.status-summary {
+  min-width: 150px;
 }
 
 .status-history {
@@ -1079,6 +1153,8 @@ tr.selected-row {
 
 .renewal-case,
 .renewal-form,
+.owner-detail-form,
+.status-detail-form,
 .renewal-checklist,
 .renewal-result,
 .one-time-secret {
@@ -1086,15 +1162,37 @@ tr.selected-row {
   gap: 8px;
 }
 
-.renewal-form {
+.renewal-form,
+.owner-detail-form,
+.status-detail-form {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 8px;
 }
 
-.renewal-form label {
+.renewal-form label,
+.owner-detail-form label,
+.status-detail-form label {
   display: grid;
   gap: 3px;
+}
+
+.owner-detail-form label span,
+.status-detail-form label span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.owner-detail-form input,
+.status-detail-form select {
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  min-height: 34px;
+  padding: 0 8px;
 }
 
 .checkbox-row {
