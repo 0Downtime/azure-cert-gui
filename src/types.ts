@@ -192,3 +192,16 @@ export interface DashboardCoverage {
   lastAttemptAt: string;
   health: CoverageHealth;
 }
+
+export type RefreshRunState = "idle" | "running" | "succeeded" | "failed";
+
+export interface RefreshRunStatus {
+  runId: string | null;
+  status: RefreshRunState;
+  progress: number;
+  message: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  exitCode: number | null;
+  logs: string[];
+}

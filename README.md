@@ -59,6 +59,7 @@ when generating the file to use a different local time.
 
 In the dashboard:
 
+- Use `Refresh data` to run `sync:azure` from the web UI with the current Azure CLI login. The dashboard shows refresh progress, recent sync output, and a done or failed message when the run finishes.
 - Use the `Inventory` tab for daily triage: quick queues, filters, row selection, bulk owner assignment, status updates, and credential table actions.
 - Use the `Renewals` tab for active renewal cases and actionable credentials due within 90 days. Open the shared detail drawer there to create a case, track owner handoff/reminders/escalation, dry-run or run a modal-confirmed rotation, and validate or close the case.
 - Use the `Owners` tab to review, add, export, and remove manual owner mappings, or copy the current owner-gap worklist.

@@ -21,7 +21,7 @@ import {
   XCircle
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useEffect, useMemo, useState, useTransition } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type {
   CoverageHealth,
   DashboardCoverage,
@@ -30,6 +30,7 @@ import type {
   DashboardSummary,
   InventorySource,
   OwnerMatchType,
+  RefreshRunStatus,
   RenewalHandoffStatus,
   RenewalCaseStatus,
   RiskBucket,
@@ -142,6 +143,7 @@ export function Dashboard({
   coverage: DashboardCoverage[];
   ownerOverrides: DashboardOwnerOverride[];
 }) {
+  const dashboardRouter = useRouter();
   const [query, setQuery] = useState("");
   const [source, setSource] = useState<InventorySource | "all">("all");
   const [bucket, setBucket] = useState<RiskBucket | "all">("all");
@@ -154,6 +156,10 @@ export function Dashboard({
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [selectedDetailId, setSelectedDetailId] = useState<number | null>(null);
   const [copyPanel, setCopyPanel] = useState<{ title: string; text: string; copied: boolean } | null>(null);
+  const [refreshStatus, setRefreshStatus] = useState<RefreshRunStatus | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const refreshStatusRef = useRef<string | null>(null);
+  const refreshStartedFromUi = useRef(false);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -164,6 +170,18 @@ export function Dashboard({
     }
   }, []);
 
+  useEffect(() => {
+    void loadRefreshStatus(false);
+  }, []);
+
+  useEffect(() => {
+    if (refreshStatus?.status !== "running") return;
+    const timer = window.setInterval(() => {
+      void loadRefreshStatus(true);
+    }, 1500);
+    return () => window.clearInterval(timer);
+  }, [refreshStatus?.status]);
+
   function toggleTheme() {
     setTheme((current) => {
       const next = current === "dark" ? "light" : "dark";
@@ -171,6 +189,41 @@ export function Dashboard({
       window.localStorage.setItem("gstack-theme", next);
       return next;
     });
+  }
+
+  async function loadRefreshStatus(refreshWhenFinished: boolean) {
+    try {
+      const response = await fetch("/api/refresh", { cache: "no-store" });
+      if (!response.ok) throw new Error(`Refresh status failed with HTTP ${response.status}`);
+      const next = (await response.json()) as RefreshRunStatus;
+      applyRefreshStatus(next, refreshWhenFinished);
+    } catch (error) {
+      setRefreshError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  function applyRefreshStatus(next: RefreshRunStatus, refreshWhenFinished: boolean) {
+    const previousStatus = refreshStatusRef.current;
+    refreshStatusRef.current = next.status;
+    setRefreshStatus(next);
+    if (refreshWhenFinished && refreshStartedFromUi.current && previousStatus === "running" && next.status !== "running") {
+      refreshStartedFromUi.current = false;
+      dashboardRouter.refresh();
+    }
+  }
+
+  async function startDataRefresh() {
+    setRefreshError(null);
+    refreshStartedFromUi.current = true;
+    try {
+      const response = await fetch("/api/refresh", { method: "POST", cache: "no-store" });
+      if (!response.ok) throw new Error(`Refresh start failed with HTTP ${response.status}`);
+      const next = (await response.json()) as RefreshRunStatus;
+      applyRefreshStatus(next, false);
+    } catch (error) {
+      refreshStartedFromUi.current = false;
+      setRefreshError(error instanceof Error ? error.message : String(error));
+    }
   }
 
   const filtered = useMemo(() => {
@@ -612,6 +665,16 @@ export function Dashboard({
           <h1>Secret Expiration Dashboard</h1>
         </div>
         <div className="topbar-actions">
+          <button
+            type="button"
+            className="refresh-button"
+            onClick={startDataRefresh}
+            disabled={refreshStatus?.status === "running"}
+            aria-live="polite"
+          >
+            <RefreshCw size={16} className={refreshStatus?.status === "running" ? "spin" : ""} />
+            <span>{refreshStatus?.status === "running" ? "Refreshing" : "Refresh data"}</span>
+          </button>
           <button type="button" className="theme-toggle" onClick={toggleTheme} aria-pressed={theme === "dark"}>
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
             <span>{theme === "dark" ? "Light" : "Dark"}</span>
@@ -622,6 +685,46 @@ export function Dashboard({
           </div>
         </div>
       </header>
+
+      {refreshStatus && refreshStatus.status !== "idle" ? (
+        <section className={`refresh-panel ${refreshStatus.status}`} aria-live="polite" aria-label="Data refresh status">
+          <div className="refresh-panel-header">
+            <div>
+              <strong>{refreshStatus.message}</strong>
+              <span>
+                {refreshStatus.status === "running"
+                  ? `Started ${formatDateTime(refreshStatus.startedAt ?? new Date().toISOString())}`
+                  : `Finished ${formatDateTime(refreshStatus.finishedAt ?? new Date().toISOString())}`}
+              </span>
+            </div>
+            <span className="refresh-percent">{refreshStatus.progress}%</span>
+          </div>
+          <div className="refresh-progress" aria-hidden="true">
+            <span style={{ width: `${Math.max(5, refreshStatus.progress)}%` }} />
+          </div>
+          {refreshStatus.status !== "running" ? (
+            <span className="refresh-complete">
+              {refreshStatus.status === "succeeded"
+                ? "Done refreshing. Dashboard data has been reloaded."
+                : "Refresh did not complete. Check the latest sync output below."}
+            </span>
+          ) : null}
+          {refreshStatus.logs.length ? (
+            <ol className="refresh-log">
+              {refreshStatus.logs.slice(-5).map((line, index) => (
+                <li key={`${refreshStatus.runId ?? "refresh"}-${index}-${line}`}>{line}</li>
+              ))}
+            </ol>
+          ) : null}
+        </section>
+      ) : null}
+
+      {refreshError ? (
+        <section className="refresh-panel failed" aria-live="polite" aria-label="Data refresh error">
+          <strong>Refresh status unavailable</strong>
+          <span>{refreshError}</span>
+        </section>
+      ) : null}
 
       <section className="metrics" aria-label="Inventory summary">
         <Metric label="Total" value={summary.total} icon={<Database size={18} />} />

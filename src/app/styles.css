@@ -121,6 +121,20 @@ button:disabled {
   min-height: 40px;
 }
 
+.refresh-button {
+  min-height: 40px;
+}
+
+.spin {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .eyebrow {
   margin: 0 0 4px;
   color: var(--teal);
@@ -185,6 +199,79 @@ h1 {
 .metric.danger div,
 .metric.danger strong {
   color: var(--red);
+}
+
+.refresh-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 10px;
+}
+
+.refresh-panel.succeeded {
+  border-color: var(--green);
+}
+
+.refresh-panel.failed {
+  border-color: var(--red);
+}
+
+.refresh-panel-header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.refresh-panel-header > div {
+  display: grid;
+  gap: 2px;
+}
+
+.refresh-panel-header span,
+.refresh-complete,
+.refresh-panel.failed > span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.refresh-percent {
+  color: var(--teal);
+  font-weight: 700;
+}
+
+.refresh-progress {
+  background: var(--code-bg);
+  border-radius: 999px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.refresh-progress span {
+  background: var(--teal);
+  display: block;
+  height: 100%;
+  transition: width 180ms ease;
+}
+
+.refresh-panel.succeeded .refresh-progress span {
+  background: var(--green);
+}
+
+.refresh-panel.failed .refresh-progress span {
+  background: var(--red);
+}
+
+.refresh-log {
+  color: var(--muted);
+  display: grid;
+  font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  gap: 3px;
+  margin: 0;
+  padding-left: 18px;
 }
 
 .tabs {
