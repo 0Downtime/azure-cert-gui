@@ -1,4 +1,4 @@
-# Azure Secret Expiration Dashboard
+# Azure Cert GUI
 
 Internal dashboard for tracking expiring Microsoft Entra app credentials, service principal credentials, and Azure Key Vault secrets, certificates, and keys.
 
@@ -49,9 +49,9 @@ Schedule the sync daily on macOS:
 
 ```bash
 mkdir -p logs ~/Library/LaunchAgents
-npm run schedule:launchagent > ~/Library/LaunchAgents/com.local.azure-secret-dashboard.sync.plist
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.local.azure-secret-dashboard.sync.plist
-launchctl kickstart -k gui/$(id -u)/com.local.azure-secret-dashboard.sync
+npm run schedule:launchagent > ~/Library/LaunchAgents/com.local.azure-cert-gui.sync.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.local.azure-cert-gui.sync.plist
+launchctl kickstart -k gui/$(id -u)/com.local.azure-cert-gui.sync
 ```
 
 By default the generated LaunchAgent runs at 7:30 AM. Set `SYNC_HOUR` and `SYNC_MINUTE`

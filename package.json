@@ -1,8 +1,8 @@
 {
-  "name": "gstack",
+  "name": "azure-cert-gui",
   "version": "0.1.0",
   "private": true,
-  "description": "Internal Azure and Entra secret expiration dashboard.",
+  "description": "Internal Azure and Entra certificate and secret expiration GUI.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

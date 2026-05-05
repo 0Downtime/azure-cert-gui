@@ -165,7 +165,7 @@ export function Dashboard({
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
-    const stored = window.localStorage.getItem("gstack-theme");
+    const stored = window.localStorage.getItem("azure-cert-gui-theme") || window.localStorage.getItem("gstack-theme");
     if (stored === "dark" || stored === "light") {
       setTheme(stored);
       document.documentElement.dataset.theme = stored;
@@ -188,7 +188,7 @@ export function Dashboard({
     setTheme((current) => {
       const next = current === "dark" ? "light" : "dark";
       document.documentElement.dataset.theme = next;
-      window.localStorage.setItem("gstack-theme", next);
+      window.localStorage.setItem("azure-cert-gui-theme", next);
       return next;
     });
   }
@@ -666,8 +666,8 @@ export function Dashboard({
           <AzureCertLogo />
           <div>
             <p className="eyebrow">Azure / Entra Inventory</p>
-            <h1>Azure Cert</h1>
-            <span>Secret Expiration Dashboard</span>
+            <h1>Azure Cert GUI</h1>
+            <span>Credential Expiration Dashboard</span>
           </div>
         </div>
         <div className="topbar-actions">

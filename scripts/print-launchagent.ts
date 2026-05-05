@@ -1,4 +1,4 @@
-const label = process.env.LAUNCHAGENT_LABEL ?? "com.local.azure-secret-dashboard.sync";
+const label = process.env.LAUNCHAGENT_LABEL ?? "com.local.azure-cert-gui.sync";
 const hour = boundedInt(process.env.SYNC_HOUR, 7, 0, 23);
 const minute = boundedInt(process.env.SYNC_MINUTE, 30, 0, 59);
 const cwd = process.cwd();
