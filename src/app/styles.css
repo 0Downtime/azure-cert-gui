@@ -153,33 +153,11 @@ button:disabled {
   box-shadow: 0 10px 26px rgb(0 0 0 / 28%);
 }
 
-.azure-cert-logo svg {
+.azure-cert-logo img {
   display: block;
   height: 42px;
+  object-fit: contain;
   width: 42px;
-}
-
-.logo-cloud {
-  fill: var(--blue-soft);
-  stroke: var(--blue);
-  stroke-linejoin: round;
-  stroke-width: 1.4;
-}
-
-.logo-a {
-  fill: var(--teal);
-}
-
-.logo-a-cut {
-  fill: var(--blue);
-}
-
-.logo-check {
-  fill: none;
-  stroke: var(--green);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 5;
 }
 
 .topbar-actions {

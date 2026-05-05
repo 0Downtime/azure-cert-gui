@@ -1,5 +1,6 @@
 "use client";
 
+import azureCertLogo from "@/app/azure-cert-logo.png";
 import {
   AlertTriangle,
   Ban,
@@ -978,12 +979,7 @@ export function Dashboard({
 function AzureCertLogo() {
   return (
     <div className="azure-cert-logo" aria-hidden="true">
-      <svg viewBox="0 0 64 64" role="img" focusable="false">
-        <path className="logo-cloud" d="M18.7 43.8h25.9c6.7 0 12.1-4.5 12.1-10.3 0-5.2-4.3-9.5-10.2-10.2C44.2 16.8 38.1 12 30.9 12c-8.5 0-15.6 6.4-16.2 14.7C9.9 28 6.4 31.3 6.4 35.5c0 4.6 4.7 8.3 12.3 8.3Z" />
-        <path className="logo-a" d="M18 41.4 30.3 16h11.1L28.6 41.4H18Z" />
-        <path className="logo-a-cut" d="M36.5 19.9 47 41.4H36.2l-4.8-10.1 5.1-11.4Z" />
-        <path className="logo-check" d="m26.5 43.5 6.1 6.1 12.2-14.2" />
-      </svg>
+      <img src={azureCertLogo.src} alt="" width={42} height={42} decoding="async" />
     </div>
   );
 }
