@@ -504,6 +504,106 @@ export function Dashboard({
     );
   }
 
+  function renewalTable(rows: DashboardItem[]) {
+    return (
+      <section className="table-wrap renewal-table" aria-label="Renewal credential queue">
+        {items.length === 0 ? (
+          <EmptyState />
+        ) : rows.length === 0 ? (
+          <div className="empty compact">
+            <Clock size={24} />
+            <h2>No renewal work</h2>
+            <p>Active cases and near-term actionable expirations will appear here.</p>
+          </div>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Case</th>
+                <th>Credential</th>
+                <th>Owner / handoff</th>
+                <th>Due</th>
+                <th>Expiration</th>
+                <th>Replacement</th>
+                <th>Last event</th>
+                <th aria-label="Renewal details" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((item) => {
+                const renewalCase = item.renewalCase;
+                const lastEvent = renewalCase?.events[0] ?? null;
+                const ownerName = renewalCase?.ownerName ?? item.ownerName;
+                const ownerEmail = renewalCase?.ownerEmail ?? item.ownerEmail;
+                return (
+                  <tr key={item.id} className={selectedDetailId === item.id ? "selected-row" : ""}>
+                    <td>
+                      <span className={`renewal-case-chip ${renewalCase?.status ?? "none"}`}>
+                        {renewalCase ? RENEWAL_CASE_LABELS[renewalCase.status] : "Needs case"}
+                      </span>
+                      <span className="muted">{renewalCase ? `Case #${renewalCase.id}` : "Open detail drawer"}</span>
+                    </td>
+                    <td>
+                      <strong>{item.parentName}</strong>
+                      <span className="credential">
+                        <KeyRound size={15} />
+                        {item.credentialName}
+                      </span>
+                      <span className="muted">
+                        {SOURCE_LABELS[item.source]} / {item.credentialType}
+                      </span>
+                    </td>
+                    <td>
+                      <strong>{ownerName ?? "Unassigned"}</strong>
+                      <span className="muted">{ownerEmail ?? "No email"}</span>
+                      <span className="muted">
+                        {renewalCase ? HANDOFF_LABELS[renewalCase.handoffStatus] : "No handoff started"}
+                      </span>
+                    </td>
+                    <td>
+                      <strong>{renewalCase?.dueAt ? formatDate(renewalCase.dueAt) : formatDate(item.expiresAt)}</strong>
+                      <span className="muted">
+                        {renewalCase?.reminderAt ? `Reminder ${formatDate(renewalCase.reminderAt)}` : "No reminder set"}
+                      </span>
+                    </td>
+                    <td>
+                      <RiskBadge item={item} />
+                      <span className="muted">
+                        {formatDate(item.expiresAt)}
+                        {item.daysUntilExpiry === null ? "" : ` / ${item.daysUntilExpiry} days`}
+                      </span>
+                    </td>
+                    <td>
+                      <strong>{renewalCase?.replacementCredentialId ?? "Not created"}</strong>
+                      <span className="muted">{formatDate(renewalCase?.replacementExpiresAt ?? null)}</span>
+                    </td>
+                    <td>
+                      <strong>{lastEvent ? lastEvent.eventType.replaceAll("_", " ") : "No case event"}</strong>
+                      <span className="muted">
+                        {lastEvent ? `${lastEvent.createdBy} ${formatDateTime(lastEvent.createdAt)}` : "Open case to start audit history"}
+                      </span>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="icon-button"
+                        onClick={() => setSelectedDetailId(item.id)}
+                        aria-label={`${renewalCase ? "Review renewal case" : "Open renewal case"} for ${item.credentialName}`}
+                        title={renewalCase ? "Review renewal case" : "Open renewal case"}
+                      >
+                        <PanelRightOpen size={15} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </section>
+    );
+  }
+
   return (
     <main className="shell">
       <header className="topbar">
@@ -691,7 +791,7 @@ export function Dashboard({
             <span>items</span>
           </div>
         </section>
-        {credentialTable(renewalWorkItems, "Renewal credential queue")}
+        {renewalTable(renewalWorkItems)}
       </section>
 
       <section

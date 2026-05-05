@@ -577,6 +577,10 @@ table {
   min-width: 1240px;
 }
 
+.renewal-table table {
+  min-width: 1180px;
+}
+
 th,
 td {
   border-bottom: 1px solid var(--line);
@@ -693,6 +697,44 @@ tr.selected-row {
   font-weight: 700;
   padding: 4px 8px;
   width: fit-content;
+}
+
+.renewal-case-chip {
+  background: var(--blue-soft);
+  border-radius: 999px;
+  color: var(--blue);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  padding: 4px 8px;
+  width: fit-content;
+}
+
+.renewal-case-chip.open {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.renewal-case-chip.rotation_created {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.renewal-case-chip.validated,
+.renewal-case-chip.closed {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.renewal-case-chip.blocked {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.renewal-case-chip.none {
+  background: var(--code-bg);
+  color: var(--muted);
 }
 
 .owner {
