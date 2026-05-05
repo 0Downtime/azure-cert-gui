@@ -685,9 +685,17 @@ export function Dashboard({
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
             <span>{theme === "dark" ? "Light" : "Dark"}</span>
           </button>
-          <div className="sync-pill">
-            <RefreshCw size={16} />
-            <span>Last sync {summary.lastSuccessfulSyncAt ? formatDateTime(summary.lastSuccessfulSyncAt) : "never"}</span>
+          <div className={`sync-pill ${refreshStatus?.status === "running" ? "running" : refreshStatus?.status ?? ""}`}>
+            {refreshStatus?.status === "running" ? (
+              <span className="sync-loader" aria-hidden="true" />
+            ) : (
+              <RefreshCw size={16} />
+            )}
+            <span>
+              {refreshStatus?.status === "running"
+                ? `Refreshing ${refreshStatus.progress}%`
+                : `Last sync ${summary.lastSuccessfulSyncAt ? formatDateTime(summary.lastSuccessfulSyncAt) : "never"}`}
+            </span>
           </div>
         </div>
       </header>
