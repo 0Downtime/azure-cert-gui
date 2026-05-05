@@ -55,6 +55,11 @@
   box-sizing: border-box;
 }
 
+html {
+  background: var(--bg);
+  color-scheme: light;
+}
+
 body {
   margin: 0;
   background: var(--bg);
