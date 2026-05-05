@@ -190,6 +190,7 @@ The default behavior scans:
 Recommended read-only permissions:
 
 - Microsoft Graph: application and service principal read access, plus owner read access if you want Entra owners.
+- Microsoft Graph user and group read access if you want owner autocomplete populated from Entra users and mail-enabled groups.
 - Azure RBAC or Key Vault access policy: vault list/read plus `secrets/list`, `certificates/list`, and `keys/list`.
 
 ## Configuration
@@ -205,4 +206,5 @@ Supported environment values:
 - `AZURE_SUBSCRIPTION_IDS`: optional comma-separated subscription IDs. When blank, enabled Azure CLI subscriptions are scanned.
 - `AZURE_KEYVAULT_RESOURCE_IDS`: optional comma-separated Key Vault ARM resource IDs. When blank, vaults are discovered from subscriptions.
 - `AZURE_GRAPH_INCLUDE_OWNERS`: defaults to `true`. Set `false` if Graph owner reads are not consented yet.
+- `AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY`: defaults to `true`. Set `false` if Graph user/group reads are not consented yet.
 - `AZURE_KEYVAULT_INCLUDE_VERSIONS`: defaults to `false`. Current Key Vault secrets/certificates are usually enough for rotation tracking.

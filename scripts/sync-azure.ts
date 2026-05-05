@@ -3,6 +3,7 @@ import {
   type AzureVault,
   azureSyncConfigFromEnv,
   collectGraphApplications,
+  collectGraphOwnerDirectory,
   collectKeyVaultCertificates,
   collectKeyVaultKeys,
   collectKeyVaultSecrets,
@@ -18,7 +19,7 @@ import {
   normalizeKeyVaultSecrets,
   normalizeServicePrincipals
 } from "../src/lib/normalize";
-import { clearCoverageForSource, recordCoverage, upsertCredentials } from "../src/lib/repository";
+import { clearCoverageForSource, recordCoverage, upsertCredentials, upsertOwnerDirectory } from "../src/lib/repository";
 import type { InventorySource, NormalizedCredential } from "../src/types";
 
 const args = new Set(process.argv.slice(2));
@@ -52,6 +53,7 @@ async function main(): Promise<void> {
   const tenantId = await currentTenantId(config).catch(() => config.tenantId);
 
   if (!skipGraph) {
+    await syncOwnerDirectory(config);
     await syncGraphSource("entra_application", "Microsoft Graph applications", async () =>
       normalizeGraphApplications(await collectGraphApplications(config))
     );
@@ -62,6 +64,28 @@ async function main(): Promise<void> {
 
   if (!skipKeyVault) {
     await syncKeyVaultSources(config, tenantId);
+  }
+}
+
+async function syncOwnerDirectory(config: ReturnType<typeof azureSyncConfigFromEnv>): Promise<void> {
+  if (!config.includeGraphOwnerDirectory) {
+    if (verbose) console.log("owner_directory: skipped by AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY=false");
+    return;
+  }
+  try {
+    const owners = await collectGraphOwnerDirectory();
+    const changed = upsertOwnerDirectory(
+      owners.map((owner) => ({
+        ownerName: owner.ownerName,
+        ownerEmail: owner.ownerEmail,
+        source: owner.source
+      })),
+      db,
+      { replaceSources: ["entra_user", "entra_group"] }
+    );
+    console.log(`owner_directory: ${changed} users/groups available for autocomplete`);
+  } catch (error) {
+    console.error(`owner_directory: skipped: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 

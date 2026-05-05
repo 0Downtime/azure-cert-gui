@@ -8,7 +8,7 @@ import {
   normalizeKeyVaultSecrets,
   normalizeServicePrincipals
 } from "../src/lib/normalize";
-import { clearCoverageForSource, recordCoverage, upsertCredentials } from "../src/lib/repository";
+import { clearCoverageForSource, recordCoverage, upsertCredentials, upsertOwnerDirectory } from "../src/lib/repository";
 
 const verbose = process.argv.includes("--verbose");
 const fixtureRoot = join(process.cwd(), "fixtures");
@@ -37,6 +37,17 @@ const results = [
   const result = upsertCredentials(credentials, source, db);
   return { source, ...result };
 });
+
+upsertOwnerDirectory(
+  [...graphApps, ...servicePrincipals]
+    .filter((credential) => credential.ownerSignalSource === "entra_owner" && credential.ownerHint)
+    .map((credential) => ({
+      ownerName: credential.ownerHint ?? "",
+      ownerEmail: credential.ownerEmail,
+      source: "entra_owner"
+    })),
+  db
+);
 
 recordCoverage(
   {

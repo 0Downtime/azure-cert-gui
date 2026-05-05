@@ -174,6 +174,13 @@ export interface DashboardOwnerOverride {
   activeCredentialCount: number;
 }
 
+export interface DashboardOwnerSuggestion {
+  ownerName: string;
+  ownerEmail: string | null;
+  source: string;
+  lastSeenAt: string | null;
+}
+
 export type CoverageHealth = "ok" | "warning" | "failed" | "stale";
 
 export interface DashboardCoverage {

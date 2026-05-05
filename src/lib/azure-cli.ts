@@ -17,6 +17,7 @@ export interface AzureSyncConfig {
   subscriptionIds: string[];
   keyVaultResourceIds: string[];
   includeGraphOwners: boolean;
+  includeGraphOwnerDirectory: boolean;
   includeKeyVaultVersions: boolean;
 }
 
@@ -29,6 +30,27 @@ interface GraphOwnerRaw {
   displayName?: string | null;
   mail?: string | null;
   userPrincipalName?: string | null;
+}
+
+export interface GraphOwnerDirectoryEntry {
+  ownerName: string;
+  ownerEmail: string;
+  source: "entra_user" | "entra_group";
+}
+
+interface GraphUserRaw {
+  id?: string | null;
+  displayName?: string | null;
+  mail?: string | null;
+  userPrincipalName?: string | null;
+  accountEnabled?: boolean | null;
+}
+
+interface GraphGroupRaw {
+  id?: string | null;
+  displayName?: string | null;
+  mail?: string | null;
+  mailEnabled?: boolean | null;
 }
 
 interface GraphCredentialRaw {
@@ -103,6 +125,7 @@ export function azureSyncConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Az
     subscriptionIds: csv(env.AZURE_SUBSCRIPTION_IDS),
     keyVaultResourceIds: csv(env.AZURE_KEYVAULT_RESOURCE_IDS),
     includeGraphOwners: env.AZURE_GRAPH_INCLUDE_OWNERS !== "false",
+    includeGraphOwnerDirectory: env.AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY !== "false",
     includeKeyVaultVersions: env.AZURE_KEYVAULT_INCLUDE_VERSIONS === "true"
   };
 }
@@ -207,6 +230,29 @@ export async function collectServicePrincipals(
       keyCredentials: coerceGraphCredentials(principal.keyCredentials)
     }))
   );
+}
+
+export async function collectGraphOwnerDirectory(): Promise<GraphOwnerDirectoryEntry[]> {
+  const [users, groups] = await Promise.all([
+    graphList<GraphUserRaw>("/users?$select=id,displayName,mail,userPrincipalName,accountEnabled&$top=999"),
+    graphList<GraphGroupRaw>("/groups?$select=id,displayName,mail,mailEnabled&$top=999")
+  ]);
+  const userOwners = users
+    .filter((user) => user.accountEnabled !== false)
+    .flatMap((user): GraphOwnerDirectoryEntry[] => {
+      const ownerEmail = user.mail ?? user.userPrincipalName ?? null;
+      const ownerName = user.displayName ?? user.userPrincipalName ?? user.mail ?? user.id ?? "";
+      return ownerName && ownerEmail ? [{ ownerName, ownerEmail, source: "entra_user" }] : [];
+    });
+  const groupOwners = groups
+    .filter((group) => group.mailEnabled !== false && Boolean(group.mail))
+    .map((group) => ({
+      ownerName: group.displayName ?? group.mail ?? group.id ?? "",
+      ownerEmail: group.mail ?? "",
+      source: "entra_group" as const
+    }))
+    .filter((owner) => Boolean(owner.ownerName && owner.ownerEmail));
+  return [...userOwners, ...groupOwners];
 }
 
 async function graphOwners(entity: "applications" | "servicePrincipals", id: string): Promise<GraphOwnerInput[]> {

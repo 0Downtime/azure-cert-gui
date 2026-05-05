@@ -11,6 +11,7 @@ import {
   getRenewalCase,
   markRenewalValidated as validateRenewalCase,
   recordRenewalRotation,
+  resolveOwnerIdentity,
   updateStatus,
   updateRenewalCase as saveRenewalCase,
   upsertOwnerOverride,
@@ -44,15 +45,14 @@ export async function updateCredentialStatus(formData: FormData): Promise<void> 
 export async function saveOwnerOverride(formData: FormData): Promise<void> {
   const matchType = String(formData.get("matchType") ?? "") as OwnerMatchType;
   const matchValue = String(formData.get("matchValue") ?? "");
-  const ownerName = String(formData.get("ownerName") ?? "").trim();
-  const ownerEmail = String(formData.get("ownerEmail") ?? "").trim();
+  const owner = ownerFromForm(formData);
   const notes = String(formData.get("notes") ?? "").trim();
-  if (!VALID_MATCH_TYPES.includes(matchType) || !matchValue || !ownerName) return;
+  if (!VALID_MATCH_TYPES.includes(matchType) || !matchValue || !owner) return;
   upsertOwnerOverride({
     matchType,
     matchValue,
-    ownerName,
-    ownerEmail: ownerEmail || null,
+    ownerName: owner.ownerName,
+    ownerEmail: owner.ownerEmail,
     notes: notes || "Created from dashboard"
   });
   revalidatePath("/");
@@ -60,14 +60,13 @@ export async function saveOwnerOverride(formData: FormData): Promise<void> {
 
 export async function saveBulkOwnerOverride(formData: FormData): Promise<void> {
   const parentIds = formData.getAll("parentId").map((value) => String(value));
-  const ownerName = String(formData.get("ownerName") ?? "").trim();
-  const ownerEmail = String(formData.get("ownerEmail") ?? "").trim();
-  if (!parentIds.length || !ownerName) return;
+  const owner = ownerFromForm(formData);
+  if (!parentIds.length || !owner) return;
 
   upsertOwnerOverridesForParents({
     parentIds,
-    ownerName,
-    ownerEmail: ownerEmail || null,
+    ownerName: owner.ownerName,
+    ownerEmail: owner.ownerEmail,
     notes: "Bulk assigned from dashboard"
   });
   revalidatePath("/");
@@ -83,11 +82,12 @@ export async function deleteOwnerOverride(formData: FormData): Promise<void> {
 export async function createRenewalCase(formData: FormData): Promise<void> {
   const credentialItemId = Number(formData.get("credentialItemId"));
   if (!Number.isFinite(credentialItemId)) return;
+  const owner = ownerFromForm(formData);
   openRenewalCase({
     credentialItemId,
     dueAt: clean(formData.get("dueAt")),
-    ownerName: clean(formData.get("ownerName")),
-    ownerEmail: clean(formData.get("ownerEmail")),
+    ownerName: owner?.ownerName ?? clean(formData.get("ownerName")),
+    ownerEmail: owner?.ownerEmail ?? clean(formData.get("ownerEmail")),
     notes: clean(formData.get("notes")),
     reminderAt: clean(formData.get("reminderAt")),
     lastContactedAt: clean(formData.get("lastContactedAt")),
@@ -100,11 +100,12 @@ export async function createRenewalCase(formData: FormData): Promise<void> {
 export async function updateRenewalCase(formData: FormData): Promise<void> {
   const caseId = Number(formData.get("caseId"));
   if (!Number.isFinite(caseId)) return;
+  const owner = ownerFromForm(formData);
   saveRenewalCase({
     caseId,
     dueAt: clean(formData.get("dueAt")),
-    ownerName: clean(formData.get("ownerName")),
-    ownerEmail: clean(formData.get("ownerEmail")),
+    ownerName: owner?.ownerName ?? clean(formData.get("ownerName")),
+    ownerEmail: owner?.ownerEmail ?? clean(formData.get("ownerEmail")),
     notes: clean(formData.get("notes")),
     reminderAt: clean(formData.get("reminderAt")),
     lastContactedAt: clean(formData.get("lastContactedAt")),
@@ -184,6 +185,10 @@ export async function closeRenewalCase(formData: FormData): Promise<void> {
 function clean(value: FormDataEntryValue | null): string | null {
   const text = String(value ?? "").trim();
   return text || null;
+}
+
+function ownerFromForm(formData: FormData): { ownerName: string; ownerEmail: string | null } | null {
+  return resolveOwnerIdentity(clean(formData.get("ownerLookup")) ?? clean(formData.get("ownerName")));
 }
 
 function cleanHandoffStatus(value: FormDataEntryValue | null): RenewalHandoffStatus | null {

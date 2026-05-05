@@ -68,6 +68,14 @@ export function migrate(db = openDatabase()): void {
       FOREIGN KEY(credential_item_id) REFERENCES credential_items(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS owner_directory (
+      directory_key TEXT PRIMARY KEY,
+      owner_name TEXT NOT NULL,
+      owner_email TEXT,
+      source TEXT NOT NULL,
+      observed_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS sync_runs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       source TEXT NOT NULL,
@@ -147,6 +155,8 @@ export function migrate(db = openDatabase()): void {
     CREATE INDEX IF NOT EXISTS idx_credential_items_status ON credential_items(status);
     CREATE INDEX IF NOT EXISTS idx_credential_items_parent_name ON credential_items(parent_name);
     CREATE INDEX IF NOT EXISTS idx_owner_overrides_match ON owner_overrides(match_type, match_value);
+    CREATE INDEX IF NOT EXISTS idx_owner_directory_name ON owner_directory(owner_name);
+    CREATE INDEX IF NOT EXISTS idx_owner_directory_email ON owner_directory(owner_email);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_renewal_cases_active_credential
       ON renewal_cases(credential_item_id)
       WHERE closed_at IS NULL;

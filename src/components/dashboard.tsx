@@ -23,12 +23,13 @@ import {
   XCircle
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { type FormEvent, useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
 import type {
   CoverageHealth,
   DashboardCoverage,
   DashboardItem,
   DashboardOwnerOverride,
+  DashboardOwnerSuggestion,
   DashboardSummary,
   InventorySource,
   OwnerMatchType,
@@ -138,12 +139,14 @@ export function Dashboard({
   items,
   summary,
   coverage,
-  ownerOverrides
+  ownerOverrides,
+  ownerSuggestions
 }: {
   items: DashboardItem[];
   summary: DashboardSummary;
   coverage: DashboardCoverage[];
   ownerOverrides: DashboardOwnerOverride[];
+  ownerSuggestions: DashboardOwnerSuggestion[];
 }) {
   const dashboardRouter = useRouter();
   const [query, setQuery] = useState("");
@@ -855,8 +858,11 @@ export function Dashboard({
                 {selectedItems.map((item) => (
                   <input key={item.id} type="hidden" name="parentId" value={item.parentId} />
                 ))}
-                <input name="ownerName" placeholder="Owner for selected" aria-label="Owner for selected" />
-                <input name="ownerEmail" placeholder="email" aria-label="Owner email for selected" />
+                <OwnerAutocompleteInputs
+                  suggestions={ownerSuggestions}
+                  ownerPlaceholder="Owner for selected"
+                  ownerAriaLabel="Owner for selected"
+                />
                 <button type="submit" disabled={isPending}>
                   Assign owner
                 </button>
@@ -938,7 +944,7 @@ export function Dashboard({
           </button>
         </section>
         <OwnerGapList items={ownerGapItems} onOpen={(id) => setSelectedDetailId(id)} />
-        <OwnerDirectory ownerOverrides={ownerOverrides} onCopy={copyOwnerMappings} />
+        <OwnerDirectory ownerOverrides={ownerOverrides} ownerSuggestions={ownerSuggestions} onCopy={copyOwnerMappings} />
       </section>
 
       <section
@@ -987,6 +993,7 @@ export function Dashboard({
         <CredentialDetailDrawer
           item={selectedDetail}
           coverage={detailCoverage}
+          ownerSuggestions={ownerSuggestions}
           onClose={() => setSelectedDetailId(null)}
           onCopy={copyText}
         />
@@ -1007,11 +1014,13 @@ function AzureCertLogo() {
 function CredentialDetailDrawer({
   item,
   coverage,
+  ownerSuggestions,
   onClose,
   onCopy
 }: {
   item: DashboardItem;
   coverage: DashboardCoverage[];
+  ownerSuggestions: DashboardOwnerSuggestion[];
   onClose: () => void;
   onCopy: (title: string, text: string) => Promise<void>;
 }) {
@@ -1079,14 +1088,11 @@ function CredentialDetailDrawer({
         <form action={saveOwnerOverride} className="owner-detail-form">
           <input type="hidden" name="matchType" value="parent_id" />
           <input type="hidden" name="matchValue" value={item.parentId} />
-          <label>
-            <span>Owner</span>
-            <input name="ownerName" defaultValue={item.ownerName ?? ""} placeholder="Owner name" />
-          </label>
-          <label>
-            <span>Email</span>
-            <input name="ownerEmail" defaultValue={item.ownerEmail ?? ""} placeholder="owner@example.com" />
-          </label>
+          <OwnerAutocompleteFields
+            suggestions={ownerSuggestions}
+            defaultOwnerName={item.ownerName ?? ""}
+            defaultOwnerEmail={item.ownerEmail ?? ""}
+          />
           <button type="submit">Save owner</button>
         </form>
         <form action={updateCredentialStatus} className="status-detail-form">
@@ -1171,14 +1177,11 @@ function CredentialDetailDrawer({
                 <span>Due</span>
                 <input type="date" name="dueAt" defaultValue={dateInputValue(item.renewalCase.dueAt)} />
               </label>
-              <label>
-                <span>Owner</span>
-                <input name="ownerName" defaultValue={item.renewalCase.ownerName ?? ""} />
-              </label>
-              <label>
-                <span>Email</span>
-                <input name="ownerEmail" defaultValue={item.renewalCase.ownerEmail ?? ""} />
-              </label>
+              <OwnerAutocompleteFields
+                suggestions={ownerSuggestions}
+                defaultOwnerName={item.renewalCase.ownerName ?? ""}
+                defaultOwnerEmail={item.renewalCase.ownerEmail ?? ""}
+              />
               <label>
                 <span>Notes</span>
                 <input name="notes" defaultValue={item.renewalCase.notes ?? ""} />
@@ -1456,11 +1459,122 @@ function CodeValue({ value }: { value: string }) {
   return <code className="detail-code">{value}</code>;
 }
 
+function OwnerAutocompleteFields({
+  suggestions,
+  defaultOwnerName = "",
+  defaultOwnerEmail = "",
+  ownerPlaceholder = "Owner name or email"
+}: {
+  suggestions: DashboardOwnerSuggestion[];
+  defaultOwnerName?: string;
+  defaultOwnerEmail?: string;
+  ownerPlaceholder?: string;
+}) {
+  return (
+    <OwnerAutocompleteInputs
+      suggestions={suggestions}
+      defaultOwnerName={defaultOwnerName}
+      defaultOwnerEmail={defaultOwnerEmail}
+      ownerPlaceholder={ownerPlaceholder}
+      withLabels
+    />
+  );
+}
+
+function OwnerAutocompleteInputs({
+  suggestions,
+  defaultOwnerName = "",
+  defaultOwnerEmail = "",
+  ownerPlaceholder = "Owner name or email",
+  ownerAriaLabel,
+  withLabels = false
+}: {
+  suggestions: DashboardOwnerSuggestion[];
+  defaultOwnerName?: string;
+  defaultOwnerEmail?: string;
+  ownerPlaceholder?: string;
+  ownerAriaLabel?: string;
+  withLabels?: boolean;
+}) {
+  const datalistId = useId().replaceAll(":", "");
+  const defaultOwnerValue = defaultOwnerName || defaultOwnerEmail;
+  const [ownerLookup, setOwnerLookup] = useState(defaultOwnerValue);
+
+  useEffect(() => {
+    setOwnerLookup(defaultOwnerName || defaultOwnerEmail);
+  }, [defaultOwnerName, defaultOwnerEmail]);
+
+  const listId = `owner-identities-${datalistId}`;
+  const identityOptions = ownerIdentityOptions(suggestions);
+
+  const ownerInput = (
+    <input
+        name="ownerLookup"
+        value={ownerLookup}
+        onChange={(event) => setOwnerLookup(event.target.value)}
+        list={listId}
+        placeholder={ownerPlaceholder}
+        aria-label={ownerAriaLabel}
+        autoComplete="off"
+      />
+  );
+  const lists = (
+    <datalist id={listId}>
+        {identityOptions.map((option) => (
+          <option
+            key={`${option.value}:${option.label}`}
+            value={option.value}
+            label={option.label}
+          />
+        ))}
+      </datalist>
+  );
+
+  if (withLabels) {
+    return (
+      <>
+        <label>
+          <span>Owner</span>
+          {ownerInput}
+        </label>
+        {lists}
+      </>
+    );
+  }
+
+  return (
+    <>
+      {ownerInput}
+      {lists}
+    </>
+  );
+}
+
+function ownerIdentityOptions(suggestions: DashboardOwnerSuggestion[]): Array<{ value: string; label: string }> {
+  const seen = new Set<string>();
+  const options: Array<{ value: string; label: string }> = [];
+  for (const suggestion of suggestions) {
+    const entries = [
+      { value: suggestion.ownerName, label: suggestion.ownerEmail ?? suggestion.source },
+      ...(suggestion.ownerEmail ? [{ value: suggestion.ownerEmail, label: suggestion.ownerName }] : [])
+    ];
+    for (const entry of entries) {
+      const key = entry.value.toLowerCase();
+      if (!entry.value || seen.has(key)) continue;
+      seen.add(key);
+      options.push(entry);
+    }
+  }
+  return options;
+}
+
 function OwnerDirectory({
   ownerOverrides,
+  ownerSuggestions,
   onCopy
 }: {
   ownerOverrides: DashboardOwnerOverride[];
+  ownerSuggestions: DashboardOwnerSuggestion[];
   onCopy: () => void;
 }) {
   return (
@@ -1485,14 +1599,7 @@ function OwnerDirectory({
           <span>Value</span>
           <input name="matchValue" placeholder="Application ID, credential ID, app name, or vault name" />
         </label>
-        <label>
-          <span>Owner</span>
-          <input name="ownerName" placeholder="Owner name" />
-        </label>
-        <label>
-          <span>Email</span>
-          <input name="ownerEmail" placeholder="owner@example.com" />
-        </label>
+        <OwnerAutocompleteFields suggestions={ownerSuggestions} />
         <label>
           <span>Notes</span>
           <input name="notes" placeholder="Team, escalation, or renewal context" />

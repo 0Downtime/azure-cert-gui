@@ -6,6 +6,7 @@ import type {
   DashboardCoverage,
   DashboardItem,
   DashboardOwnerOverride,
+  DashboardOwnerSuggestion,
   DashboardStatusHistory,
   DashboardSummary,
   InventorySource,
@@ -544,6 +545,152 @@ export function listOwnerOverrides(db: DatabaseSync = openDatabase()): Dashboard
     updatedAt: String(row.updated_at),
     activeCredentialCount: Number(row.active_credential_count)
   }));
+}
+
+export function upsertOwnerDirectory(
+  owners: Array<{ ownerName: string; ownerEmail?: string | null; source?: string | null }>,
+  db: DatabaseSync = openDatabase(),
+  options: { replaceSources?: string[] } = {}
+): number {
+  migrate(db);
+  const timestamp = nowIso();
+  const upsert = db.prepare(
+    `
+    INSERT INTO owner_directory (directory_key, owner_name, owner_email, source, observed_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(directory_key) DO UPDATE SET
+      owner_name = excluded.owner_name,
+      owner_email = excluded.owner_email,
+      source = excluded.source,
+      observed_at = excluded.observed_at
+  `
+  );
+  const normalized = owners
+    .map((owner) => {
+      const ownerName = owner.ownerName.trim();
+      const ownerEmail = owner.ownerEmail?.trim() || null;
+      const directoryKey = (ownerEmail ?? ownerName).toLowerCase();
+      return ownerName && directoryKey
+        ? { directoryKey, ownerName, ownerEmail, source: owner.source?.trim() || "entra_user" }
+        : null;
+    })
+    .filter((owner): owner is { directoryKey: string; ownerName: string; ownerEmail: string | null; source: string } =>
+      Boolean(owner)
+    );
+
+  const replaceSources = [...new Set(options.replaceSources?.map((source) => source.trim()).filter(Boolean) ?? [])];
+  if (!normalized.length && !replaceSources.length) return 0;
+
+  try {
+    db.exec("BEGIN");
+    if (replaceSources.length) {
+      const placeholders = replaceSources.map(() => "?").join(", ");
+      db.prepare(`DELETE FROM owner_directory WHERE source IN (${placeholders})`).run(...replaceSources);
+    }
+    for (const owner of normalized) {
+      upsert.run(owner.directoryKey, owner.ownerName, owner.ownerEmail, owner.source, timestamp);
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+
+  return normalized.length;
+}
+
+export function listOwnerSuggestions(db: DatabaseSync = openDatabase(), limit = 500): DashboardOwnerSuggestion[] {
+  migrate(db);
+  const rows = db
+    .prepare(
+      `
+      SELECT owner_name, owner_email, source, observed_at, priority
+      FROM (
+        SELECT owner_name, owner_email, source, observed_at, 3 AS priority
+        FROM owner_directory
+        UNION ALL
+        SELECT owner_name, owner_email, 'manual_override' AS source, updated_at AS observed_at, 2 AS priority
+        FROM owner_overrides
+        UNION ALL
+        SELECT
+          COALESCE(NULLIF(owner_name, ''), owner_email) AS owner_name,
+          owner_email,
+          source,
+          observed_at,
+          1 AS priority
+        FROM owner_signals
+        WHERE source = 'entra_owner'
+      )
+      WHERE owner_name IS NOT NULL
+        AND owner_name <> ''
+      ORDER BY priority DESC, owner_name COLLATE NOCASE ASC, owner_email COLLATE NOCASE ASC
+    `
+    )
+    .all() as Array<Record<string, unknown>>;
+
+  const suggestions: DashboardOwnerSuggestion[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const ownerName = String(row.owner_name).trim();
+    const ownerEmail = typeof row.owner_email === "string" && row.owner_email.trim() ? row.owner_email.trim() : null;
+    const key = (ownerEmail ?? ownerName).toLowerCase();
+    if (!ownerName || seen.has(key)) continue;
+    seen.add(key);
+    suggestions.push({
+      ownerName,
+      ownerEmail,
+      source: String(row.source),
+      lastSeenAt: row.observed_at as string | null
+    });
+    if (suggestions.length >= limit) break;
+  }
+  return suggestions;
+}
+
+export function resolveOwnerIdentity(
+  value: string | null | undefined,
+  db: DatabaseSync = openDatabase()
+): { ownerName: string; ownerEmail: string | null } | null {
+  migrate(db);
+  const text = value?.trim();
+  if (!text) return null;
+  const emailLike = looksLikeEmail(text);
+  const row = db
+    .prepare(
+      `
+      SELECT owner_name, owner_email
+      FROM (
+        SELECT owner_name, owner_email, 3 AS priority
+        FROM owner_directory
+        UNION ALL
+        SELECT owner_name, owner_email, 2 AS priority
+        FROM owner_overrides
+        UNION ALL
+        SELECT owner_name, owner_email, 1 AS priority
+        FROM owner_signals
+        WHERE source = 'entra_owner'
+      )
+      WHERE lower(owner_name) = lower(?)
+         OR (owner_email IS NOT NULL AND lower(owner_email) = lower(?))
+      ORDER BY priority DESC, owner_email IS NULL ASC
+      LIMIT 1
+    `
+    )
+    .get(text, text) as { owner_name: string; owner_email: string | null } | undefined;
+  if (row) {
+    return {
+      ownerName: row.owner_name,
+      ownerEmail: row.owner_email
+    };
+  }
+  return {
+    ownerName: text,
+    ownerEmail: emailLike ? text : null
+  };
+}
+
+function looksLikeEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
 function coverageHealth(reachable: boolean, itemsSkipped: number, lastAttemptAt: string): DashboardCoverage["health"] {
