@@ -21,6 +21,7 @@ const MAX_LOG_LINES = 80;
 export const MIN_REFRESH_INTERVAL_MINUTES = 5;
 export const MAX_REFRESH_INTERVAL_MINUTES = 24 * 60;
 const DEFAULT_REFRESH_INTERVAL_MINUTES = 60;
+const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 
 function initialState(): RefreshState {
   return {
@@ -150,9 +151,9 @@ export function startAzureRefresh(): RefreshRunStatus {
   current.startedAt = new Date().toISOString();
   current.finishedAt = null;
   current.exitCode = null;
-  current.logs = ["Starting npm run sync:azure -- --verbose"];
+  current.logs = [`Starting ${npmCommand} run sync:azure -- --verbose`];
 
-  const child = spawn("npm", ["run", "sync:azure", "--", "--verbose"], {
+  const child = spawn(npmCommand, ["run", "sync:azure", "--", "--verbose"], {
     cwd: process.cwd(),
     env: process.env,
     stdio: ["ignore", "pipe", "pipe"]
