@@ -227,3 +227,10 @@ export interface DashboardAuthState {
   signInPath: string;
   signOutPath: string;
 }
+
+export interface AuthActor {
+  username: string;
+  displayName: string | null;
+  source: "local" | "oidc";
+  accessLevel: AuthAccessLevel;
+}

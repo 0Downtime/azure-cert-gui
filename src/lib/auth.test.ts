@@ -1,4 +1,10 @@
-import { authOptionsFromEnv, resolveAccessLevel, resolveOidcRoles, validateAuthConfiguration } from "./auth";
+import {
+  authOptionsFromEnv,
+  isLiveRotationEnabled,
+  resolveAccessLevel,
+  resolveOidcRoles,
+  validateAuthConfiguration
+} from "./auth";
 
 describe("auth configuration", () => {
   it("parses SyncFactors-style OIDC role group arrays with the Azure Cert GUI prefix", () => {
@@ -43,5 +49,11 @@ describe("auth configuration", () => {
     });
 
     expect(() => validateAuthConfiguration(options)).toThrow(/ViewerGroups, OperatorGroups, or AdminGroups/);
+  });
+
+  it("requires an explicit opt-in flag for live Azure rotations", () => {
+    expect(isLiveRotationEnabled({})).toBe(false);
+    expect(isLiveRotationEnabled({ AZURE_CERT_GUI__ROTATION__LIVEENABLED: "false" })).toBe(false);
+    expect(isLiveRotationEnabled({ AZURE_CERT_GUI__ROTATION__LIVEENABLED: "true" })).toBe(true);
   });
 });

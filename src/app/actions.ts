@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import type { OwnerMatchType, RenewalHandoffStatus, WorkflowStatus } from "@/types";
 import { executeAzureRotation as rotateInAzure } from "@/lib/azure-rotation";
-import { AuthError, requireOperatorAccess } from "@/lib/auth";
+import { AuthError, isLiveRotationEnabled, requireOperatorAccess } from "@/lib/auth";
 import {
   closeRenewalCase as closeCase,
   createRenewalCase as openRenewalCase,
@@ -36,16 +36,16 @@ const VALID_HANDOFF_STATUSES: RenewalHandoffStatus[] = [
 ];
 
 export async function updateCredentialStatus(formData: FormData): Promise<void> {
-  await requireOperatorAccess();
+  const actor = await requireOperatorAccess();
   const id = Number(formData.get("id"));
   const status = formData.get("status") as WorkflowStatus;
   if (!Number.isFinite(id) || !VALID_STATUSES.includes(status)) return;
-  updateStatus(id, status);
+  updateStatus(id, status, "Updated from dashboard", actor);
   revalidatePath("/");
 }
 
 export async function saveOwnerOverride(formData: FormData): Promise<void> {
-  await requireOperatorAccess();
+  const actor = await requireOperatorAccess();
   const matchType = String(formData.get("matchType") ?? "") as OwnerMatchType;
   const matchValue = String(formData.get("matchValue") ?? "");
   const owner = ownerFromForm(formData);
@@ -56,13 +56,13 @@ export async function saveOwnerOverride(formData: FormData): Promise<void> {
     matchValue,
     ownerName: owner.ownerName,
     ownerEmail: owner.ownerEmail,
-    notes: notes || "Created from dashboard"
+    notes: notes || `Created from dashboard by ${actor.username}`
   });
   revalidatePath("/");
 }
 
 export async function saveBulkOwnerOverride(formData: FormData): Promise<void> {
-  await requireOperatorAccess();
+  const actor = await requireOperatorAccess();
   const parentIds = formData.getAll("parentId").map((value) => String(value));
   const owner = ownerFromForm(formData);
   if (!parentIds.length || !owner) return;
@@ -71,7 +71,7 @@ export async function saveBulkOwnerOverride(formData: FormData): Promise<void> {
     parentIds,
     ownerName: owner.ownerName,
     ownerEmail: owner.ownerEmail,
-    notes: "Bulk assigned from dashboard"
+    notes: `Bulk assigned from dashboard by ${actor.username}`
   });
   revalidatePath("/");
 }
@@ -85,7 +85,7 @@ export async function deleteOwnerOverride(formData: FormData): Promise<void> {
 }
 
 export async function createRenewalCase(formData: FormData): Promise<void> {
-  await requireOperatorAccess();
+  const actor = await requireOperatorAccess();
   const credentialItemId = Number(formData.get("credentialItemId"));
   if (!Number.isFinite(credentialItemId)) return;
   const owner = ownerFromForm(formData);
@@ -98,13 +98,14 @@ export async function createRenewalCase(formData: FormData): Promise<void> {
     reminderAt: clean(formData.get("reminderAt")),
     lastContactedAt: clean(formData.get("lastContactedAt")),
     escalationOwner: clean(formData.get("escalationOwner")),
-    handoffStatus: cleanHandoffStatus(formData.get("handoffStatus"))
+    handoffStatus: cleanHandoffStatus(formData.get("handoffStatus")),
+    actor
   });
   revalidatePath("/");
 }
 
 export async function updateRenewalCase(formData: FormData): Promise<void> {
-  await requireOperatorAccess();
+  const actor = await requireOperatorAccess();
   const caseId = Number(formData.get("caseId"));
   if (!Number.isFinite(caseId)) return;
   const owner = ownerFromForm(formData);
@@ -119,7 +120,8 @@ export async function updateRenewalCase(formData: FormData): Promise<void> {
     escalationOwner: clean(formData.get("escalationOwner")),
     handoffStatus: cleanHandoffStatus(formData.get("handoffStatus")),
     keyVaultCopyVaultName: clean(formData.get("keyVaultCopyVaultName")),
-    keyVaultCopySecretName: clean(formData.get("keyVaultCopySecretName"))
+    keyVaultCopySecretName: clean(formData.get("keyVaultCopySecretName")),
+    actor
   });
   revalidatePath("/");
 }
@@ -131,7 +133,7 @@ export async function executeRenewalRotation(formData: FormData): Promise<{
   dryRun: boolean;
 }> {
   try {
-    await requireOperatorAccess();
+    const actor = await requireOperatorAccess();
     const caseId = Number(formData.get("caseId"));
     if (!Number.isFinite(caseId)) {
       return { ok: false, message: "Missing renewal case", oneTimeSecretValue: null, dryRun: false };
@@ -140,6 +142,16 @@ export async function executeRenewalRotation(formData: FormData): Promise<{
     const item = getCredentialForRenewal(renewalCase.credentialItemId);
     if (!item) {
       return { ok: false, message: "Credential is no longer active", oneTimeSecretValue: null, dryRun: false };
+    }
+
+    const dryRun = formData.get("dryRun") === "on";
+    if (!dryRun && !isLiveRotationEnabled()) {
+      return {
+        ok: false,
+        message: "Live Azure rotation is disabled. Set AZURE_CERT_GUI__ROTATION__LIVEENABLED=true to allow non-dry-run mutations.",
+        oneTimeSecretValue: null,
+        dryRun: false
+      };
     }
 
     const result = await rotateInAzure({
@@ -151,7 +163,7 @@ export async function executeRenewalRotation(formData: FormData): Promise<{
       replacementExpiresAt: clean(formData.get("replacementExpiresAt")),
       keyVaultCopyVaultName: clean(formData.get("keyVaultCopyVaultName")),
       keyVaultCopySecretName: clean(formData.get("keyVaultCopySecretName")),
-      dryRun: formData.get("dryRun") === "on"
+      dryRun
     });
     if (!result.dryRun) {
       recordRenewalRotation({
@@ -161,7 +173,8 @@ export async function executeRenewalRotation(formData: FormData): Promise<{
         keyVaultCopyVaultName: result.keyVaultCopyVaultName,
         keyVaultCopySecretName: result.keyVaultCopySecretName,
         note: result.summary,
-        details: result.details
+        details: result.details,
+        actor
       });
     }
     revalidatePath("/");
@@ -182,18 +195,18 @@ export async function executeRenewalRotation(formData: FormData): Promise<{
 }
 
 export async function markRenewalValidated(formData: FormData): Promise<void> {
-  await requireOperatorAccess();
+  const actor = await requireOperatorAccess();
   const caseId = Number(formData.get("caseId"));
   if (!Number.isFinite(caseId)) return;
-  validateRenewalCase(caseId, clean(formData.get("note")) ?? "Replacement validated");
+  validateRenewalCase(caseId, clean(formData.get("note")) ?? "Replacement validated", actor);
   revalidatePath("/");
 }
 
 export async function closeRenewalCase(formData: FormData): Promise<void> {
-  await requireOperatorAccess();
+  const actor = await requireOperatorAccess();
   const caseId = Number(formData.get("caseId"));
   if (!Number.isFinite(caseId)) return;
-  closeCase(caseId, clean(formData.get("note")) ?? "Renewal case closed");
+  closeCase(caseId, clean(formData.get("note")) ?? "Renewal case closed", actor);
   revalidatePath("/");
 }
 

@@ -3,7 +3,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { NextRequest, NextResponse } from "next/server";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
-import type { AuthAccessLevel, AuthRole, DashboardAuthState } from "@/types";
+import type { AuthAccessLevel, AuthActor, AuthRole, DashboardAuthState } from "@/types";
 
 const COOKIE_NAME = "AzureCertGui.Auth";
 const OIDC_STATE_COOKIE = "AzureCertGui.OidcState";
@@ -141,7 +141,7 @@ export async function requirePageViewerAccess(): Promise<DashboardAuthState> {
   redirect("/api/auth/login");
 }
 
-export async function requireOperatorAccess(): Promise<void> {
+export async function requireOperatorAccess(): Promise<AuthActor> {
   const context = await getCurrentAuthContext();
   const requestHeaders = await headers();
   if (!isSameOriginMutation(requestHeaders)) {
@@ -150,9 +150,10 @@ export async function requireOperatorAccess(): Promise<void> {
   if (!canOperate(context)) {
     throw new AuthError(context ? 403 : 401, "OperatorAccessRequired");
   }
+  return toAuthActor(context);
 }
 
-export async function requireOperatorAccessForRequest(request: NextRequest): Promise<void> {
+export async function requireOperatorAccessForRequest(request: NextRequest): Promise<AuthActor> {
   const context = await getCurrentAuthContextForRequest(request);
   if (!isSameOriginMutation(request.headers)) {
     throw new AuthError(403, "MutationOriginMismatch");
@@ -160,6 +161,7 @@ export async function requireOperatorAccessForRequest(request: NextRequest): Pro
   if (!canOperate(context)) {
     throw new AuthError(context ? 403 : 401, "OperatorAccessRequired");
   }
+  return toAuthActor(context);
 }
 
 export async function requireViewerAccessForRequest(request: NextRequest): Promise<void> {
@@ -289,6 +291,10 @@ export function clearAuthCookies(response: NextResponse): void {
 export const authCookieName = COOKIE_NAME;
 export const oidcStateCookieName = OIDC_STATE_COOKIE;
 
+export function isLiveRotationEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return env.AZURE_CERT_GUI__ROTATION__LIVEENABLED === "true";
+}
+
 async function getCurrentAuthContext(): Promise<AuthSession | null> {
   const options = authOptionsFromEnv();
   validateAuthConfiguration(options);
@@ -330,6 +336,15 @@ function toDashboardAuthState(session: AuthSession): DashboardAuthState {
     canOperate: canOperate(session),
     signInPath: "/api/auth/login",
     signOutPath: "/api/auth/logout"
+  };
+}
+
+function toAuthActor(session: AuthSession): AuthActor {
+  return {
+    username: session.username,
+    displayName: session.displayName,
+    source: session.authSource,
+    accessLevel: resolveAccessLevel(session.roles)
   };
 }
 

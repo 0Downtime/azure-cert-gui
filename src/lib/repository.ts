@@ -3,6 +3,7 @@ import { migrate, openDatabase } from "./db";
 import { daysUntilExpiry, riskBucket } from "./risk";
 import { classifyRotation, isRenewalActionable } from "./rotation";
 import type {
+  AuthActor,
   DashboardCoverage,
   DashboardItem,
   DashboardOwnerOverride,
@@ -20,8 +21,17 @@ import type {
 } from "@/types";
 import { assertNoSecretValueFields } from "./secret-guard";
 
+const DEFAULT_ACTOR = "operator";
+
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function actorLabel(actor?: AuthActor | string | null): string {
+  if (!actor) return DEFAULT_ACTOR;
+  if (typeof actor === "string") return actor.trim() || DEFAULT_ACTOR;
+  const label = actor.displayName && actor.displayName !== actor.username ? `${actor.displayName} <${actor.username}>` : actor.username;
+  return `${label} (${actor.source}:${actor.accessLevel})`;
 }
 
 export function upsertCredentials(
@@ -701,12 +711,17 @@ function coverageHealth(reachable: boolean, itemsSkipped: number, lastAttemptAt:
   return "ok";
 }
 
-export function updateStatus(id: number, toStatus: WorkflowStatus, note = "Updated from dashboard"): void {
+export function updateStatus(
+  id: number,
+  toStatus: WorkflowStatus,
+  note = "Updated from dashboard",
+  actor?: AuthActor | string | null
+): void {
   const db = openDatabase();
   migrate(db);
   try {
     db.exec("BEGIN");
-    updateStatusInTransaction(db, id, toStatus, note);
+    updateStatusInTransaction(db, id, toStatus, note, actorLabel(actor));
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
@@ -714,7 +729,13 @@ export function updateStatus(id: number, toStatus: WorkflowStatus, note = "Updat
   }
 }
 
-function updateStatusInTransaction(db: DatabaseSync, id: number, toStatus: WorkflowStatus, note: string): void {
+function updateStatusInTransaction(
+  db: DatabaseSync,
+  id: number,
+  toStatus: WorkflowStatus,
+  note: string,
+  actor = DEFAULT_ACTOR
+): void {
   const existing = db.prepare("SELECT status FROM credential_items WHERE id = ?").get(id) as
     | { status: WorkflowStatus }
     | undefined;
@@ -722,8 +743,8 @@ function updateStatusInTransaction(db: DatabaseSync, id: number, toStatus: Workf
   const timestamp = nowIso();
   db.prepare("UPDATE credential_items SET status = ? WHERE id = ?").run(toStatus, id);
   db.prepare(
-    "INSERT INTO status_history (credential_item_id, from_status, to_status, note, changed_at, changed_by) VALUES (?, ?, ?, ?, ?, 'operator')"
-  ).run(id, existing.status, toStatus, note, timestamp);
+    "INSERT INTO status_history (credential_item_id, from_status, to_status, note, changed_at, changed_by) VALUES (?, ?, ?, ?, ?, ?)"
+  ).run(id, existing.status, toStatus, note, timestamp, actor);
 }
 
 export function createRenewalCase(input: {
@@ -736,6 +757,7 @@ export function createRenewalCase(input: {
   lastContactedAt?: string | null;
   escalationOwner?: string | null;
   handoffStatus?: RenewalHandoffStatus | null;
+  actor?: AuthActor | string | null;
 }): RenewalCase {
   const db = openDatabase();
   migrate(db);
@@ -765,11 +787,18 @@ export function createRenewalCase(input: {
         timestamp,
         caseId
       );
-      appendRenewalEventInTransaction(db, caseId, "case_updated", "Renewal case updated", {
-        dueAt: input.dueAt ?? null,
-        ownerName: input.ownerName ?? null,
-        handoffStatus: input.handoffStatus ?? null
-      });
+      appendRenewalEventInTransaction(
+        db,
+        caseId,
+        "case_updated",
+        "Renewal case updated",
+        {
+          dueAt: input.dueAt ?? null,
+          ownerName: input.ownerName ?? null,
+          handoffStatus: input.handoffStatus ?? null
+        },
+        actorLabel(input.actor)
+      );
     } else {
       const result = db
         .prepare(
@@ -794,13 +823,20 @@ export function createRenewalCase(input: {
           timestamp
         );
       caseId = Number(result.lastInsertRowid);
-      appendRenewalEventInTransaction(db, caseId, "case_created", "Renewal case opened", {
-        dueAt: input.dueAt ?? null,
-        ownerName: input.ownerName ?? null,
-        handoffStatus: input.handoffStatus ?? "not_contacted"
-      });
+      appendRenewalEventInTransaction(
+        db,
+        caseId,
+        "case_created",
+        "Renewal case opened",
+        {
+          dueAt: input.dueAt ?? null,
+          ownerName: input.ownerName ?? null,
+          handoffStatus: input.handoffStatus ?? "not_contacted"
+        },
+        actorLabel(input.actor)
+      );
     }
-    updateStatusInTransaction(db, input.credentialItemId, "owner_contacted", "Renewal case opened");
+    updateStatusInTransaction(db, input.credentialItemId, "owner_contacted", "Renewal case opened", actorLabel(input.actor));
     db.exec("COMMIT");
     return getRenewalCase(caseId, db);
   } catch (error) {
@@ -821,6 +857,7 @@ export function updateRenewalCase(input: {
   handoffStatus?: RenewalHandoffStatus | null;
   keyVaultCopyVaultName?: string | null;
   keyVaultCopySecretName?: string | null;
+  actor?: AuthActor | string | null;
 }): RenewalCase {
   const db = openDatabase();
   migrate(db);
@@ -850,16 +887,23 @@ export function updateRenewalCase(input: {
       timestamp,
       input.caseId
     );
-    appendRenewalEventInTransaction(db, input.caseId, "case_updated", "Renewal case updated", {
-      dueAt: input.dueAt ?? existing.dueAt,
-      ownerName: input.ownerName ?? existing.ownerName,
-      reminderAt: input.reminderAt ?? existing.reminderAt,
-      lastContactedAt: input.lastContactedAt ?? existing.lastContactedAt,
-      escalationOwner: input.escalationOwner ?? existing.escalationOwner,
-      handoffStatus: input.handoffStatus ?? existing.handoffStatus,
-      keyVaultCopyVaultName: input.keyVaultCopyVaultName ?? existing.keyVaultCopyVaultName,
-      keyVaultCopySecretName: input.keyVaultCopySecretName ?? existing.keyVaultCopySecretName
-    });
+    appendRenewalEventInTransaction(
+      db,
+      input.caseId,
+      "case_updated",
+      "Renewal case updated",
+      {
+        dueAt: input.dueAt ?? existing.dueAt,
+        ownerName: input.ownerName ?? existing.ownerName,
+        reminderAt: input.reminderAt ?? existing.reminderAt,
+        lastContactedAt: input.lastContactedAt ?? existing.lastContactedAt,
+        escalationOwner: input.escalationOwner ?? existing.escalationOwner,
+        handoffStatus: input.handoffStatus ?? existing.handoffStatus,
+        keyVaultCopyVaultName: input.keyVaultCopyVaultName ?? existing.keyVaultCopyVaultName,
+        keyVaultCopySecretName: input.keyVaultCopySecretName ?? existing.keyVaultCopySecretName
+      },
+      actorLabel(input.actor)
+    );
     db.exec("COMMIT");
     return getRenewalCase(input.caseId, db);
   } catch (error) {
@@ -876,6 +920,7 @@ export function recordRenewalRotation(input: {
   keyVaultCopySecretName?: string | null;
   note?: string | null;
   details?: Record<string, string | number | boolean | null>;
+  actor?: AuthActor | string | null;
 }): RenewalCase {
   const db = openDatabase();
   migrate(db);
@@ -902,14 +947,27 @@ export function recordRenewalRotation(input: {
       timestamp,
       input.caseId
     );
-    appendRenewalEventInTransaction(db, input.caseId, "rotation_executed", input.note ?? "Replacement created", {
-      replacementCredentialId: input.replacementCredentialId ?? null,
-      replacementExpiresAt: input.replacementExpiresAt ?? null,
-      keyVaultCopyVaultName: input.keyVaultCopyVaultName ?? null,
-      keyVaultCopySecretName: input.keyVaultCopySecretName ?? null,
-      ...(input.details ?? {})
-    });
-    updateStatusInTransaction(db, existing.credentialItemId, "rotation_scheduled", "Replacement created; pending validation");
+    appendRenewalEventInTransaction(
+      db,
+      input.caseId,
+      "rotation_executed",
+      input.note ?? "Replacement created",
+      {
+        replacementCredentialId: input.replacementCredentialId ?? null,
+        replacementExpiresAt: input.replacementExpiresAt ?? null,
+        keyVaultCopyVaultName: input.keyVaultCopyVaultName ?? null,
+        keyVaultCopySecretName: input.keyVaultCopySecretName ?? null,
+        ...(input.details ?? {})
+      },
+      actorLabel(input.actor)
+    );
+    updateStatusInTransaction(
+      db,
+      existing.credentialItemId,
+      "rotation_scheduled",
+      "Replacement created; pending validation",
+      actorLabel(input.actor)
+    );
     db.exec("COMMIT");
     return getRenewalCase(input.caseId, db);
   } catch (error) {
@@ -918,7 +976,11 @@ export function recordRenewalRotation(input: {
   }
 }
 
-export function markRenewalValidated(caseId: number, note = "Replacement validated"): RenewalCase {
+export function markRenewalValidated(
+  caseId: number,
+  note = "Replacement validated",
+  actor?: AuthActor | string | null
+): RenewalCase {
   const db = openDatabase();
   migrate(db);
   const existing = getRenewalCase(caseId, db);
@@ -926,8 +988,8 @@ export function markRenewalValidated(caseId: number, note = "Replacement validat
   try {
     db.exec("BEGIN");
     db.prepare("UPDATE renewal_cases SET status = 'validated', updated_at = ? WHERE id = ?").run(timestamp, caseId);
-    appendRenewalEventInTransaction(db, caseId, "validated", note, {});
-    updateStatusInTransaction(db, existing.credentialItemId, "rotated", "Replacement validated");
+    appendRenewalEventInTransaction(db, caseId, "validated", note, {}, actorLabel(actor));
+    updateStatusInTransaction(db, existing.credentialItemId, "rotated", "Replacement validated", actorLabel(actor));
     db.exec("COMMIT");
     return getRenewalCase(caseId, db);
   } catch (error) {
@@ -936,7 +998,11 @@ export function markRenewalValidated(caseId: number, note = "Replacement validat
   }
 }
 
-export function closeRenewalCase(caseId: number, note = "Renewal case closed"): RenewalCase {
+export function closeRenewalCase(
+  caseId: number,
+  note = "Renewal case closed",
+  actor?: AuthActor | string | null
+): RenewalCase {
   const db = openDatabase();
   migrate(db);
   const existing = getRenewalCase(caseId, db);
@@ -948,8 +1014,8 @@ export function closeRenewalCase(caseId: number, note = "Renewal case closed"): 
       timestamp,
       caseId
     );
-    appendRenewalEventInTransaction(db, caseId, "closed", note, {});
-    updateStatusInTransaction(db, existing.credentialItemId, "rotated", "Renewal case closed");
+    appendRenewalEventInTransaction(db, caseId, "closed", note, {}, actorLabel(actor));
+    updateStatusInTransaction(db, existing.credentialItemId, "rotated", "Renewal case closed", actorLabel(actor));
     db.exec("COMMIT");
     return getRenewalCase(caseId, db, true);
   } catch (error) {
@@ -996,16 +1062,17 @@ function appendRenewalEventInTransaction(
   renewalCaseId: number,
   eventType: RenewalEventType,
   note: string | null,
-  details: Record<string, string | number | boolean | null>
+  details: Record<string, string | number | boolean | null>,
+  actor = DEFAULT_ACTOR
 ): void {
   assertNoSecretValueFields({ note, details }, "renewalEvent");
   const timestamp = nowIso();
   db.prepare(
     `
     INSERT INTO renewal_events (renewal_case_id, event_type, note, details_json, created_at, created_by)
-    VALUES (?, ?, ?, ?, ?, 'operator')
+    VALUES (?, ?, ?, ?, ?, ?)
   `
-  ).run(renewalCaseId, eventType, note, JSON.stringify(details), timestamp);
+  ).run(renewalCaseId, eventType, note, JSON.stringify(details), timestamp, actor);
 }
 
 export function upsertOwnerOverride(input: {

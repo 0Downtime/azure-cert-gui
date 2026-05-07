@@ -87,6 +87,8 @@ The app is not a general hosted service and does not include centralized secret 
 
 The default `local` auth mode is intended for `localhost` / `127.0.0.1` development only. Use `oidc` before exposing the UI beyond a trusted local browser session.
 
+Live Azure rotations are disabled by default even for Operators. Dry-run previews remain available, but non-dry-run rotations require `AZURE_CERT_GUI__ROTATION__LIVEENABLED=true`.
+
 ## Local Development
 
 Install dependencies once:
@@ -239,6 +241,7 @@ Role behavior:
 - Operator can refresh Azure metadata, update workflow state, manage owners, and execute renewal rotations.
 - Admin inherits Operator and Viewer access.
 - Users with no configured group match are denied instead of falling back to Viewer.
+- Live Azure rotation mutations also require `AZURE_CERT_GUI__ROTATION__LIVEENABLED=true`; dry runs remain available without that flag.
 
 Optional session settings:
 
@@ -247,6 +250,7 @@ AZURE_CERT_GUI__AUTH__IDLETIMEOUTMINUTES=480
 AZURE_CERT_GUI__AUTH__ABSOLUTESESSIONHOURS=168
 AZURE_CERT_GUI__AUTH__COOKIESECRET=<32+ random bytes>
 AZURE_CERT_GUI__AUTH__OIDC__ROLESCLAIMTYPE=groups
+AZURE_CERT_GUI__ROTATION__LIVEENABLED=false
 ```
 
 ## Configuration
@@ -269,3 +273,4 @@ Supported environment values:
 - `AZURE_CERT_GUI__AUTH__OIDC__CLIENTID`: app registration client ID.
 - `AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET`: app registration client secret. Use a secure store in real deployments.
 - `AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS__0`, `OPERATORGROUPS__0`, `ADMINGROUPS__0`: Entra group object IDs mapped to app roles.
+- `AZURE_CERT_GUI__ROTATION__LIVEENABLED`: defaults to `false`. Set `true` only when Operators should be allowed to perform non-dry-run Azure mutations.

@@ -52,7 +52,13 @@ describe("renewal cases", () => {
       reminderAt: "2026-05-15",
       lastContactedAt: "2026-05-10",
       escalationOwner: "Security Ops",
-      handoffStatus: "waiting_on_owner"
+      handoffStatus: "waiting_on_owner",
+      actor: {
+        username: "operator@example.com",
+        displayName: "Test Operator",
+        source: "oidc",
+        accessLevel: "Operator"
+      }
     });
 
     const [item] = listDashboardItems();
@@ -62,6 +68,8 @@ describe("renewal cases", () => {
     expect(renewalCase.escalationOwner).toBe("Security Ops");
     expect(item.status).toBe("owner_contacted");
     expect(item.renewalCase?.events[0].eventType).toBe("case_created");
+    expect(item.renewalCase?.events[0].createdBy).toBe("Test Operator <operator@example.com> (oidc:Operator)");
+    expect(item.statusHistory[0].changedBy).toBe("Test Operator <operator@example.com> (oidc:Operator)");
   });
 
   it("records replacement metadata without storing secret values", () => {
@@ -73,13 +81,20 @@ describe("renewal cases", () => {
       caseId: renewalCase.id,
       replacementCredentialId: "new-key-id",
       replacementExpiresAt: "2027-01-01T00:00:00Z",
-      details: { operation: "graph.addPassword" }
+      details: { operation: "graph.addPassword" },
+      actor: {
+        username: "operator@example.com",
+        displayName: null,
+        source: "oidc",
+        accessLevel: "Operator"
+      }
     });
     const [item] = listDashboardItems();
 
     expect(item.status).toBe("rotation_scheduled");
     expect(item.renewalCase?.replacementCredentialId).toBe("new-key-id");
     expect(item.renewalCase?.events[0].details).toMatchObject({ operation: "graph.addPassword" });
+    expect(item.renewalCase?.events[0].createdBy).toBe("operator@example.com (oidc:Operator)");
   });
 
   it("rejects secret-bearing renewal event details", () => {
