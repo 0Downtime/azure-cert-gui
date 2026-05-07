@@ -53,11 +53,16 @@ function Test-IsMacOS {
   return [bool]($isMac -and $isMac.Value)
 }
 
+function Test-IsLinux {
+  $isLinux = Get-Variable -Name IsLinux -Scope Global -ErrorAction SilentlyContinue
+  return [bool]($isLinux -and $isLinux.Value)
+}
+
 function Assert-SupportedPlatform {
-  if ((Test-IsWindows) -or (Test-IsMacOS)) {
+  if ((Test-IsWindows) -or (Test-IsMacOS) -or (Test-IsLinux)) {
     return
   }
-  throw "This bootstrap script supports Windows Server and macOS. Install Node.js $NodeMajorVersion and Azure CLI manually, then re-run with -SkipSystemDependencies on this platform."
+  throw "This bootstrap script supports Windows Server, macOS, and common Linux server distributions. Install Node.js $NodeMajorVersion and Azure CLI manually, then re-run with -SkipSystemDependencies on this platform."
 }
 
 function Test-IsAdministrator {
@@ -79,7 +84,10 @@ function Update-ProcessPath {
       "/opt/homebrew/opt/node@$NodeMajorVersion/bin",
       "/usr/local/opt/node@$NodeMajorVersion/bin",
       "/opt/homebrew/bin",
-      "/usr/local/bin"
+      "/usr/local/bin",
+      "/usr/bin",
+      "/bin",
+      "/snap/bin"
     )
     foreach ($candidatePath in $candidatePaths) {
       if ((Test-Path $candidatePath) -and (($env:Path -split ":") -notcontains $candidatePath)) {
@@ -157,6 +165,156 @@ function Invoke-Brew {
   Update-ProcessPath
 }
 
+function Invoke-Privileged {
+  param(
+    [string]$Command,
+    [string[]]$Arguments
+  )
+
+  if (-not (Test-IsLinux)) {
+    Invoke-Checked -Command $Command -Arguments $Arguments
+    return
+  }
+
+  $id = Get-ExecutablePath @("id")
+  $isRoot = $false
+  if ($id) {
+    $uid = & $id -u
+    $isRoot = ($LASTEXITCODE -eq 0 -and [string]$uid -eq "0")
+  }
+
+  if ($isRoot) {
+    Invoke-Checked -Command $Command -Arguments $Arguments
+    return
+  }
+
+  $sudo = Get-ExecutablePath @("sudo")
+  if (-not $sudo) {
+    throw "Installing system dependencies on Linux requires root or sudo. Re-run as root, install sudo, or install dependencies manually and pass -SkipSystemDependencies."
+  }
+  Invoke-Checked -Command $sudo -Arguments (@($Command) + $Arguments)
+}
+
+function Invoke-PrivilegedBash {
+  param([string]$Script)
+  $bash = Get-ExecutablePath @("bash")
+  if (-not $bash) {
+    throw "bash is required for Linux dependency installation."
+  }
+
+  $scriptPath = Join-Path ([IO.Path]::GetTempPath()) ("azure-cert-gui-bootstrap-{0}.sh" -f ([Guid]::NewGuid().ToString("N")))
+  [System.IO.File]::WriteAllText($scriptPath, $Script, (New-Object System.Text.UTF8Encoding($false)))
+  try {
+    Invoke-Privileged -Command $bash -Arguments @($scriptPath)
+  } finally {
+    if (Test-Path $scriptPath) {
+      Remove-Item -Path $scriptPath -Force
+    }
+  }
+}
+
+function Ensure-LinuxCurl {
+  if (Get-ExecutablePath @("curl")) {
+    return
+  }
+
+  if (Get-ExecutablePath @("apt-get")) {
+    Invoke-Privileged -Command "apt-get" -Arguments @("update")
+    Invoke-Privileged -Command "apt-get" -Arguments @("install", "-y", "ca-certificates", "curl")
+    return
+  }
+
+  if (Get-ExecutablePath @("dnf")) {
+    Invoke-Privileged -Command "dnf" -Arguments @("install", "-y", "ca-certificates", "curl")
+    return
+  }
+
+  if (Get-ExecutablePath @("yum")) {
+    Invoke-Privileged -Command "yum" -Arguments @("install", "-y", "ca-certificates", "curl")
+    return
+  }
+
+  if (Get-ExecutablePath @("zypper")) {
+    Invoke-Privileged -Command "zypper" -Arguments @("install", "-y", "ca-certificates", "curl")
+    return
+  }
+
+  throw "curl is required to install system dependencies on Linux. Install curl, or install Node.js $NodeMajorVersion and Azure CLI manually and re-run with -SkipSystemDependencies."
+}
+
+function Install-LinuxNode {
+  Ensure-LinuxCurl
+
+  if (Get-ExecutablePath @("apt-get")) {
+    Invoke-PrivilegedBash -Script @"
+set -e
+curl -fsSL https://deb.nodesource.com/setup_$NodeMajorVersion.x | bash -
+apt-get install -y nodejs
+"@
+    return
+  }
+
+  $rpmPackageManager = Get-ExecutablePath @("dnf")
+  if (-not $rpmPackageManager) {
+    $rpmPackageManager = Get-ExecutablePath @("yum")
+  }
+  if ($rpmPackageManager) {
+    $rpmPackageManagerName = Split-Path -Leaf $rpmPackageManager
+    Invoke-PrivilegedBash -Script @"
+set -e
+curl -fsSL https://rpm.nodesource.com/setup_$NodeMajorVersion.x | bash -
+$rpmPackageManagerName install -y nodejs
+"@
+    return
+  }
+
+  throw "Automatic Node.js installation is supported on apt, dnf, and yum based Linux distributions. Install Node.js $NodeMajorVersion manually and re-run with -SkipSystemDependencies."
+}
+
+function Install-LinuxAzureCli {
+  Ensure-LinuxCurl
+
+  if (Get-ExecutablePath @("apt-get")) {
+    Invoke-PrivilegedBash -Script @"
+set -e
+curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+"@
+    return
+  }
+
+  if (Get-ExecutablePath @("dnf")) {
+    Invoke-Privileged -Command "dnf" -Arguments @("install", "-y", "https://packages.microsoft.com/config/rhel/8/packages-microsoft-prod.rpm")
+    Invoke-Privileged -Command "dnf" -Arguments @("install", "-y", "azure-cli")
+    return
+  }
+
+  if (Get-ExecutablePath @("yum")) {
+    Invoke-PrivilegedBash -Script @'
+set -e
+cat >/etc/yum.repos.d/azure-cli.repo <<'EOF'
+[azure-cli]
+name=Azure CLI
+baseurl=https://packages.microsoft.com/yumrepos/azure-cli
+enabled=1
+gpgcheck=1
+gpgkey=https://packages.microsoft.com/keys/microsoft.asc
+EOF
+yum install -y azure-cli
+'@
+    return
+  }
+
+  if (Get-ExecutablePath @("zypper")) {
+    Invoke-Privileged -Command "zypper" -Arguments @("install", "-y", "curl")
+    Invoke-Privileged -Command "rpm" -Arguments @("--import", "https://packages.microsoft.com/keys/microsoft.asc")
+    Invoke-Privileged -Command "zypper" -Arguments @("addrepo", "--name", "Azure CLI", "--check", "https://packages.microsoft.com/yumrepos/azure-cli", "azure-cli")
+    Invoke-Privileged -Command "zypper" -Arguments @("install", "--from", "azure-cli", "-y", "azure-cli")
+    return
+  }
+
+  throw "Automatic Azure CLI installation is supported on apt, dnf, yum, and zypper based Linux distributions. Install Azure CLI manually and re-run with -SkipSystemDependencies."
+}
+
 function Get-NodeMajor {
   $node = Get-ExecutablePath @("node.exe", "node")
   if (-not $node) {
@@ -203,6 +361,16 @@ function Ensure-Node {
     return
   }
 
+  if (Test-IsLinux) {
+    Install-LinuxNode
+    Update-ProcessPath
+    $major = Get-NodeMajor
+    if ($major -ne [int]$NodeMajorVersion) {
+      throw "Node.js v$NodeMajorVersion was not available on PATH after Linux package installation."
+    }
+    return
+  }
+
   $uri = Get-LatestNodeMsiUri -MajorVersion $NodeMajorVersion
   Install-MsiFromUri -Name "Node.js $NodeMajorVersion" -Uri $uri
 
@@ -225,6 +393,10 @@ function Ensure-AzureCli {
   }
   if (Test-IsMacOS) {
     Invoke-Brew -Arguments @("install", "azure-cli")
+    return
+  }
+  if (Test-IsLinux) {
+    Install-LinuxAzureCli
     return
   }
   Install-MsiFromUri -Name "Azure CLI" -Uri "https://aka.ms/installazurecliwindowsx64"

@@ -152,13 +152,13 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 .\scripts\install-server.ps1
 ```
 
-On macOS:
+On macOS or Linux:
 
 ```bash
 pwsh ./scripts/install-server.ps1
 ```
 
-The script supports Windows Server and macOS. It installs Node.js 22 and Azure CLI when they are missing, runs `npm ci`, migrates the SQLite database, builds the app, and writes a local run helper at `.runtime\start-azure-cert-gui.ps1`. On Windows, run from an elevated PowerShell session when system dependencies need to be installed. On macOS, missing system dependencies are installed with Homebrew.
+The script supports Windows Server, macOS, and common Linux server distributions. It installs Node.js 22 and Azure CLI when they are missing, runs `npm ci`, migrates the SQLite database, builds the app, and writes a local run helper at `.runtime\start-azure-cert-gui.ps1`. On Windows, run from an elevated PowerShell session when system dependencies need to be installed. On macOS, missing system dependencies are installed with Homebrew. On Linux, missing system dependencies are installed with the native package manager when available: `apt`, `dnf`, `yum`, or `zypper`; otherwise install Node.js and Azure CLI manually and pass `-SkipSystemDependencies`.
 
 Useful options:
 
