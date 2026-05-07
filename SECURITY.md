@@ -23,6 +23,7 @@ Useful reports include:
 ## Security Expectations
 
 - Run shared deployments behind OIDC and restrict access with Entra groups.
+- Use local auth only on loopback. Production local/hybrid auth requires the explicit `AZURE_CERT_GUI__AUTH__ALLOWLOCALINPRODUCTION=true` break-glass flag and must not be exposed through a proxy.
 - Keep `AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET` and `AZURE_CERT_GUI__AUTH__COOKIESECRET` out of Git.
 - Keep live rotations disabled unless the operator workflow explicitly requires them.
 - Do not commit `data/*.sqlite`, `.env`, Azure CLI tokens, or generated local runtime state.

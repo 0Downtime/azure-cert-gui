@@ -101,13 +101,13 @@ Install dependencies once:
 npm install
 ```
 
-Build only when the app has changed, then start the UI:
+Build only when the app has changed, then start the UI in loopback-only break-glass local mode:
 
 ```bash
-npm run ui
+AZURE_CERT_GUI__AUTH__ALLOWLOCALINPRODUCTION=true npm run ui
 ```
 
-The command prints a clickable local URL such as `http://127.0.0.1:3000`. Set `PORT=3001` if you prefer a different starting port; if that port is busy, the script uses the next open one.
+The command prints a clickable local URL such as `http://127.0.0.1:3000`. Set `PORT=3001` if you prefer a different starting port; if that port is busy, the script uses the next open one. Do not set `UI_HOST` to a non-loopback address when using local auth.
 
 Start against your current Azure CLI tenant/subscription:
 
@@ -169,7 +169,7 @@ By default the generated LaunchAgent runs at 7:30 AM. Set `SYNC_HOUR` and `SYNC_
 In the dashboard:
 
 - Use `Refresh data` to run `sync:azure` from the web UI with the current Azure CLI login. The dashboard shows refresh progress, recent sync output, and a done or failed message when the run finishes.
-- Use `Automatic refresh` to run the same sync on a fixed interval while the UI server process is running. For a schedule that survives UI restarts, use the macOS LaunchAgent option above.
+- Use `Automatic refresh` to run the same sync on a fixed interval while the UI server process is running. The selected schedule and schedule events are stored in SQLite and restored when the app next handles schedule/status traffic, but the in-process timer is not a daemon replacement. For a schedule that runs without an open UI session or after machine restarts, use the macOS LaunchAgent option above.
 - Use the `Inventory` tab for daily triage: quick queues, filters, row selection, bulk owner assignment, status updates, and credential table actions.
 - Use the `Renewals` tab for active renewal cases and actionable credentials due within 90 days. Open the shared detail drawer there to create a case, track owner handoff/reminders/escalation, dry-run or run a modal-confirmed rotation, and validate or close the case.
 - Use the `Owners` tab to review, add, export, and remove manual owner mappings, or copy the current owner-gap worklist.
@@ -226,6 +226,14 @@ Use `local` mode only for local development:
 AZURE_CERT_GUI__AUTH__MODE=local
 ```
 
+When `NODE_ENV=production`, local or hybrid auth is rejected unless you explicitly set:
+
+```bash
+AZURE_CERT_GUI__AUTH__ALLOWLOCALINPRODUCTION=true
+```
+
+Only use that break-glass flag for trusted loopback runs bound to `127.0.0.1`. Do not expose local auth through a reverse proxy or a non-loopback listener.
+
 For Microsoft Entra ID OIDC, configure:
 
 ```bash
@@ -254,6 +262,7 @@ Optional session settings:
 AZURE_CERT_GUI__AUTH__IDLETIMEOUTMINUTES=480
 AZURE_CERT_GUI__AUTH__ABSOLUTESESSIONHOURS=168
 AZURE_CERT_GUI__AUTH__COOKIESECRET=<32+ random bytes>
+AZURE_CERT_GUI__AUTH__ALLOWLOCALINPRODUCTION=false
 AZURE_CERT_GUI__AUTH__OIDC__ROLESCLAIMTYPE=groups
 AZURE_CERT_GUI__ROTATION__LIVEENABLED=false
 ```
@@ -278,4 +287,5 @@ Supported environment values:
 - `AZURE_CERT_GUI__AUTH__OIDC__CLIENTID`: app registration client ID.
 - `AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET`: app registration client secret. Use a secure store in real deployments.
 - `AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS__0`, `OPERATORGROUPS__0`, `ADMINGROUPS__0`: Entra group object IDs mapped to app roles.
+- `AZURE_CERT_GUI__AUTH__ALLOWLOCALINPRODUCTION`: defaults to `false`. Set `true` only for trusted loopback break-glass runs when `NODE_ENV=production` and auth mode is `local` or `hybrid`.
 - `AZURE_CERT_GUI__ROTATION__LIVEENABLED`: defaults to `false`. Set `true` only when Operators should be allowed to perform non-dry-run Azure mutations.

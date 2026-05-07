@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { RefreshScheduleStatus, RefreshRunStatus } from "@/types";
+import { dbPath, migrate, openDatabase } from "./db";
 
 type RefreshState = RefreshRunStatus & {
   child: ChildProcess | null;
@@ -8,6 +9,7 @@ type RefreshState = RefreshRunStatus & {
 
 type RefreshScheduleState = RefreshScheduleStatus & {
   timer: NodeJS.Timeout | null;
+  loadedDbPath: string | null;
 };
 
 type RefreshGlobal = typeof globalThis & {
@@ -53,14 +55,24 @@ function initialScheduleState(): RefreshScheduleState {
     message: "Automatic refresh is off",
     minimumIntervalMinutes: MIN_REFRESH_INTERVAL_MINUTES,
     maximumIntervalMinutes: MAX_REFRESH_INTERVAL_MINUTES,
-    timer: null
+    timer: null,
+    loadedDbPath: null
   };
 }
 
 function scheduleState(): RefreshScheduleState {
   const globalState = globalThis as RefreshGlobal;
-  if (!globalState.__gstackRefreshScheduleState) {
-    globalState.__gstackRefreshScheduleState = initialScheduleState();
+  const currentDbPath = dbPath();
+  if (!globalState.__gstackRefreshScheduleState || globalState.__gstackRefreshScheduleState.loadedDbPath !== currentDbPath) {
+    globalState.__gstackRefreshScheduleState = {
+      ...initialScheduleState(),
+      ...loadPersistedSchedule(),
+      loadedDbPath: currentDbPath
+    };
+    if (globalState.__gstackRefreshScheduleState.enabled) {
+      scheduleNextRun(globalState.__gstackRefreshScheduleState);
+      persistSchedule(globalState.__gstackRefreshScheduleState, "restored", "scheduler");
+    }
   }
   return globalState.__gstackRefreshScheduleState;
 }
@@ -112,11 +124,13 @@ export function configureRefreshSchedule(input: {
   if (!input.enabled) {
     current.nextRunAt = null;
     current.message = "Automatic refresh is off";
+    persistSchedule(current, "disabled", current.updatedBy ?? "operator");
     return getRefreshScheduleStatus();
   }
 
   scheduleNextRun(current);
   current.message = `Automatic refresh every ${current.intervalMinutes} minutes`;
+  persistSchedule(current, "enabled", current.updatedBy ?? "operator");
   return getRefreshScheduleStatus();
 }
 
@@ -211,6 +225,15 @@ function runScheduledRefresh(): void {
       ? `Automatic refresh checked every ${current.intervalMinutes} minutes; previous refresh still running`
       : `Automatic refresh started every ${current.intervalMinutes} minutes`;
   scheduleNextRun(current);
+  persistSchedule(current, before.status === "running" ? "run_skipped" : "run_started", current.updatedBy ?? "scheduler");
+}
+
+export function resetRefreshScheduleForTests(): void {
+  const globalState = globalThis as RefreshGlobal;
+  if (globalState.__gstackRefreshScheduleState?.timer) {
+    clearTimeout(globalState.__gstackRefreshScheduleState.timer);
+  }
+  globalState.__gstackRefreshScheduleState = undefined;
 }
 
 function handleOutput(current: RefreshState, text: string, isError: boolean): string {
@@ -258,4 +281,77 @@ function updateProgress(current: RefreshState, line: string, isError: boolean): 
     current.progress = Math.max(current.progress, 90);
     current.message = "Key Vault keys synced";
   }
+}
+
+function loadPersistedSchedule(): Partial<RefreshScheduleState> {
+  const db = openDatabase();
+  migrate(db);
+  const row = db.prepare("SELECT * FROM refresh_schedule WHERE id = 1").get() as
+    | {
+        enabled: number;
+        interval_minutes: number;
+        next_run_at: string | null;
+        last_run_at: string | null;
+        updated_at: string | null;
+        updated_by: string | null;
+        message: string;
+      }
+    | undefined;
+  if (!row) return {};
+  return {
+    enabled: row.enabled === 1,
+    intervalMinutes: normalizeInterval(row.interval_minutes),
+    nextRunAt: row.next_run_at,
+    lastRunAt: row.last_run_at,
+    updatedAt: row.updated_at,
+    updatedBy: row.updated_by,
+    message: row.message
+  };
+}
+
+function persistSchedule(current: RefreshScheduleState, eventType: string, actor: string): void {
+  const db = openDatabase();
+  migrate(db);
+  const timestamp = new Date().toISOString();
+  db.prepare(
+    `
+    INSERT INTO refresh_schedule (
+      id, enabled, interval_minutes, next_run_at, last_run_at, updated_at, updated_by, message
+    )
+    VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      enabled = excluded.enabled,
+      interval_minutes = excluded.interval_minutes,
+      next_run_at = excluded.next_run_at,
+      last_run_at = excluded.last_run_at,
+      updated_at = excluded.updated_at,
+      updated_by = excluded.updated_by,
+      message = excluded.message
+  `
+  ).run(
+    current.enabled ? 1 : 0,
+    current.intervalMinutes,
+    current.nextRunAt,
+    current.lastRunAt,
+    current.updatedAt,
+    current.updatedBy,
+    current.message
+  );
+  db.prepare(
+    `
+    INSERT INTO refresh_schedule_events (
+      event_type, enabled, interval_minutes, next_run_at, last_run_at, message, created_at, created_by
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `
+  ).run(
+    eventType,
+    current.enabled ? 1 : 0,
+    current.intervalMinutes,
+    current.nextRunAt,
+    current.lastRunAt,
+    current.message,
+    timestamp,
+    actor
+  );
 }

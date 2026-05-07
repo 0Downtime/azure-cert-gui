@@ -150,6 +150,29 @@ export function migrate(db = openDatabase()): void {
       FOREIGN KEY(renewal_case_id) REFERENCES renewal_cases(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS refresh_schedule (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      enabled INTEGER NOT NULL,
+      interval_minutes INTEGER NOT NULL,
+      next_run_at TEXT,
+      last_run_at TEXT,
+      updated_at TEXT,
+      updated_by TEXT,
+      message TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS refresh_schedule_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_type TEXT NOT NULL,
+      enabled INTEGER NOT NULL,
+      interval_minutes INTEGER NOT NULL,
+      next_run_at TEXT,
+      last_run_at TEXT,
+      message TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      created_by TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_credential_items_expires_at ON credential_items(expires_at);
     CREATE INDEX IF NOT EXISTS idx_credential_items_source ON credential_items(source);
     CREATE INDEX IF NOT EXISTS idx_credential_items_status ON credential_items(status);
@@ -161,6 +184,7 @@ export function migrate(db = openDatabase()): void {
       ON renewal_cases(credential_item_id)
       WHERE closed_at IS NULL;
     CREATE INDEX IF NOT EXISTS idx_renewal_events_case ON renewal_events(renewal_case_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_refresh_schedule_events_created ON refresh_schedule_events(created_at DESC);
   `);
   ensureColumn(db, "renewal_cases", "reminder_at", "TEXT");
   ensureColumn(db, "renewal_cases", "last_contacted_at", "TEXT");

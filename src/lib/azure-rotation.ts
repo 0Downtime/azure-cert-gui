@@ -10,6 +10,7 @@ const GRAPH_ROOT = "https://graph.microsoft.com/v1.0";
 
 export interface AzureRotationRunner {
   azJson<T>(args: string[]): Promise<T>;
+  setKeyVaultSecret?(input: KeyVaultSecretSetInput): Promise<KeyVaultSetSecretResponse>;
 }
 
 export interface AzureRotationRequest {
@@ -46,7 +47,15 @@ interface KeyVaultSetSecretResponse {
   id?: string | null;
   attributes?: {
     expires?: string | number | null;
+    exp?: string | number | null;
   };
+}
+
+interface KeyVaultSecretSetInput {
+  vaultName: string;
+  secretName: string;
+  secretValue: string;
+  expiresAt: string | null;
 }
 
 interface KeyVaultRotateResponse {
@@ -186,7 +195,7 @@ async function rotateKeyVaultSecret(
 
   return {
     replacementCredentialId: response.id ?? null,
-    replacementExpiresAt: normalizeDate(response.attributes?.expires) ?? input.replacementExpiresAt ?? null,
+    replacementExpiresAt: normalizeDate(response.attributes?.expires ?? response.attributes?.exp) ?? input.replacementExpiresAt ?? null,
     oneTimeSecretValue: input.secretMode === "provided" ? null : secretValue,
     keyVaultCopyVaultName: null,
     keyVaultCopySecretName: null,
@@ -278,21 +287,10 @@ async function setKeyVaultSecret(
   secretValue: string,
   expiresAt: string | null
 ): Promise<KeyVaultSetSecretResponse> {
-  const args = [
-    "keyvault",
-    "secret",
-    "set",
-    "--vault-name",
-    vaultName,
-    "--name",
-    secretName,
-    "--value",
-    secretValue
-  ];
-  if (expiresAt) {
-    args.push("--expires", expiresAt);
+  if (runner.setKeyVaultSecret) {
+    return runner.setKeyVaultSecret({ vaultName, secretName, secretValue, expiresAt });
   }
-  return runner.azJson<KeyVaultSetSecretResponse>(args);
+  return setKeyVaultSecretWithRest({ vaultName, secretName, secretValue, expiresAt });
 }
 
 function isManagedKeyVaultCertificate(item: DashboardItem): boolean {
@@ -322,5 +320,51 @@ const defaultRunner: AzureRotationRunner = {
       maxBuffer: JSON_BUFFER_BYTES
     });
     return JSON.parse(stdout || "null") as T;
-  }
+  },
+  setKeyVaultSecret: setKeyVaultSecretWithRest
 };
+
+async function setKeyVaultSecretWithRest(input: KeyVaultSecretSetInput): Promise<KeyVaultSetSecretResponse> {
+  const token = await keyVaultAccessToken();
+  const expiresAtEpochSeconds = input.expiresAt ? Math.floor(Date.parse(input.expiresAt) / 1000) : null;
+  const attributes =
+    expiresAtEpochSeconds && Number.isFinite(expiresAtEpochSeconds) ? { exp: expiresAtEpochSeconds } : undefined;
+  const vaultName = safeKeyVaultName(input.vaultName);
+  const response = await fetch(
+    `https://${vaultName}.vault.azure.net/secrets/${encodeURIComponent(input.secretName)}?api-version=7.4`,
+    {
+      method: "PUT",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        value: input.secretValue,
+        ...(attributes ? { attributes } : {})
+      })
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`KeyVaultSecretSetFailed:${response.status}`);
+  }
+  return (await response.json()) as KeyVaultSetSecretResponse;
+}
+
+function safeKeyVaultName(value: string): string {
+  const vaultName = value.trim().toLowerCase();
+  if (!/^[a-z0-9-]{3,24}$/.test(vaultName)) {
+    throw new Error("InvalidKeyVaultName");
+  }
+  return vaultName;
+}
+
+async function keyVaultAccessToken(): Promise<string> {
+  const { stdout } = await execFileAsync(
+    "az",
+    ["account", "get-access-token", "--resource", "https://vault.azure.net", "--query", "accessToken", "-o", "tsv"],
+    { maxBuffer: JSON_BUFFER_BYTES }
+  );
+  const token = stdout.trim();
+  if (!token) throw new Error("KeyVaultAccessTokenMissing");
+  return token;
+}

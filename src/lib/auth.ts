@@ -28,6 +28,7 @@ export interface AuthOptions {
   idleTimeoutMinutes: number;
   absoluteSessionHours: number;
   cookieSecret: string | null;
+  allowLocalAuthInProduction: boolean;
   oidc: {
     authority: string | null;
     clientId: string | null;
@@ -86,6 +87,7 @@ export function authOptionsFromEnv(env: Record<string, string | undefined> = pro
       MAX_ABSOLUTE_SESSION_HOURS
     ),
     cookieSecret: readEnv(env, "COOKIESECRET") ?? readEnv(env, "OIDC__CLIENTSECRET"),
+    allowLocalAuthInProduction: readEnv(env, "ALLOWLOCALINPRODUCTION") === "true",
     oidc: {
       authority: readEnv(env, "OIDC__AUTHORITY"),
       clientId: readEnv(env, "OIDC__CLIENTID"),
@@ -103,6 +105,11 @@ export function authOptionsFromEnv(env: Record<string, string | undefined> = pro
 
 export function validateAuthConfiguration(options = authOptionsFromEnv()): void {
   const oidcEnabled = isOidcEnabled(options);
+  if (usesLocalAuth(options) && isProductionRuntime() && !options.allowLocalAuthInProduction) {
+    throw new Error(
+      "Local auth is disabled when NODE_ENV=production. Use AZURE_CERT_GUI__AUTH__MODE=oidc, or set AZURE_CERT_GUI__AUTH__ALLOWLOCALINPRODUCTION=true only for trusted loopback break-glass runs."
+    );
+  }
   if ((options.mode === "oidc" || options.mode === "hybrid") && !oidcEnabled) {
     throw new Error("AZURE_CERT_GUI__AUTH__MODE=oidc or hybrid requires OIDC authority and client ID.");
   }
@@ -314,6 +321,14 @@ async function getCurrentAuthContext(): Promise<AuthSession | null> {
 
 function isOidcEnabled(options: AuthOptions): boolean {
   return Boolean((options.mode === "oidc" || options.mode === "hybrid") && options.oidc.authority && options.oidc.clientId);
+}
+
+function usesLocalAuth(options: AuthOptions): boolean {
+  return options.mode === "local" || options.mode === "hybrid";
+}
+
+function isProductionRuntime(): boolean {
+  return process.env.NODE_ENV === "production";
 }
 
 function canView(session: AuthSession | null): session is AuthSession {

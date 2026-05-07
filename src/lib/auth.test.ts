@@ -1,3 +1,4 @@
+import { afterEach, vi } from "vitest";
 import {
   authOptionsFromEnv,
   isLiveRotationEnabled,
@@ -7,6 +8,10 @@ import {
 } from "./auth";
 
 describe("auth configuration", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("parses SyncFactors-style OIDC role group arrays with the Azure Cert GUI prefix", () => {
     const options = authOptionsFromEnv({
       AZURE_CERT_GUI__AUTH__MODE: "oidc",
@@ -49,6 +54,27 @@ describe("auth configuration", () => {
     });
 
     expect(() => validateAuthConfiguration(options)).toThrow(/ViewerGroups, OperatorGroups, or AdminGroups/);
+  });
+
+  it("rejects local auth in production unless break-glass is explicit", () => {
+    vi.stubEnv("NODE_ENV", "production");
+
+    expect(() =>
+      validateAuthConfiguration(
+        authOptionsFromEnv({
+          AZURE_CERT_GUI__AUTH__MODE: "local"
+        })
+      )
+    ).toThrow(/Local auth is disabled/);
+
+    expect(() =>
+      validateAuthConfiguration(
+        authOptionsFromEnv({
+          AZURE_CERT_GUI__AUTH__MODE: "local",
+          AZURE_CERT_GUI__AUTH__ALLOWLOCALINPRODUCTION: "true"
+        })
+      )
+    ).not.toThrow();
   });
 
   it("requires an explicit opt-in flag for live Azure rotations", () => {

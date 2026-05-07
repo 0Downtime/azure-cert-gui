@@ -36,14 +36,24 @@ function item(overrides: Partial<DashboardItem> = {}): DashboardItem {
   };
 }
 
-function runner(response: unknown): { calls: string[][]; runner: AzureRotationRunner } {
+function runner(response: unknown): {
+  calls: string[][];
+  setSecretCalls: { vaultName: string; secretName: string; secretValue: string; expiresAt: string | null }[];
+  runner: AzureRotationRunner;
+} {
   const calls: string[][] = [];
+  const setSecretCalls: { vaultName: string; secretName: string; secretValue: string; expiresAt: string | null }[] = [];
   return {
     calls,
+    setSecretCalls,
     runner: {
       async azJson<T>(args: string[]): Promise<T> {
         calls.push(args);
         return response as T;
+      },
+      async setKeyVaultSecret(input) {
+        setSecretCalls.push(input);
+        return response as Awaited<ReturnType<NonNullable<AzureRotationRunner["setKeyVaultSecret"]>>>;
       }
     }
   };
@@ -122,7 +132,7 @@ describe("Azure rotation helpers", () => {
     expect(result.replacementCredentialId).toContain("/keys/cmk/");
   });
 
-  it("builds Key Vault secret set command without persisting the generated value in details", async () => {
+  it("sets Key Vault secrets without putting secret values in Azure CLI argv", async () => {
     const fake = runner({
       id: "https://vault.vault.azure.net/secrets/api-token/version"
     });
@@ -134,19 +144,21 @@ describe("Azure rotation helpers", () => {
         credentialType: "secret"
       }),
       confirmation: "api-token",
+      secretMode: "provided",
+      providedSecretValue: "provided-secret",
       runner: fake.runner
     });
 
-    expect(fake.calls[0].slice(0, 7)).toEqual([
-      "keyvault",
-      "secret",
-      "set",
-      "--vault-name",
-      "vault",
-      "--name",
-      "api-token"
+    expect(fake.calls.flat()).not.toContain("provided-secret");
+    expect(fake.setSecretCalls).toEqual([
+      {
+        vaultName: "vault",
+        secretName: "api-token",
+        secretValue: "provided-secret",
+        expiresAt: null
+      }
     ]);
-    expect(result.oneTimeSecretValue).toBeTruthy();
+    expect(result.oneTimeSecretValue).toBeNull();
     expect(result.details).not.toHaveProperty("value");
     expect(result.details).not.toHaveProperty("secretText");
   });
