@@ -10,5 +10,6 @@ coverage/
 # Local runtime state
 .env
 .env.local
+.runtime/
 /data/*.sqlite
 /data/*.sqlite-*

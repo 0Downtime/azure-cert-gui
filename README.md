@@ -13,6 +13,7 @@
 <p align="center">
   <a href="#current-state">Current State</a> •
   <a href="#local-development">Local Development</a> •
+  <a href="#windows-server-bootstrap">Windows Server</a> •
   <a href="#daily-use">Daily Use</a> •
   <a href="#real-azure-setup">Real Azure Setup</a> •
   <a href="#configuration">Configuration</a> •
@@ -140,6 +141,28 @@ npm run build
 ```
 
 If you run `npm run build` while `npm run dev` is already running, restart the dev server before testing forms again. Next dev and Next build both write to `.next`, so a live dev server can serve stale asset paths after a production build.
+
+## Windows Server Bootstrap
+
+Run the Windows Server bootstrap from an elevated PowerShell session in a checkout of this repository:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+.\scripts\install-windows-server.ps1
+```
+
+The script installs Node.js 22 and Azure CLI when they are missing, runs `npm ci`, migrates the SQLite database, builds the app, and writes a local run helper at `.runtime\start-azure-cert-gui.ps1`.
+
+Useful options:
+
+```powershell
+.\scripts\install-windows-server.ps1 -SyncAzure
+.\scripts\install-windows-server.ps1 -LoadFixtures
+.\scripts\install-windows-server.ps1 -InstallLogonTask
+.\scripts\install-windows-server.ps1 -Start
+```
+
+By default the generated helper binds the UI to `127.0.0.1:3000` with local break-glass auth. Configure OIDC and keep `AZURE_CERT_GUI__AUTH__ALLOWLOCALINPRODUCTION=false` before exposing the app beyond loopback.
 
 ## Daily Use
 
