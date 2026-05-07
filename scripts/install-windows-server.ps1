@@ -223,11 +223,21 @@ function Invoke-AzRestJson {
     [hashtable]$Body
   )
   $arguments = @("rest", "--method", $Method, "--url", $Uri)
+  $bodyPath = $null
   if ($Body) {
+    $bodyPath = Join-Path $env:TEMP ("azure-cert-gui-graph-{0}.json" -f ([Guid]::NewGuid().ToString("N")))
+    $json = $Body | ConvertTo-Json -Depth 20 -Compress
+    [System.IO.File]::WriteAllText($bodyPath, $json, (New-Object System.Text.UTF8Encoding($false)))
     $arguments += @("--headers", "Content-Type=application/json")
-    $arguments += @("--body", ($Body | ConvertTo-Json -Depth 20 -Compress))
+    $arguments += @("--body", "@$bodyPath")
   }
-  return Invoke-AzJson -Arguments $arguments -AllowEmpty:($Method -eq "PATCH")
+  try {
+    return Invoke-AzJson -Arguments $arguments -AllowEmpty:($Method -eq "PATCH")
+  } finally {
+    if ($bodyPath -and (Test-Path $bodyPath)) {
+      Remove-Item -Path $bodyPath -Force
+    }
+  }
 }
 
 function Ensure-AzureCliLogin {
