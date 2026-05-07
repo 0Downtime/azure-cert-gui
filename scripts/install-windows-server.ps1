@@ -81,20 +81,16 @@ function Enable-Tls12 {
 
 function Update-ProcessPath {
   if (-not (Test-IsWindows)) {
-    $candidatePaths = @(
-      "/opt/homebrew/opt/node@$NodeMajorVersion/bin",
-      "/usr/local/opt/node@$NodeMajorVersion/bin",
-      "/opt/homebrew/bin",
-      "/usr/local/bin",
-      "/usr/bin",
-      "/bin",
-      "/snap/bin"
-    )
-    foreach ($candidatePath in $candidatePaths) {
-      if ((Test-Path $candidatePath) -and (($env:Path -split ":") -notcontains $candidatePath)) {
-        $env:Path = "$candidatePath`:$env:Path"
+    $candidatePaths = Get-UnixPathCandidates
+    $existingPaths = @($env:Path -split ":" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $orderedPaths = New-Object "System.Collections.Generic.List[string]"
+    $seenPaths = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    foreach ($candidatePath in @($candidatePaths + $existingPaths)) {
+      if ((Test-Path $candidatePath) -and $seenPaths.Add($candidatePath)) {
+        $orderedPaths.Add($candidatePath) | Out-Null
       }
     }
+    $env:Path = ($orderedPaths.ToArray() -join ":")
     return
   }
 
@@ -110,8 +106,53 @@ function Update-ProcessPath {
   $env:Path = ($paths -join ";")
 }
 
+function Get-UnixPathCandidates {
+  $paths = New-Object "System.Collections.Generic.List[string]"
+  $brew = Get-BrewPath
+  if ($brew) {
+    $nodePrefix = & $brew --prefix "node@$NodeMajorVersion" 2>$null
+    if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($nodePrefix)) {
+      $paths.Add((Join-Path ([string]$nodePrefix) "bin")) | Out-Null
+    }
+  }
+  foreach ($candidatePath in @(
+      "/opt/homebrew/opt/node@$NodeMajorVersion/bin",
+      "/usr/local/opt/node@$NodeMajorVersion/bin",
+      "/opt/homebrew/bin",
+      "/usr/local/bin",
+      "/usr/bin",
+      "/bin",
+      "/snap/bin"
+    )) {
+    if (-not [string]::IsNullOrWhiteSpace($candidatePath)) {
+      $paths.Add($candidatePath) | Out-Null
+    }
+  }
+  return $paths.ToArray()
+}
+
+function Get-BrewPath {
+  foreach ($candidate in @("/opt/homebrew/bin/brew", "/usr/local/bin/brew")) {
+    if (Test-Path $candidate) {
+      return $candidate
+    }
+  }
+  $command = Get-Command "brew" -ErrorAction SilentlyContinue
+  if ($command) {
+    return $command.Source
+  }
+  return $null
+}
+
 function Get-ExecutablePath {
   param([string[]]$Names)
+  if (-not (Test-IsWindows)) {
+    foreach ($candidatePath in Get-UnixExecutableCandidates -Names $Names) {
+      if (Test-Path $candidatePath) {
+        return $candidatePath
+      }
+    }
+  }
   foreach ($name in $Names) {
     $command = Get-Command $name -ErrorAction SilentlyContinue
     if ($command) {
@@ -119,6 +160,25 @@ function Get-ExecutablePath {
     }
   }
   return $null
+}
+
+function Get-UnixExecutableCandidates {
+  param([string[]]$Names)
+  $candidates = New-Object "System.Collections.Generic.List[string]"
+  foreach ($candidatePath in Get-UnixPathCandidates) {
+    foreach ($name in $Names) {
+      if ($name -match "[/\\]") {
+        $candidates.Add($name) | Out-Null
+        continue
+      }
+      if ($name.EndsWith(".exe", [System.StringComparison]::OrdinalIgnoreCase) -or
+          $name.EndsWith(".cmd", [System.StringComparison]::OrdinalIgnoreCase)) {
+        continue
+      }
+      $candidates.Add((Join-Path $candidatePath $name)) | Out-Null
+    }
+  }
+  return $candidates.ToArray()
 }
 
 function Invoke-Checked {
@@ -945,10 +1005,10 @@ function Write-RunHelper {
 Set-Location $(Quote-PowerShellString $AppRoot)
 
 foreach (`$candidatePath in @(
-  "/opt/homebrew/opt/node@$NodeMajorVersion/bin",
-  "/usr/local/opt/node@$NodeMajorVersion/bin",
   "/opt/homebrew/bin",
-  "/usr/local/bin"
+  "/usr/local/bin",
+  "/usr/local/opt/node@$NodeMajorVersion/bin",
+  "/opt/homebrew/opt/node@$NodeMajorVersion/bin"
 )) {
   if ((Test-Path `$candidatePath) -and ((`$env:Path -split ":") -notcontains `$candidatePath)) {
     `$env:Path = "`${candidatePath}:`$env:Path"
