@@ -2,11 +2,13 @@
 
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import { access, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 
 const root = process.cwd();
+const runtimeEnvPath = path.join(root, ".runtime", "azure-cert-gui.env.ps1");
 const cachePath = path.join(root, ".next", "azure-cert-gui-build-cache.json");
 const buildIdPath = path.join(root, ".next", "BUILD_ID");
 const inputPaths = [
@@ -18,6 +20,8 @@ const inputPaths = [
   "src",
   "public",
 ];
+
+loadRuntimeEnvFile();
 
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const host = process.env.UI_HOST ?? "127.0.0.1";
@@ -63,6 +67,35 @@ function parsePort(value) {
     throw new Error(`Invalid PORT value: ${value}`);
   }
   return port;
+}
+
+function loadRuntimeEnvFile() {
+  if (!existsSync(runtimeEnvPath)) {
+    return;
+  }
+
+  const content = readFileSync(runtimeEnvPath, "utf8");
+  let loaded = 0;
+  for (const line of content.split(/\r?\n/)) {
+    const singleQuoted = line.match(/^\s*\$env:([A-Za-z0-9_]+)\s*=\s*'(.*)'\s*$/);
+    const doubleQuoted = line.match(/^\s*\$env:([A-Za-z0-9_]+)\s*=\s*"(.*)"\s*$/);
+    const match = singleQuoted ?? doubleQuoted;
+    if (!match) {
+      continue;
+    }
+
+    const [, name, rawValue] = match;
+    if (process.env[name] !== undefined) {
+      continue;
+    }
+
+    process.env[name] = singleQuoted ? rawValue.replaceAll("''", "'") : rawValue.replaceAll('`"', '"');
+    loaded += 1;
+  }
+
+  if (loaded > 0) {
+    console.log(`[ui] Loaded runtime environment from ${path.relative(root, runtimeEnvPath)}.`);
+  }
 }
 
 async function ensureDependencies() {
