@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import type { RefreshScheduleStatus, RefreshRunStatus } from "@/types";
 import { dbPath, migrate, openDatabase } from "./db";
 
@@ -21,7 +22,6 @@ const MAX_LOG_LINES = 80;
 export const MIN_REFRESH_INTERVAL_MINUTES = 5;
 export const MAX_REFRESH_INTERVAL_MINUTES = 24 * 60;
 const DEFAULT_REFRESH_INTERVAL_MINUTES = 60;
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 
 function initialState(): RefreshState {
   return {
@@ -151,9 +151,10 @@ export function startAzureRefresh(): RefreshRunStatus {
   current.startedAt = new Date().toISOString();
   current.finishedAt = null;
   current.exitCode = null;
-  current.logs = [`Starting ${npmCommand} run sync:azure -- --verbose`];
+  const syncArgs = [join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"), "scripts/sync-azure.ts", "--verbose"];
+  current.logs = [`Starting node ${syncArgs.map(formatLogArg).join(" ")}`];
 
-  const child = spawn(npmCommand, ["run", "sync:azure", "--", "--verbose"], {
+  const child = spawn(process.execPath, syncArgs, {
     cwd: process.cwd(),
     env: process.env,
     stdio: ["ignore", "pipe", "pipe"]
@@ -254,6 +255,10 @@ function handleOutput(current: RefreshState, text: string, isError: boolean): st
 
 function appendLog(current: RefreshState, line: string): void {
   current.logs = [...current.logs, line].slice(-MAX_LOG_LINES);
+}
+
+function formatLogArg(value: string): string {
+  return value.includes(" ") ? `"${value}"` : value;
 }
 
 function updateProgress(current: RefreshState, line: string, isError: boolean): void {
