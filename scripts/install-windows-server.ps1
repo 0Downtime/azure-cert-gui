@@ -383,7 +383,7 @@ function Join-UniqueStrings {
       $result.Add($value) | Out-Null
     }
   }
-  return $result.ToArray()
+  return ,$result.ToArray()
 }
 
 function Get-GraphCollection {
