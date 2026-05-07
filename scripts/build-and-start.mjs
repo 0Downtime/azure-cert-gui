@@ -23,7 +23,7 @@ const inputPaths = [
 
 loadRuntimeEnvFile();
 
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+const nextCliPath = path.join(root, "node_modules", "next", "dist", "bin", "next");
 const host = process.env.UI_HOST ?? "127.0.0.1";
 const requestedPort = parsePort(process.env.PORT ?? "3000");
 
@@ -37,8 +37,8 @@ async function main() {
   if (cache?.buildHash === buildHash && hasProductionBuild) {
     console.log(`[ui] Build is current (${buildHash.slice(0, 12)}); skipping npm run build.`);
   } else {
-    console.log("[ui] Build is missing or stale; running npm run build.");
-    await run(npmCommand, ["run", "build"]);
+    console.log("[ui] Build is missing or stale; running next build.");
+    await run(process.execPath, [nextCliPath, "build"]);
     await mkdir(path.dirname(cachePath), { recursive: true });
     await writeFile(
       cachePath,
@@ -56,7 +56,7 @@ async function main() {
   console.log(`[ui] Open ${url}`);
   console.log("[ui] Press Ctrl+C to stop the UI.");
 
-  await run(npmCommand, ["run", "start", "--", "-p", String(port), "-H", host], {
+  await run(process.execPath, [nextCliPath, "start", "-p", String(port), "-H", host], {
     PORT: String(port),
   });
 }
@@ -99,8 +99,7 @@ function loadRuntimeEnvFile() {
 }
 
 async function ensureDependencies() {
-  const nextBinary = path.join(root, "node_modules", ".bin", process.platform === "win32" ? "next.cmd" : "next");
-  if (!(await exists(nextBinary))) {
+  if (!(await exists(nextCliPath))) {
     throw new Error("Dependencies are missing. Run npm install first, then run npm run ui.");
   }
 }
@@ -183,8 +182,7 @@ function isPortAvailable(port, listenHost) {
 
 function run(command, args, extraEnv = {}) {
   return new Promise((resolve, reject) => {
-    const { spawnCommand, spawnArgs } = normalizeSpawnCommand(command, args);
-    const child = spawn(spawnCommand, spawnArgs, {
+    const child = spawn(command, args, {
       cwd: root,
       env: { ...process.env, ...extraEnv },
       stdio: "inherit",
@@ -203,25 +201,6 @@ function run(command, args, extraEnv = {}) {
       reject(new Error(`${command} ${args.join(" ")} exited with code ${code}.`));
     });
   });
-}
-
-function normalizeSpawnCommand(command, args) {
-  if (process.platform !== "win32" || !command.toLowerCase().endsWith(".cmd")) {
-    return { spawnCommand: command, spawnArgs: args };
-  }
-
-  return {
-    spawnCommand: process.env.ComSpec ?? "cmd.exe",
-    spawnArgs: ["/d", "/s", "/c", `"${command}" ${args.map(quoteCmdArg).join(" ")}`],
-  };
-}
-
-function quoteCmdArg(value) {
-  const text = String(value);
-  if (/^[A-Za-z0-9_./:=-]+$/.test(text)) {
-    return text;
-  }
-  return `"${text.replaceAll('"', '\\"')}"`;
 }
 
 async function exists(absolutePath) {
