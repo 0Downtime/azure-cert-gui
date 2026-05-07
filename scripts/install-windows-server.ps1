@@ -614,20 +614,88 @@ function Ensure-AzureCliLogin {
 function Get-NpmPath {
   $npm = Get-ExecutablePath @("npm.cmd", "npm")
   if (-not $npm) {
-    throw "npm was not found on PATH after Node.js setup."
+    return $null
   }
   return $npm
+}
+
+function Get-NodePath {
+  $node = Get-ExecutablePath @("node.exe", "node")
+  if (-not $node) {
+    throw "node was not found after Node.js setup. Checked PATH plus known Node install directories: $((Get-NodePathCandidates) -join ', ')"
+  }
+  return $node
+}
+
+function Get-NodePathCandidates {
+  if (Test-IsWindows) {
+    return Get-WindowsPathCandidates
+  }
+  return Get-UnixPathCandidates
 }
 
 function Invoke-Npm {
   param([string[]]$Arguments)
   $npm = Get-NpmPath
+  $node = $null
+  $npmCli = $null
+  if (-not $npm) {
+    $node = Get-NodePath
+    $npmCli = Get-NpmCliPath
+  }
   Push-Location $AppRoot
   try {
-    Invoke-Checked -Command $npm -Arguments $Arguments
+    if ($npm) {
+      Invoke-Checked -Command $npm -Arguments $Arguments
+    } elseif ($npmCli) {
+      Invoke-Checked -Command $node -Arguments (@($npmCli) + $Arguments)
+    } else {
+      throw "npm was not found after Node.js setup. Checked PATH plus known Node install directories: $((Get-NodePathCandidates) -join ', ')"
+    }
   } finally {
     Pop-Location
   }
+}
+
+function Get-NpmCliPath {
+  foreach ($candidatePath in Get-NodePathCandidates) {
+    $npmCliPath = [IO.Path]::GetFullPath((Join-Path $candidatePath "..\node_modules\npm\bin\npm-cli.js"))
+    if (Test-Path $npmCliPath) {
+      return $npmCliPath
+    }
+  }
+  return $null
+}
+
+function Invoke-NodeTool {
+  param(
+    [string]$ToolPath,
+    [string[]]$Arguments
+  )
+  $node = Get-NodePath
+  $resolvedToolPath = Resolve-AppPath -PathValue $ToolPath
+  if (-not (Test-Path $resolvedToolPath)) {
+    throw "Required Node tool was not found: $resolvedToolPath. Run dependency installation before this step."
+  }
+  Push-Location $AppRoot
+  try {
+    Invoke-Checked -Command $node -Arguments (@($resolvedToolPath) + $Arguments)
+  } finally {
+    Pop-Location
+  }
+}
+
+function Invoke-TsxScript {
+  param(
+    [string]$ScriptPath,
+    [string[]]$Arguments = @()
+  )
+  Invoke-NodeTool -ToolPath "node_modules/tsx/dist/cli.mjs" -Arguments (@($ScriptPath) + $Arguments)
+}
+
+function Invoke-Next {
+  param([string[]]$Arguments)
+  Invoke-NodeTool -ToolPath "node_modules/next/dist/bin/next" -Arguments $Arguments
 }
 
 function Resolve-AppPath {
@@ -1193,24 +1261,24 @@ if (-not $SkipNpmInstall) {
 
 Write-Step "Migrating SQLite database"
 $env:AZURE_CERT_GUI_DB_PATH = $resolvedDatabasePath
-Invoke-Npm -Arguments @("run", "db:migrate")
+Invoke-TsxScript -ScriptPath "scripts/migrate.ts"
 
 if ($LoadFixtures) {
   Write-Step "Loading fixture data"
-  Invoke-Npm -Arguments @("run", "db:reset")
+  Invoke-TsxScript -ScriptPath "scripts/reset-db.ts"
   $env:AZURE_CERT_GUI_DB_PATH = $resolvedDatabasePath
-  Invoke-Npm -Arguments @("run", "fixtures:sync", "--", "--verbose")
+  Invoke-TsxScript -ScriptPath "scripts/sync-fixtures.ts" -Arguments @("--verbose")
 }
 
 if ($SyncAzure) {
   Write-Step "Syncing live Azure metadata"
   Assert-AzureLogin
-  Invoke-Npm -Arguments @("run", "sync:azure", "--", "--verbose")
+  Invoke-TsxScript -ScriptPath "scripts/sync-azure.ts" -Arguments @("--verbose")
 }
 
 if (-not $SkipBuild) {
   Write-Step "Building the app"
-  Invoke-Npm -Arguments @("run", "build")
+  Invoke-Next -Arguments @("build")
 }
 
 Write-Step "Writing runtime environment"
