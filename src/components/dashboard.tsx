@@ -137,6 +137,17 @@ const TAB_LABELS: Record<DashboardTab, string> = {
   coverage: "Coverage & Audit"
 };
 
+const REFRESH_INTERVAL_OPTIONS = [
+  { value: "5", label: "5m" },
+  { value: "15", label: "15m" },
+  { value: "30", label: "30m" },
+  { value: "60", label: "1h" },
+  { value: "120", label: "2h" },
+  { value: "240", label: "4h" },
+  { value: "720", label: "12h" },
+  { value: "1440", label: "24h" }
+];
+
 export function Dashboard({
   items,
   summary,
@@ -370,6 +381,13 @@ export function Dashboard({
   const detailCoverage = useMemo(
     () => (selectedDetail ? coverage.filter((row) => coverageMatchesItem(row, selectedDetail)) : []),
     [coverage, selectedDetail]
+  );
+  const refreshIntervalOptions = useMemo(
+    () =>
+      REFRESH_INTERVAL_OPTIONS.some((option) => option.value === scheduleInterval)
+        ? REFRESH_INTERVAL_OPTIONS
+        : [{ value: scheduleInterval, label: `${scheduleInterval}m` }, ...REFRESH_INTERVAL_OPTIONS],
+    [scheduleInterval]
   );
 
   function toggleSelection(id: number) {
@@ -763,12 +781,54 @@ export function Dashboard({
             onClick={startDataRefresh}
             disabled={refreshStatus?.status === "running" || !auth.canOperate}
             aria-disabled={!auth.canOperate}
+            aria-label={refreshStatus?.status === "running" ? "Refreshing" : "Refresh data"}
             aria-live="polite"
             title={auth.canOperate ? "Refresh data" : "Operator access required"}
           >
             <RefreshCw size={16} className={refreshStatus?.status === "running" ? "spin" : ""} />
-            <span>{refreshStatus?.status === "running" ? "Refreshing" : "Refresh data"}</span>
+            <span className="refresh-label-full" aria-hidden="true">
+              {refreshStatus?.status === "running" ? "Refreshing" : "Refresh data"}
+            </span>
+            <span className="refresh-label-short" aria-hidden="true">
+              {refreshStatus?.status === "running" ? "Refreshing" : "Refresh"}
+            </span>
           </button>
+          <form className="scheduler-form" onSubmit={saveRefreshSchedule}>
+            <label>
+              <Clock size={14} aria-hidden="true" />
+              <select
+                name="intervalMinutes"
+                value={scheduleInterval}
+                onChange={(event) => setScheduleInterval(event.currentTarget.value)}
+                disabled={!auth.canOperate}
+                aria-label="Automatic refresh interval"
+              >
+                {refreshIntervalOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="submit"
+              disabled={!auth.canOperate}
+              title={scheduleStatus?.enabled ? "Update automatic refresh" : "Enable automatic refresh"}
+            >
+              <RefreshCw size={14} aria-hidden="true" />
+              <span>{scheduleStatus?.enabled ? "Update" : "Auto"}</span>
+            </button>
+            <button
+              type="button"
+              className="icon-button scheduler-stop"
+              onClick={stopRefreshSchedule}
+              disabled={!auth.canOperate || !scheduleStatus?.enabled}
+              aria-label="Stop automatic refresh"
+              title="Stop automatic refresh"
+            >
+              <X size={14} aria-hidden="true" />
+            </button>
+          </form>
           <button type="button" className="theme-toggle" onClick={toggleTheme} aria-pressed={theme === "dark"}>
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
             <span>{theme === "dark" ? "Light" : "Dark"}</span>
@@ -778,52 +838,60 @@ export function Dashboard({
             <span>{auth.accessLevel}</span>
             {auth.source === "oidc" ? <a href={auth.signOutPath}>Sign out</a> : null}
           </div>
-          <div className={`sync-pill ${refreshStatus?.status === "running" ? "running" : refreshStatus?.status ?? ""}`}>
-            {refreshStatus?.status === "running" ? (
-              <span className="sync-loader" aria-hidden="true" />
-            ) : (
-              <RefreshCw size={16} />
-            )}
-            <span>
-              {refreshStatus?.status === "running"
-                ? `Refreshing ${refreshStatus.progress}%`
-                : `Last sync ${summary.lastSuccessfulSyncAt ? formatDateTime(summary.lastSuccessfulSyncAt) : "never"}`}
-            </span>
-          </div>
         </div>
       </header>
 
+      <section className="operations-strip" aria-label="Refresh operations">
+        <div className={`sync-pill ${refreshStatus?.status === "running" ? "running" : refreshStatus?.status ?? ""}`}>
+          {refreshStatus?.status === "running" ? (
+            <span className="sync-loader" aria-hidden="true" />
+          ) : (
+            <RefreshCw size={16} />
+          )}
+          <span>
+            {refreshStatus?.status === "running"
+              ? `Refreshing ${refreshStatus.progress}%`
+              : `Last sync ${summary.lastSuccessfulSyncAt ? formatDateTime(summary.lastSuccessfulSyncAt) : "never"}`}
+          </span>
+        </div>
+        <span className={`scheduler-state ${scheduleStatus?.enabled ? "enabled" : ""}`}>
+          {scheduleStatus?.enabled && scheduleStatus.nextRunAt
+            ? `Auto ${scheduleStatus.intervalMinutes}m / next ${formatDateTime(scheduleStatus.nextRunAt)}`
+            : "Auto refresh off"}
+        </span>
+      </section>
+
       {refreshStatus && refreshStatus.status !== "idle" ? (
-        <section className={`refresh-panel ${refreshStatus.status}`} aria-live="polite" aria-label="Data refresh status">
-          <div className="refresh-panel-header">
-            <div>
-              <strong>{refreshStatus.message}</strong>
-              <span>
-                {refreshStatus.status === "running"
-                  ? `Started ${formatDateTime(refreshStatus.startedAt ?? new Date().toISOString())}`
-                  : `Finished ${formatDateTime(refreshStatus.finishedAt ?? new Date().toISOString())}`}
-              </span>
-            </div>
-            <span className="refresh-percent">{refreshStatus.progress}%</span>
-          </div>
-          <div className="refresh-progress" aria-hidden="true">
-            <span style={{ width: `${Math.max(5, refreshStatus.progress)}%` }} />
-          </div>
-          {refreshStatus.status !== "running" ? (
-            <span className="refresh-complete">
-              {refreshStatus.status === "succeeded"
-                ? "Done refreshing. Dashboard data has been reloaded."
-                : "Refresh did not complete. Check the latest sync output below."}
+        <details className={`refresh-panel ${refreshStatus.status}`} aria-live="polite">
+          <summary>
+            <span>{refreshStatus.message}</span>
+            <strong>{refreshStatus.progress}%</strong>
+          </summary>
+          <div className="refresh-panel-body">
+            <span>
+              {refreshStatus.status === "running"
+                ? `Started ${formatDateTime(refreshStatus.startedAt ?? new Date().toISOString())}`
+                : `Finished ${formatDateTime(refreshStatus.finishedAt ?? new Date().toISOString())}`}
             </span>
-          ) : null}
-          {refreshStatus.logs.length ? (
-            <ol className="refresh-log">
-              {refreshStatus.logs.slice(-5).map((line, index) => (
-                <li key={`${refreshStatus.runId ?? "refresh"}-${index}-${line}`}>{line}</li>
-              ))}
-            </ol>
-          ) : null}
-        </section>
+            <div className="refresh-progress" aria-hidden="true">
+              <span style={{ width: `${Math.max(5, refreshStatus.progress)}%` }} />
+            </div>
+            {refreshStatus.status !== "running" ? (
+              <span className="refresh-complete">
+                {refreshStatus.status === "succeeded"
+                  ? "Done refreshing. Dashboard data has been reloaded."
+                  : "Refresh did not complete. Check the latest sync output below."}
+              </span>
+            ) : null}
+            {refreshStatus.logs.length ? (
+              <ol className="refresh-log">
+                {refreshStatus.logs.slice(-5).map((line, index) => (
+                  <li key={`${refreshStatus.runId ?? "refresh"}-${index}-${line}`}>{line}</li>
+                ))}
+              </ol>
+            ) : null}
+          </div>
+        </details>
       ) : null}
 
       {refreshError ? (
@@ -833,39 +901,17 @@ export function Dashboard({
         </section>
       ) : null}
 
-      <section className="scheduler-panel" aria-label="Automatic refresh schedule">
-        <div>
-          <strong>{scheduleStatus?.enabled ? "Automatic refresh on" : "Automatic refresh off"}</strong>
+      {(scheduleStatus?.lastRunAt || scheduleError) ? (
+        <section className={`scheduler-note ${scheduleError ? "failed" : ""}`} aria-live="polite">
           <span>
-            {scheduleStatus?.enabled && scheduleStatus.nextRunAt
-              ? `Next run ${formatDateTime(scheduleStatus.nextRunAt)}`
-              : scheduleStatus?.message ?? "Schedule status loading"}
+            {scheduleError
+              ? scheduleError
+              : scheduleStatus?.lastRunAt
+                ? `Last scheduled run ${formatDateTime(scheduleStatus.lastRunAt)}`
+                : ""}
           </span>
-        </div>
-        <form className="scheduler-form" onSubmit={saveRefreshSchedule}>
-          <label>
-            <span>Every</span>
-            <input
-              type="number"
-              name="intervalMinutes"
-              min={scheduleStatus?.minimumIntervalMinutes ?? 5}
-              max={scheduleStatus?.maximumIntervalMinutes ?? 1440}
-              value={scheduleInterval}
-              onChange={(event) => setScheduleInterval(event.currentTarget.value)}
-              disabled={!auth.canOperate}
-            />
-            <span>minutes</span>
-          </label>
-          <button type="submit" disabled={!auth.canOperate}>
-            {scheduleStatus?.enabled ? "Update" : "Enable"}
-          </button>
-          <button type="button" onClick={stopRefreshSchedule} disabled={!auth.canOperate || !scheduleStatus?.enabled}>
-            Stop
-          </button>
-        </form>
-        {scheduleStatus?.lastRunAt ? <span className="scheduler-meta">Last scheduled run {formatDateTime(scheduleStatus.lastRunAt)}</span> : null}
-        {scheduleError ? <span className="scheduler-error">{scheduleError}</span> : null}
-      </section>
+        </section>
+      ) : null}
 
       <section className="metrics" aria-label="Inventory summary">
         <Metric label="Total" value={summary.total} icon={<Database size={18} />} />
