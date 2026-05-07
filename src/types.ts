@@ -213,6 +213,18 @@ export interface RefreshRunStatus {
   logs: string[];
 }
 
+export interface RefreshScheduleStatus {
+  enabled: boolean;
+  intervalMinutes: number;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  updatedAt: string | null;
+  updatedBy: string | null;
+  message: string;
+  minimumIntervalMinutes: number;
+  maximumIntervalMinutes: number;
+}
+
 export type AuthRole = "Viewer" | "Operator" | "Admin";
 
 export type AuthAccessLevel = "Viewer" | "Operator" | "Admin" | "No Access";

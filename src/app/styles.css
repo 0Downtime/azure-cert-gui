@@ -399,6 +399,55 @@ h1 {
   padding-left: 18px;
 }
 
+.scheduler-panel {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  margin-bottom: 14px;
+  padding: 10px;
+}
+
+.scheduler-panel > div {
+  display: grid;
+  gap: 2px;
+}
+
+.scheduler-panel span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.scheduler-form {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.scheduler-form label {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.scheduler-form input {
+  max-width: 86px;
+}
+
+.scheduler-meta,
+.scheduler-error {
+  grid-column: 1 / -1;
+}
+
+.scheduler-error {
+  color: var(--red) !important;
+}
+
 .tabs {
   align-items: center;
   background: var(--panel);

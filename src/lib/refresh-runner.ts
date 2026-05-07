@@ -1,16 +1,24 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import type { RefreshRunStatus } from "@/types";
+import type { RefreshScheduleStatus, RefreshRunStatus } from "@/types";
 
 type RefreshState = RefreshRunStatus & {
   child: ChildProcess | null;
 };
 
+type RefreshScheduleState = RefreshScheduleStatus & {
+  timer: NodeJS.Timeout | null;
+};
+
 type RefreshGlobal = typeof globalThis & {
   __gstackRefreshState?: RefreshState;
+  __gstackRefreshScheduleState?: RefreshScheduleState;
 };
 
 const MAX_LOG_LINES = 80;
+export const MIN_REFRESH_INTERVAL_MINUTES = 5;
+export const MAX_REFRESH_INTERVAL_MINUTES = 24 * 60;
+const DEFAULT_REFRESH_INTERVAL_MINUTES = 60;
 
 function initialState(): RefreshState {
   return {
@@ -34,6 +42,29 @@ function state(): RefreshState {
   return globalState.__gstackRefreshState;
 }
 
+function initialScheduleState(): RefreshScheduleState {
+  return {
+    enabled: false,
+    intervalMinutes: DEFAULT_REFRESH_INTERVAL_MINUTES,
+    nextRunAt: null,
+    lastRunAt: null,
+    updatedAt: null,
+    updatedBy: null,
+    message: "Automatic refresh is off",
+    minimumIntervalMinutes: MIN_REFRESH_INTERVAL_MINUTES,
+    maximumIntervalMinutes: MAX_REFRESH_INTERVAL_MINUTES,
+    timer: null
+  };
+}
+
+function scheduleState(): RefreshScheduleState {
+  const globalState = globalThis as RefreshGlobal;
+  if (!globalState.__gstackRefreshScheduleState) {
+    globalState.__gstackRefreshScheduleState = initialScheduleState();
+  }
+  return globalState.__gstackRefreshScheduleState;
+}
+
 export function getRefreshStatus(): RefreshRunStatus {
   const current = state();
   return {
@@ -46,6 +77,47 @@ export function getRefreshStatus(): RefreshRunStatus {
     exitCode: current.exitCode,
     logs: current.logs
   };
+}
+
+export function getRefreshScheduleStatus(): RefreshScheduleStatus {
+  const current = scheduleState();
+  return {
+    enabled: current.enabled,
+    intervalMinutes: current.intervalMinutes,
+    nextRunAt: current.nextRunAt,
+    lastRunAt: current.lastRunAt,
+    updatedAt: current.updatedAt,
+    updatedBy: current.updatedBy,
+    message: current.message,
+    minimumIntervalMinutes: current.minimumIntervalMinutes,
+    maximumIntervalMinutes: current.maximumIntervalMinutes
+  };
+}
+
+export function configureRefreshSchedule(input: {
+  enabled: boolean;
+  intervalMinutes?: number | null;
+  updatedBy?: string | null;
+}): RefreshScheduleStatus {
+  const current = scheduleState();
+  clearScheduleTimer(current);
+
+  const timestamp = new Date().toISOString();
+  current.intervalMinutes = normalizeInterval(input.intervalMinutes ?? current.intervalMinutes);
+  current.enabled = input.enabled;
+  current.updatedAt = timestamp;
+  current.updatedBy = input.updatedBy?.trim() || "operator";
+  current.lastRunAt = input.enabled ? current.lastRunAt : null;
+
+  if (!input.enabled) {
+    current.nextRunAt = null;
+    current.message = "Automatic refresh is off";
+    return getRefreshScheduleStatus();
+  }
+
+  scheduleNextRun(current);
+  current.message = `Automatic refresh every ${current.intervalMinutes} minutes`;
+  return getRefreshScheduleStatus();
 }
 
 export function startAzureRefresh(): RefreshRunStatus {
@@ -103,6 +175,42 @@ export function startAzureRefresh(): RefreshRunStatus {
   });
 
   return getRefreshStatus();
+}
+
+function normalizeInterval(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_REFRESH_INTERVAL_MINUTES;
+  return Math.min(MAX_REFRESH_INTERVAL_MINUTES, Math.max(MIN_REFRESH_INTERVAL_MINUTES, Math.trunc(value)));
+}
+
+function clearScheduleTimer(current: RefreshScheduleState): void {
+  if (current.timer) {
+    clearTimeout(current.timer);
+    current.timer = null;
+  }
+}
+
+function scheduleNextRun(current: RefreshScheduleState): void {
+  clearScheduleTimer(current);
+  const nextRun = new Date(Date.now() + current.intervalMinutes * 60_000);
+  current.nextRunAt = nextRun.toISOString();
+  current.timer = setTimeout(() => {
+    runScheduledRefresh();
+  }, current.intervalMinutes * 60_000);
+  current.timer.unref?.();
+}
+
+function runScheduledRefresh(): void {
+  const current = scheduleState();
+  if (!current.enabled) return;
+
+  current.lastRunAt = new Date().toISOString();
+  const before = getRefreshStatus();
+  startAzureRefresh();
+  current.message =
+    before.status === "running"
+      ? `Automatic refresh checked every ${current.intervalMinutes} minutes; previous refresh still running`
+      : `Automatic refresh started every ${current.intervalMinutes} minutes`;
+  scheduleNextRun(current);
 }
 
 function handleOutput(current: RefreshState, text: string, isError: boolean): string {

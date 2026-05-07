@@ -34,6 +34,7 @@ import type {
   DashboardSummary,
   InventorySource,
   OwnerMatchType,
+  RefreshScheduleStatus,
   RefreshRunStatus,
   RenewalHandoffStatus,
   RenewalCaseStatus,
@@ -167,6 +168,9 @@ export function Dashboard({
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [refreshStatus, setRefreshStatus] = useState<RefreshRunStatus | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [scheduleStatus, setScheduleStatus] = useState<RefreshScheduleStatus | null>(null);
+  const [scheduleInterval, setScheduleInterval] = useState("60");
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
   const refreshStatusRef = useRef<string | null>(null);
   const refreshStartedFromUi = useRef(false);
   const [isPending, startTransition] = useTransition();
@@ -181,6 +185,7 @@ export function Dashboard({
 
   useEffect(() => {
     void loadRefreshStatus(false);
+    void loadScheduleStatus(true);
   }, []);
 
   useEffect(() => {
@@ -190,6 +195,15 @@ export function Dashboard({
     }, 1500);
     return () => window.clearInterval(timer);
   }, [refreshStatus?.status]);
+
+  useEffect(() => {
+    if (!scheduleStatus?.enabled) return;
+    const timer = window.setInterval(() => {
+      void loadScheduleStatus(false);
+      void loadRefreshStatus(true);
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [scheduleStatus?.enabled]);
 
   function toggleTheme() {
     setTheme((current) => {
@@ -208,6 +222,18 @@ export function Dashboard({
       applyRefreshStatus(next, refreshWhenFinished);
     } catch (error) {
       setRefreshError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function loadScheduleStatus(syncInput: boolean) {
+    try {
+      const response = await fetch("/api/refresh/schedule", { cache: "no-store" });
+      if (!response.ok) throw new Error(`Schedule status failed with HTTP ${response.status}`);
+      const next = (await response.json()) as RefreshScheduleStatus;
+      setScheduleStatus(next);
+      if (syncInput) setScheduleInterval(String(next.intervalMinutes));
+    } catch (error) {
+      setScheduleError(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -236,6 +262,53 @@ export function Dashboard({
     } catch (error) {
       refreshStartedFromUi.current = false;
       setRefreshError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function saveRefreshSchedule(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!auth.canOperate) {
+      setScheduleError("Operator access is required to change the refresh schedule.");
+      return;
+    }
+    setScheduleError(null);
+    const form = new FormData(event.currentTarget);
+    const intervalMinutes = Number.parseInt(String(form.get("intervalMinutes") ?? ""), 10);
+    try {
+      const response = await fetch("/api/refresh/schedule", {
+        method: "POST",
+        cache: "no-store",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ enabled: true, intervalMinutes })
+      });
+      if (!response.ok) throw new Error(`Schedule update failed with HTTP ${response.status}`);
+      const next = (await response.json()) as RefreshScheduleStatus;
+      setScheduleStatus(next);
+      setScheduleInterval(String(next.intervalMinutes));
+    } catch (error) {
+      setScheduleError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function stopRefreshSchedule() {
+    if (!auth.canOperate) {
+      setScheduleError("Operator access is required to change the refresh schedule.");
+      return;
+    }
+    setScheduleError(null);
+    try {
+      const response = await fetch("/api/refresh/schedule", {
+        method: "POST",
+        cache: "no-store",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ enabled: false, intervalMinutes: scheduleInterval })
+      });
+      if (!response.ok) throw new Error(`Schedule update failed with HTTP ${response.status}`);
+      const next = (await response.json()) as RefreshScheduleStatus;
+      setScheduleStatus(next);
+      setScheduleInterval(String(next.intervalMinutes));
+    } catch (error) {
+      setScheduleError(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -759,6 +832,40 @@ export function Dashboard({
           <span>{refreshError}</span>
         </section>
       ) : null}
+
+      <section className="scheduler-panel" aria-label="Automatic refresh schedule">
+        <div>
+          <strong>{scheduleStatus?.enabled ? "Automatic refresh on" : "Automatic refresh off"}</strong>
+          <span>
+            {scheduleStatus?.enabled && scheduleStatus.nextRunAt
+              ? `Next run ${formatDateTime(scheduleStatus.nextRunAt)}`
+              : scheduleStatus?.message ?? "Schedule status loading"}
+          </span>
+        </div>
+        <form className="scheduler-form" onSubmit={saveRefreshSchedule}>
+          <label>
+            <span>Every</span>
+            <input
+              type="number"
+              name="intervalMinutes"
+              min={scheduleStatus?.minimumIntervalMinutes ?? 5}
+              max={scheduleStatus?.maximumIntervalMinutes ?? 1440}
+              value={scheduleInterval}
+              onChange={(event) => setScheduleInterval(event.currentTarget.value)}
+              disabled={!auth.canOperate}
+            />
+            <span>minutes</span>
+          </label>
+          <button type="submit" disabled={!auth.canOperate}>
+            {scheduleStatus?.enabled ? "Update" : "Enable"}
+          </button>
+          <button type="button" onClick={stopRefreshSchedule} disabled={!auth.canOperate || !scheduleStatus?.enabled}>
+            Stop
+          </button>
+        </form>
+        {scheduleStatus?.lastRunAt ? <span className="scheduler-meta">Last scheduled run {formatDateTime(scheduleStatus.lastRunAt)}</span> : null}
+        {scheduleError ? <span className="scheduler-error">{scheduleError}</span> : null}
+      </section>
 
       <section className="metrics" aria-label="Inventory summary">
         <Metric label="Total" value={summary.total} icon={<Database size={18} />} />
