@@ -402,10 +402,10 @@ function Get-SingleGraphItemByFilter {
     [string]$Select = "id"
   )
   $encodedFilter = [Uri]::EscapeDataString($Filter)
-  $uri = "https://graph.microsoft.com/v1.0/$Collection?`$filter=$encodedFilter&`$select=$Select"
+  $uri = "https://graph.microsoft.com/v1.0/${Collection}?`$filter=$encodedFilter&`$select=$Select"
   $items = @(Get-GraphCollection -Uri $uri)
   if ($items.Count -gt 1) {
-    throw "Graph query '$Collection?$Filter' returned multiple objects."
+    throw "Graph query '${Collection}?$Filter' returned multiple objects."
   }
   if ($items.Count -eq 0) {
     return $null
