@@ -5,11 +5,13 @@ import {
   listOwnerOverrides,
   listOwnerSuggestions
 } from "@/lib/repository";
+import { requirePageViewerAccess } from "@/lib/auth";
 import { Dashboard } from "@/components/dashboard";
 
 export const dynamic = "force-dynamic";
 
-export default function Home() {
+export default async function Home() {
+  const auth = await requirePageViewerAccess();
   const items = listDashboardItems();
   const summary = dashboardSummary();
   const coverage = listCoverage();
@@ -22,6 +24,7 @@ export default function Home() {
       coverage={coverage}
       ownerOverrides={ownerOverrides}
       ownerSuggestions={ownerSuggestions}
+      auth={auth}
     />
   );
 }

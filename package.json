@@ -20,6 +20,7 @@
     "local:fixtures": "npm run db:reset && npm run fixtures:sync -- --verbose && npm run dev"
   },
   "dependencies": {
+    "jose": "^6.2.3",
     "lucide-react": "^0.468.0",
     "next": "^15.1.0",
     "react": "^19.0.0",

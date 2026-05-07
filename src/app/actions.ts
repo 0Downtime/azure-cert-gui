@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import type { OwnerMatchType, RenewalHandoffStatus, WorkflowStatus } from "@/types";
 import { executeAzureRotation as rotateInAzure } from "@/lib/azure-rotation";
+import { AuthError, requireOperatorAccess } from "@/lib/auth";
 import {
   closeRenewalCase as closeCase,
   createRenewalCase as openRenewalCase,
@@ -35,6 +36,7 @@ const VALID_HANDOFF_STATUSES: RenewalHandoffStatus[] = [
 ];
 
 export async function updateCredentialStatus(formData: FormData): Promise<void> {
+  await requireOperatorAccess();
   const id = Number(formData.get("id"));
   const status = formData.get("status") as WorkflowStatus;
   if (!Number.isFinite(id) || !VALID_STATUSES.includes(status)) return;
@@ -43,6 +45,7 @@ export async function updateCredentialStatus(formData: FormData): Promise<void> 
 }
 
 export async function saveOwnerOverride(formData: FormData): Promise<void> {
+  await requireOperatorAccess();
   const matchType = String(formData.get("matchType") ?? "") as OwnerMatchType;
   const matchValue = String(formData.get("matchValue") ?? "");
   const owner = ownerFromForm(formData);
@@ -59,6 +62,7 @@ export async function saveOwnerOverride(formData: FormData): Promise<void> {
 }
 
 export async function saveBulkOwnerOverride(formData: FormData): Promise<void> {
+  await requireOperatorAccess();
   const parentIds = formData.getAll("parentId").map((value) => String(value));
   const owner = ownerFromForm(formData);
   if (!parentIds.length || !owner) return;
@@ -73,6 +77,7 @@ export async function saveBulkOwnerOverride(formData: FormData): Promise<void> {
 }
 
 export async function deleteOwnerOverride(formData: FormData): Promise<void> {
+  await requireOperatorAccess();
   const id = Number(formData.get("id"));
   if (!Number.isFinite(id)) return;
   removeOwnerOverride(id);
@@ -80,6 +85,7 @@ export async function deleteOwnerOverride(formData: FormData): Promise<void> {
 }
 
 export async function createRenewalCase(formData: FormData): Promise<void> {
+  await requireOperatorAccess();
   const credentialItemId = Number(formData.get("credentialItemId"));
   if (!Number.isFinite(credentialItemId)) return;
   const owner = ownerFromForm(formData);
@@ -98,6 +104,7 @@ export async function createRenewalCase(formData: FormData): Promise<void> {
 }
 
 export async function updateRenewalCase(formData: FormData): Promise<void> {
+  await requireOperatorAccess();
   const caseId = Number(formData.get("caseId"));
   if (!Number.isFinite(caseId)) return;
   const owner = ownerFromForm(formData);
@@ -123,17 +130,18 @@ export async function executeRenewalRotation(formData: FormData): Promise<{
   oneTimeSecretValue: string | null;
   dryRun: boolean;
 }> {
-  const caseId = Number(formData.get("caseId"));
-  if (!Number.isFinite(caseId)) {
-    return { ok: false, message: "Missing renewal case", oneTimeSecretValue: null, dryRun: false };
-  }
-  const renewalCase = getRenewalCase(caseId);
-  const item = getCredentialForRenewal(renewalCase.credentialItemId);
-  if (!item) {
-    return { ok: false, message: "Credential is no longer active", oneTimeSecretValue: null, dryRun: false };
-  }
-
   try {
+    await requireOperatorAccess();
+    const caseId = Number(formData.get("caseId"));
+    if (!Number.isFinite(caseId)) {
+      return { ok: false, message: "Missing renewal case", oneTimeSecretValue: null, dryRun: false };
+    }
+    const renewalCase = getRenewalCase(caseId);
+    const item = getCredentialForRenewal(renewalCase.credentialItemId);
+    if (!item) {
+      return { ok: false, message: "Credential is no longer active", oneTimeSecretValue: null, dryRun: false };
+    }
+
     const result = await rotateInAzure({
       item,
       confirmation: String(formData.get("confirmation") ?? ""),
@@ -161,7 +169,12 @@ export async function executeRenewalRotation(formData: FormData): Promise<{
   } catch (error) {
     return {
       ok: false,
-      message: error instanceof Error ? error.message : String(error),
+      message:
+        error instanceof AuthError
+          ? "Operator access is required to run renewal rotations"
+          : error instanceof Error
+            ? error.message
+            : String(error),
       oneTimeSecretValue: null,
       dryRun: false
     };
@@ -169,6 +182,7 @@ export async function executeRenewalRotation(formData: FormData): Promise<{
 }
 
 export async function markRenewalValidated(formData: FormData): Promise<void> {
+  await requireOperatorAccess();
   const caseId = Number(formData.get("caseId"));
   if (!Number.isFinite(caseId)) return;
   validateRenewalCase(caseId, clean(formData.get("note")) ?? "Replacement validated");
@@ -176,6 +190,7 @@ export async function markRenewalValidated(formData: FormData): Promise<void> {
 }
 
 export async function closeRenewalCase(formData: FormData): Promise<void> {
+  await requireOperatorAccess();
   const caseId = Number(formData.get("caseId"));
   if (!Number.isFinite(caseId)) return;
   closeCase(caseId, clean(formData.get("note")) ?? "Renewal case closed");

@@ -38,6 +38,7 @@
 - The repository contains an operator-facing dashboard for credential triage, owner mapping, renewal case tracking, source coverage, audit exports, and UI-triggered Azure metadata refreshes.
 - Local development can run entirely from synthetic fixture data, so Azure credentials are not required to try the dashboard.
 - Real Azure sync and renewal actions use the current Azure CLI login. The app reads metadata by default and avoids collecting secret values or certificate private keys.
+- Local development defaults to loopback-only operator mode. Shared or remotely reachable deployments should use OIDC with Entra group mappings for Viewer, Operator, and Admin access.
 
 ## Goals
 
@@ -82,7 +83,9 @@
 
 The MVP uses synthetic fixture data first. It does not need Azure credentials to run locally.
 
-The app is not a hosted service and does not include multi-user authentication, centralized secret storage, or automated old-credential cleanup. V1 intentionally avoids removing, disabling, or deleting old credentials. Use renewal validation and case closure to record owner confirmation first; old credential cleanup should be added later as a separate typed-confirmation action.
+The app is not a general hosted service and does not include centralized secret storage or automated old-credential cleanup. V1 intentionally avoids removing, disabling, or deleting old credentials. Use renewal validation and case closure to record owner confirmation first; old credential cleanup should be added later as a separate typed-confirmation action.
+
+The default `local` auth mode is intended for `localhost` / `127.0.0.1` development only. Use `oidc` before exposing the UI beyond a trusted local browser session.
 
 ## Local Development
 
@@ -206,6 +209,46 @@ Recommended read-only permissions:
 - Microsoft Graph user and group read access if you want owner autocomplete populated from Entra users and mail-enabled groups.
 - Azure RBAC or Key Vault access policy: vault list/read plus `secrets/list`, `certificates/list`, and `keys/list`.
 
+## OIDC Access Control
+
+Azure Cert GUI uses the same role-mapping shape as SyncFactors: Viewer, Operator, and Admin roles are resolved from configured OIDC group claims, and unmatched users receive no access by default.
+
+Use `local` mode only for local development:
+
+```bash
+AZURE_CERT_GUI__AUTH__MODE=local
+```
+
+For Microsoft Entra ID OIDC, configure:
+
+```bash
+AZURE_CERT_GUI__AUTH__MODE=oidc
+AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY=https://login.microsoftonline.com/<tenant-id>/v2.0
+AZURE_CERT_GUI__AUTH__OIDC__CLIENTID=<application-client-id>
+AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET=<client-secret>
+AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS__0=<entra-group-object-id>
+AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS__0=<entra-group-object-id>
+AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS__0=<entra-group-object-id>
+```
+
+The default callback path is `/api/auth/callback`. The app registration redirect URI must match the UI origin, for example `http://127.0.0.1:3000/api/auth/callback` for local testing or the exact HTTPS origin for shared deployments.
+
+Role behavior:
+
+- Viewer can load the dashboard and read refresh status.
+- Operator can refresh Azure metadata, update workflow state, manage owners, and execute renewal rotations.
+- Admin inherits Operator and Viewer access.
+- Users with no configured group match are denied instead of falling back to Viewer.
+
+Optional session settings:
+
+```bash
+AZURE_CERT_GUI__AUTH__IDLETIMEOUTMINUTES=480
+AZURE_CERT_GUI__AUTH__ABSOLUTESESSIONHOURS=168
+AZURE_CERT_GUI__AUTH__COOKIESECRET=<32+ random bytes>
+AZURE_CERT_GUI__AUTH__OIDC__ROLESCLAIMTYPE=groups
+```
+
 ## Configuration
 
 Use `.env.example` as the configuration template. Do not commit `.env`.
@@ -221,3 +264,8 @@ Supported environment values:
 - `AZURE_GRAPH_INCLUDE_OWNERS`: defaults to `true`. Set `false` if Graph owner reads are not consented yet.
 - `AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY`: defaults to `true`. Set `false` if Graph user/group reads are not consented yet.
 - `AZURE_KEYVAULT_INCLUDE_VERSIONS`: defaults to `false`. Current Key Vault secrets/certificates are usually enough for rotation tracking.
+- `AZURE_CERT_GUI__AUTH__MODE`: `local`, `oidc`, or `hybrid`. `local` is loopback-only and intended for development.
+- `AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY`: OIDC authority, such as an Entra tenant `/v2.0` URL.
+- `AZURE_CERT_GUI__AUTH__OIDC__CLIENTID`: app registration client ID.
+- `AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET`: app registration client secret. Use a secure store in real deployments.
+- `AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS__0`, `OPERATORGROUPS__0`, `ADMINGROUPS__0`: Entra group object IDs mapped to app roles.

@@ -177,6 +177,25 @@ button:disabled {
   min-height: 40px;
 }
 
+.auth-pill {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 14px;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 10px;
+}
+
+.auth-pill a {
+  color: var(--teal);
+  font-weight: 700;
+  text-decoration: none;
+}
+
 .spin {
   animation: spin 900ms linear infinite;
 }

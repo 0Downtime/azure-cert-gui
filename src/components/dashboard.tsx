@@ -26,6 +26,7 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
 import type {
   CoverageHealth,
+  DashboardAuthState,
   DashboardCoverage,
   DashboardItem,
   DashboardOwnerOverride,
@@ -140,13 +141,15 @@ export function Dashboard({
   summary,
   coverage,
   ownerOverrides,
-  ownerSuggestions
+  ownerSuggestions,
+  auth
 }: {
   items: DashboardItem[];
   summary: DashboardSummary;
   coverage: DashboardCoverage[];
   ownerOverrides: DashboardOwnerOverride[];
   ownerSuggestions: DashboardOwnerSuggestion[];
+  auth: DashboardAuthState;
 }) {
   const dashboardRouter = useRouter();
   const [query, setQuery] = useState("");
@@ -219,6 +222,10 @@ export function Dashboard({
   }
 
   async function startDataRefresh() {
+    if (!auth.canOperate) {
+      setRefreshError("Operator access is required to refresh Azure metadata.");
+      return;
+    }
     setRefreshError(null);
     refreshStartedFromUi.current = true;
     try {
@@ -460,6 +467,7 @@ export function Dashboard({
   }
 
   function bulkUpdate(statusValue: WorkflowStatus) {
+    if (!auth.canOperate) return;
     startTransition(() => {
       for (const id of selectedIds) {
         const form = new FormData();
@@ -680,8 +688,10 @@ export function Dashboard({
             type="button"
             className="refresh-button"
             onClick={startDataRefresh}
-            disabled={refreshStatus?.status === "running"}
+            disabled={refreshStatus?.status === "running" || !auth.canOperate}
+            aria-disabled={!auth.canOperate}
             aria-live="polite"
+            title={auth.canOperate ? "Refresh data" : "Operator access required"}
           >
             <RefreshCw size={16} className={refreshStatus?.status === "running" ? "spin" : ""} />
             <span>{refreshStatus?.status === "running" ? "Refreshing" : "Refresh data"}</span>
@@ -690,6 +700,11 @@ export function Dashboard({
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
             <span>{theme === "dark" ? "Light" : "Dark"}</span>
           </button>
+          <div className="auth-pill" title={auth.username}>
+            <UserRound size={16} />
+            <span>{auth.accessLevel}</span>
+            {auth.source === "oidc" ? <a href={auth.signOutPath}>Sign out</a> : null}
+          </div>
           <div className={`sync-pill ${refreshStatus?.status === "running" ? "running" : refreshStatus?.status ?? ""}`}>
             {refreshStatus?.status === "running" ? (
               <span className="sync-loader" aria-hidden="true" />
@@ -994,6 +1009,7 @@ export function Dashboard({
           item={selectedDetail}
           coverage={detailCoverage}
           ownerSuggestions={ownerSuggestions}
+          canOperate={auth.canOperate}
           onClose={() => setSelectedDetailId(null)}
           onCopy={copyText}
         />
@@ -1015,12 +1031,14 @@ function CredentialDetailDrawer({
   item,
   coverage,
   ownerSuggestions,
+  canOperate,
   onClose,
   onCopy
 }: {
   item: DashboardItem;
   coverage: DashboardCoverage[];
   ownerSuggestions: DashboardOwnerSuggestion[];
+  canOperate: boolean;
   onClose: () => void;
   onCopy: (title: string, text: string) => Promise<void>;
 }) {
@@ -1040,6 +1058,15 @@ function CredentialDetailDrawer({
 
   function prepareRotation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canOperate) {
+      setRotationResult({
+        ok: false,
+        message: "Operator access is required to run renewal rotations.",
+        oneTimeSecretValue: null,
+        dryRun: false
+      });
+      return;
+    }
     setRotationResult(null);
     setPendingRotation(new FormData(event.currentTarget));
   }
@@ -1269,7 +1296,7 @@ function CredentialDetailDrawer({
                   </label>
                 </>
               ) : null}
-              <button type="submit" disabled={isRotating}>
+              <button type="submit" disabled={isRotating || !canOperate}>
                 {isRotating ? "Rotating" : "Run confirmed rotation"}
               </button>
             </form>

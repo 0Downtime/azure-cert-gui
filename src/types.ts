@@ -212,3 +212,18 @@ export interface RefreshRunStatus {
   exitCode: number | null;
   logs: string[];
 }
+
+export type AuthRole = "Viewer" | "Operator" | "Admin";
+
+export type AuthAccessLevel = "Viewer" | "Operator" | "Admin" | "No Access";
+
+export interface DashboardAuthState {
+  mode: "local" | "oidc" | "hybrid";
+  source: "local" | "oidc";
+  username: string;
+  displayName: string | null;
+  accessLevel: AuthAccessLevel;
+  canOperate: boolean;
+  signInPath: string;
+  signOutPath: string;
+}
