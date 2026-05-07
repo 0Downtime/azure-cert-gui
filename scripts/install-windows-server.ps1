@@ -156,6 +156,7 @@ function Get-BrewPath {
 function Get-WindowsPathCandidates {
   $paths = New-Object "System.Collections.Generic.List[string]"
   foreach ($candidatePath in @(
+      (Get-PortableNodeBinPath),
       $(if ($env:ProgramFiles) { Join-Path $env:ProgramFiles "nodejs" }),
       $(if (${env:ProgramFiles(x86)}) { Join-Path ${env:ProgramFiles(x86)} "nodejs" }),
       $(if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "Programs\nodejs" })
@@ -173,6 +174,14 @@ function Get-WindowsPathCandidates {
   }
 
   return $paths.ToArray()
+}
+
+function Get-PortableNodeRoot {
+  return Join-Path (Join-Path $AppRoot ".runtime") "node-v$NodeMajorVersion-win-x64"
+}
+
+function Get-PortableNodeBinPath {
+  return Get-PortableNodeRoot
 }
 
 function Get-ExecutablePath {
@@ -273,6 +282,36 @@ function Install-MsiFromUri {
   if ($process.ExitCode -eq 3010) {
     Write-Warning "$Name requested a reboot. Continue after reboot if a later step fails."
   }
+  Update-ProcessPath
+}
+
+function Install-WindowsPortableNode {
+  param([string]$MajorVersion)
+  $zipUri = Get-LatestNodeWindowsZipUri -MajorVersion $MajorVersion
+  $runtimeDir = Join-Path $AppRoot ".runtime"
+  New-Item -ItemType Directory -Path $runtimeDir -Force | Out-Null
+  $zipPath = Join-Path $runtimeDir "node-v$MajorVersion-win-x64.zip"
+  $extractRoot = Join-Path $runtimeDir "node-extract"
+  $portableRoot = Get-PortableNodeRoot
+
+  if (Test-Path $portableRoot) {
+    Remove-Item -Path $portableRoot -Recurse -Force
+  }
+  if (Test-Path $extractRoot) {
+    Remove-Item -Path $extractRoot -Recurse -Force
+  }
+
+  Write-Host "Downloading portable Node.js $MajorVersion from $zipUri"
+  Invoke-WebRequest -Uri $zipUri -OutFile $zipPath -UseBasicParsing
+  New-Item -ItemType Directory -Path $extractRoot -Force | Out-Null
+  Expand-Archive -Path $zipPath -DestinationPath $extractRoot -Force
+  $expanded = Get-ChildItem -Path $extractRoot -Directory | Select-Object -First 1
+  if (-not $expanded) {
+    throw "Portable Node.js archive did not contain an expanded directory."
+  }
+  Move-Item -Path $expanded.FullName -Destination $portableRoot -Force
+  Remove-Item -Path $extractRoot -Recurse -Force
+  Remove-Item -Path $zipPath -Force
   Update-ProcessPath
 }
 
@@ -463,6 +502,18 @@ function Get-LatestNodeMsiUri {
   throw "Could not find a Node.js v$MajorVersion Windows x64 MSI release."
 }
 
+function Get-LatestNodeWindowsZipUri {
+  param([string]$MajorVersion)
+  $index = Invoke-RestMethod -Uri "https://nodejs.org/dist/index.json" -UseBasicParsing
+  foreach ($release in $index) {
+    $files = @($release.files)
+    if (($release.version -like "v$MajorVersion.*") -and ($files -contains "win-x64-zip")) {
+      return "https://nodejs.org/dist/$($release.version)/node-$($release.version)-win-x64.zip"
+    }
+  }
+  throw "Could not find a Node.js v$MajorVersion Windows x64 ZIP release."
+}
+
 function Ensure-Node {
   $major = Get-NodeMajor
   if ($major -eq [int]$NodeMajorVersion) {
@@ -497,8 +548,29 @@ function Ensure-Node {
 
   $major = Get-NodeMajor
   if ($major -ne [int]$NodeMajorVersion) {
-    throw "Node.js v$NodeMajorVersion was not available on PATH after installation."
+    Write-Warning "Node.js v$NodeMajorVersion was not available after MSI installation. Installing portable Node.js under .runtime."
+    Install-WindowsPortableNode -MajorVersion $NodeMajorVersion
+    $major = Get-NodeMajor
   }
+  if ($major -ne [int]$NodeMajorVersion) {
+    throw "Node.js v$NodeMajorVersion was not available after MSI or portable installation. Checked: $((Get-NodePathCandidates) -join ', ')"
+  }
+}
+
+function Ensure-NodeRuntime {
+  $major = Get-NodeMajor
+  if ($major -eq [int]$NodeMajorVersion) {
+    return
+  }
+  if (Test-IsWindows) {
+    Write-Warning "Node.js v$NodeMajorVersion is not available to this PowerShell session. Installing portable Node.js under .runtime."
+    Install-WindowsPortableNode -MajorVersion $NodeMajorVersion
+    $major = Get-NodeMajor
+    if ($major -eq [int]$NodeMajorVersion) {
+      return
+    }
+  }
+  throw "Node.js v$NodeMajorVersion is required before continuing. Checked: $((Get-NodePathCandidates) -join ', ')"
 }
 
 function Ensure-AzureCli {
@@ -1251,6 +1323,9 @@ if ($ConfigureOidc) {
   }
   Configure-Oidc
 }
+
+Write-Step "Checking Node.js runtime"
+Ensure-NodeRuntime
 
 Write-Step "Installing npm dependencies"
 if (-not $SkipNpmInstall) {
