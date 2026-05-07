@@ -196,6 +196,19 @@ button:disabled {
   padding: 8px 10px;
 }
 
+.auth-name {
+  color: var(--text);
+  font-weight: 700;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auth-role {
+  color: var(--muted);
+}
+
 .auth-pill a {
   color: var(--teal);
   font-weight: 700;

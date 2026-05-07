@@ -148,6 +148,12 @@ const REFRESH_INTERVAL_OPTIONS = [
   { value: "1440", label: "24h" }
 ];
 
+function authDisplayName(auth: DashboardAuthState): string {
+  const displayName = auth.displayName?.trim();
+  if (displayName) return displayName;
+  return auth.username || "Signed-in user";
+}
+
 export function Dashboard({
   items,
   summary,
@@ -164,6 +170,9 @@ export function Dashboard({
   auth: DashboardAuthState;
 }) {
   const dashboardRouter = useRouter();
+  const signedInName = authDisplayName(auth);
+  const authTitle =
+    auth.username && auth.username !== signedInName ? `${signedInName} (${auth.username})` : signedInName;
   const [query, setQuery] = useState("");
   const [source, setSource] = useState<InventorySource | "all">("all");
   const [bucket, setBucket] = useState<RiskBucket | "all">("all");
@@ -833,9 +842,10 @@ export function Dashboard({
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
             <span>{theme === "dark" ? "Light" : "Dark"}</span>
           </button>
-          <div className="auth-pill" title={auth.username}>
+          <div className="auth-pill" title={authTitle}>
             <UserRound size={16} />
-            <span>{auth.accessLevel}</span>
+            <span className="auth-name">{signedInName}</span>
+            <span className="auth-role">{auth.accessLevel}</span>
             {auth.source === "oidc" ? <a href={auth.signOutPath}>Sign out</a> : null}
           </div>
         </div>
