@@ -162,7 +162,20 @@ Useful options:
 .\scripts\install-windows-server.ps1 -Start
 ```
 
-By default the generated helper binds the UI to `127.0.0.1:3000` with local break-glass auth. Configure OIDC and keep `AZURE_CERT_GUI__AUTH__ALLOWLOCALINPRODUCTION=false` before exposing the app beyond loopback.
+By default the generated helper binds the UI to `127.0.0.1:3000` with local break-glass auth.
+
+To provision Microsoft Entra ID OIDC for the current or requested Azure CLI tenant:
+
+```powershell
+.\scripts\install-windows-server.ps1 `
+  -ConfigureOidc `
+  -TenantId <tenant-id> `
+  -PublicOrigin https://azure-cert-gui.contoso.com
+```
+
+`-ConfigureOidc` reuses an existing app registration by object id, client id, display name, or redirect URI, or creates a new app registration when none exists. It creates or reuses Viewer, Operator, and Admin security groups, enables security-group claims in the token, creates the enterprise app, creates a client secret when no local runtime secret exists, and writes the app runtime values to ignored `.runtime\azure-cert-gui.env.ps1`.
+
+Use `-AuthMode hybrid` only when you want local loopback break-glass auth left available. Keep the default `-AuthMode oidc` before exposing the app beyond loopback.
 
 ## Daily Use
 
