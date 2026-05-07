@@ -183,7 +183,8 @@ function isPortAvailable(port, listenHost) {
 
 function run(command, args, extraEnv = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    const { spawnCommand, spawnArgs } = normalizeSpawnCommand(command, args);
+    const child = spawn(spawnCommand, spawnArgs, {
       cwd: root,
       env: { ...process.env, ...extraEnv },
       stdio: "inherit",
@@ -202,6 +203,25 @@ function run(command, args, extraEnv = {}) {
       reject(new Error(`${command} ${args.join(" ")} exited with code ${code}.`));
     });
   });
+}
+
+function normalizeSpawnCommand(command, args) {
+  if (process.platform !== "win32" || !command.toLowerCase().endsWith(".cmd")) {
+    return { spawnCommand: command, spawnArgs: args };
+  }
+
+  return {
+    spawnCommand: process.env.ComSpec ?? "cmd.exe",
+    spawnArgs: ["/d", "/s", "/c", `"${command}" ${args.map(quoteCmdArg).join(" ")}`],
+  };
+}
+
+function quoteCmdArg(value) {
+  const text = String(value);
+  if (/^[A-Za-z0-9_./:=-]+$/.test(text)) {
+    return text;
+  }
+  return `"${text.replaceAll('"', '\\"')}"`;
 }
 
 async function exists(absolutePath) {
