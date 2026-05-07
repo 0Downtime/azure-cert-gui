@@ -94,16 +94,25 @@ function Update-ProcessPath {
     return
   }
 
-  $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
-  $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-  $paths = @()
-  if ($machinePath) { $paths += $machinePath }
-  if ($userPath) { $paths += $userPath }
-  $nodePath = Join-Path $env:ProgramFiles "nodejs"
-  if ((Test-Path $nodePath) -and ($paths -notcontains $nodePath)) {
-    $paths = @($nodePath) + $paths
+  $candidatePaths = Get-WindowsPathCandidates
+  $existingPaths = @()
+  foreach ($pathValue in @(
+      [Environment]::GetEnvironmentVariable("Path", "Machine"),
+      [Environment]::GetEnvironmentVariable("Path", "User"),
+      $env:Path
+    )) {
+    if (-not [string]::IsNullOrWhiteSpace($pathValue)) {
+      $existingPaths += @($pathValue -split ";" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
   }
-  $env:Path = ($paths -join ";")
+  $orderedPaths = New-Object "System.Collections.Generic.List[string]"
+  $seenPaths = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  foreach ($candidatePath in @($candidatePaths + $existingPaths)) {
+    if ((Test-Path $candidatePath) -and $seenPaths.Add($candidatePath)) {
+      $orderedPaths.Add($candidatePath) | Out-Null
+    }
+  }
+  $env:Path = ($orderedPaths.ToArray() -join ";")
 }
 
 function Get-UnixPathCandidates {
@@ -144,9 +153,37 @@ function Get-BrewPath {
   return $null
 }
 
+function Get-WindowsPathCandidates {
+  $paths = New-Object "System.Collections.Generic.List[string]"
+  foreach ($candidatePath in @(
+      $(if ($env:ProgramFiles) { Join-Path $env:ProgramFiles "nodejs" }),
+      $(if (${env:ProgramFiles(x86)}) { Join-Path ${env:ProgramFiles(x86)} "nodejs" }),
+      $(if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "Programs\nodejs" })
+    )) {
+    if (-not [string]::IsNullOrWhiteSpace($candidatePath)) {
+      $paths.Add($candidatePath) | Out-Null
+    }
+  }
+
+  foreach ($name in @("node.exe", "node")) {
+    $command = Get-Command $name -ErrorAction SilentlyContinue
+    if ($command -and $command.Source) {
+      $paths.Add((Split-Path -Parent $command.Source)) | Out-Null
+    }
+  }
+
+  return $paths.ToArray()
+}
+
 function Get-ExecutablePath {
   param([string[]]$Names)
-  if (-not (Test-IsWindows)) {
+  if (Test-IsWindows) {
+    foreach ($candidatePath in Get-WindowsExecutableCandidates -Names $Names) {
+      if (Test-Path $candidatePath) {
+        return $candidatePath
+      }
+    }
+  } else {
     foreach ($candidatePath in Get-UnixExecutableCandidates -Names $Names) {
       if (Test-Path $candidatePath) {
         return $candidatePath
@@ -160,6 +197,29 @@ function Get-ExecutablePath {
     }
   }
   return $null
+}
+
+function Get-WindowsExecutableCandidates {
+  param([string[]]$Names)
+  $candidates = New-Object "System.Collections.Generic.List[string]"
+  foreach ($candidatePath in Get-WindowsPathCandidates) {
+    foreach ($name in $Names) {
+      if ($name -match "[/\\]") {
+        $candidates.Add($name) | Out-Null
+        continue
+      }
+      if (-not ($name.EndsWith(".exe", [System.StringComparison]::OrdinalIgnoreCase) -or
+          $name.EndsWith(".cmd", [System.StringComparison]::OrdinalIgnoreCase) -or
+          $name.EndsWith(".bat", [System.StringComparison]::OrdinalIgnoreCase))) {
+        foreach ($extension in @(".cmd", ".exe", ".bat")) {
+          $candidates.Add((Join-Path $candidatePath "$name$extension")) | Out-Null
+        }
+        continue
+      }
+      $candidates.Add((Join-Path $candidatePath $name)) | Out-Null
+    }
+  }
+  return $candidates.ToArray()
 }
 
 function Get-UnixExecutableCandidates {
