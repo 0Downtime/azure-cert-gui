@@ -151,8 +151,8 @@ function Ensure-Node {
 function Ensure-AzureCli {
   $az = Get-ExecutablePath @("az.cmd", "az")
   if ($az) {
-    $version = & $az version --query '"azure-cli"' -o tsv 2>$null
-    if ($LASTEXITCODE -eq 0) {
+    $version = Get-AzureCliVersion -AzPath $az
+    if ($version) {
       Write-Host "Azure CLI $version is already installed."
     } else {
       Write-Host "Azure CLI is already installed."
@@ -160,6 +160,20 @@ function Ensure-AzureCli {
     return
   }
   Install-MsiFromUri -Name "Azure CLI" -Uri "https://aka.ms/installazurecliwindowsx64"
+}
+
+function Get-AzureCliVersion {
+  param([string]$AzPath)
+  $versionJson = (& $AzPath version -o json 2>$null) -join "`n"
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($versionJson)) {
+    return $null
+  }
+  try {
+    $versionInfo = $versionJson | ConvertFrom-Json
+    return $versionInfo.'azure-cli'
+  } catch {
+    return $null
+  }
 }
 
 function Get-NpmPath {
