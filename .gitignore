@@ -9,6 +9,7 @@ out/
 coverage/
 *.tsbuildinfo
 .playwright-cli/
+/output/playwright/
 
 # Local runtime state
 .env

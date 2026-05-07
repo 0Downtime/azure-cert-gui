@@ -15,15 +15,18 @@
   <a href="#local-development">Local Development</a> •
   <a href="#daily-use">Daily Use</a> •
   <a href="#real-azure-setup">Real Azure Setup</a> •
-  <a href="#configuration">Configuration</a>
+  <a href="#configuration">Configuration</a> •
+  <a href="CONTRIBUTING.md">Contributing</a> •
+  <a href="SECURITY.md">Security</a>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/repository-local--first-2f7d32" alt="Repository: local-first" />
   <img src="https://img.shields.io/badge/language-TypeScript-2f7d32" alt="Language: TypeScript" />
   <img src="https://img.shields.io/badge/package-v0.1.0-2f7d32" alt="Package Version: v0.1.0" />
-  <img src="https://img.shields.io/badge/Next.js-15.1-2f7d32" alt="Next.js 15.1" />
+  <img src="https://img.shields.io/badge/Next.js-15.5-2f7d32" alt="Next.js 15.5" />
   <img src="https://img.shields.io/badge/Node.js-22%2B-2f7d32" alt="Node.js 22+" />
+  <img src="https://img.shields.io/badge/license-MIT-2f7d32" alt="License: MIT" />
 </p>
 
 `Azure Cert GUI` is a local-first dashboard for tracking expiring Microsoft Entra app credentials, service principal credentials, and Azure Key Vault secrets, certificates, and keys.
@@ -39,6 +42,7 @@
 - Local development can run entirely from synthetic fixture data, so Azure credentials are not required to try the dashboard.
 - Real Azure sync and renewal actions use the current Azure CLI login. The app reads metadata by default and avoids collecting secret values or certificate private keys.
 - Local development defaults to loopback-only operator mode. Shared or remotely reachable deployments should use OIDC with Entra group mappings for Viewer, Operator, and Admin access.
+- Public repo guardrails include MIT licensing, contribution guidance, security reporting guidance, changelog tracking, CI, production dependency audit, and secret scanning.
 
 ## Goals
 

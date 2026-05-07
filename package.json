@@ -2,6 +2,7 @@
   "name": "azure-cert-gui",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "Internal Azure and Entra certificate and secret expiration GUI.",
   "scripts": {
     "dev": "next dev",
