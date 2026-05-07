@@ -390,27 +390,25 @@ function Get-GraphCollection {
   return $items
 }
 
-function Escape-ODataString {
-  param([string]$Value)
-  return $Value -replace "'", "''"
-}
-
-function Get-SingleGraphItemByFilter {
+function Get-SingleGraphItemByPropertyValue {
   param(
     [string]$Collection,
-    [string]$Filter,
-    [string]$Select = "id"
+    [string]$PropertyName,
+    [string]$PropertyValue
   )
-  $encodedFilter = [Uri]::EscapeDataString($Filter)
-  $uri = "https://graph.microsoft.com/v1.0/${Collection}?`$filter=$encodedFilter&`$select=$Select"
-  $items = @(Get-GraphCollection -Uri $uri)
-  if ($items.Count -gt 1) {
-    throw "Graph query '${Collection}?$Filter' returned multiple objects."
+  $items = @(Get-GraphCollection -Uri "https://graph.microsoft.com/v1.0/$Collection")
+  $matches = @($items | Where-Object {
+    $candidate = $_.$PropertyName
+    -not [string]::IsNullOrWhiteSpace([string]$candidate) -and
+      [string]::Equals([string]$candidate, $PropertyValue, [System.StringComparison]::OrdinalIgnoreCase)
+  })
+  if ($matches.Count -gt 1) {
+    throw "Graph query '${Collection}.${PropertyName}=$PropertyValue' returned multiple objects."
   }
-  if ($items.Count -eq 0) {
+  if ($matches.Count -eq 0) {
     return $null
   }
-  return $items[0]
+  return $matches[0]
 }
 
 function Resolve-ExistingApplication {
@@ -427,20 +425,20 @@ function Resolve-ExistingApplication {
 
   if (-not [string]::IsNullOrWhiteSpace($AppId)) {
     Write-Host "Searching Entra application by client id $AppId..."
-    $match = Get-SingleGraphItemByFilter -Collection "applications" -Filter "appId eq '$(Escape-ODataString $AppId)'" -Select "id,appId,displayName,web"
+    $match = Get-SingleGraphItemByPropertyValue -Collection "applications" -PropertyName "appId" -PropertyValue $AppId
     if ($match) {
       return Invoke-AzRestJson -Method GET -Uri "https://graph.microsoft.com/v1.0/applications/$($match.id)"
     }
   }
 
   Write-Host "Searching Entra application by display name '$DisplayName'..."
-  $displayNameMatch = Get-SingleGraphItemByFilter -Collection "applications" -Filter "displayName eq '$(Escape-ODataString $DisplayName)'" -Select "id,appId,displayName,web"
+  $displayNameMatch = Get-SingleGraphItemByPropertyValue -Collection "applications" -PropertyName "displayName" -PropertyValue $DisplayName
   if ($displayNameMatch) {
     return Invoke-AzRestJson -Method GET -Uri "https://graph.microsoft.com/v1.0/applications/$($displayNameMatch.id)"
   }
 
   Write-Host "Searching Entra applications by redirect URI..."
-  $applications = @(Get-GraphCollection -Uri "https://graph.microsoft.com/v1.0/applications?`$select=id,appId,displayName,web")
+  $applications = @(Get-GraphCollection -Uri "https://graph.microsoft.com/v1.0/applications")
   $matches = @($applications | Where-Object {
     $web = $_.PSObject.Properties["web"]
     if (-not $web -or -not $web.Value -or -not $web.Value.redirectUris) {
@@ -509,7 +507,7 @@ function Ensure-OidcApplication {
 
 function Ensure-ServicePrincipal {
   param([string]$AppId)
-  $servicePrincipal = Get-SingleGraphItemByFilter -Collection "servicePrincipals" -Filter "appId eq '$(Escape-ODataString $AppId)'" -Select "id,appId,displayName"
+  $servicePrincipal = Get-SingleGraphItemByPropertyValue -Collection "servicePrincipals" -PropertyName "appId" -PropertyValue $AppId
   if ($servicePrincipal) {
     return $servicePrincipal
   }
@@ -538,7 +536,7 @@ function Ensure-SecurityGroup {
     return Invoke-AzRestJson -Method GET -Uri "https://graph.microsoft.com/v1.0/groups/$ObjectId"
   }
 
-  $group = Get-SingleGraphItemByFilter -Collection "groups" -Filter "displayName eq '$(Escape-ODataString $DisplayName)'" -Select "id,displayName"
+  $group = Get-SingleGraphItemByPropertyValue -Collection "groups" -PropertyName "displayName" -PropertyValue $DisplayName
   if ($group) {
     Write-Host "Reusing Entra group '$($group.displayName)' ($($group.id))."
     return $group
