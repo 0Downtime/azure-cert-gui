@@ -224,6 +224,7 @@ function Invoke-AzRestJson {
   )
   $arguments = @("rest", "--method", $Method, "--url", $Uri)
   if ($Body) {
+    $arguments += @("--headers", "Content-Type=application/json")
     $arguments += @("--body", ($Body | ConvertTo-Json -Depth 20 -Compress))
   }
   return Invoke-AzJson -Arguments $arguments -AllowEmpty:($Method -eq "PATCH")
