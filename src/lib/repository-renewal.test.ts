@@ -6,7 +6,7 @@ import { createRenewalCase, listDashboardItems, markRenewalValidated, recordRene
 import { SecretValueLeakError } from "./secret-guard";
 
 function useTempDb(): void {
-  process.env.GSTACK_DB_PATH = join(mkdtempSync(join(tmpdir(), "gstack-renewal-")), "test.sqlite");
+  process.env.AZURE_CERT_GUI_DB_PATH = join(mkdtempSync(join(tmpdir(), "azure-cert-gui-renewal-")), "test.sqlite");
 }
 
 function seedCredential(): number {

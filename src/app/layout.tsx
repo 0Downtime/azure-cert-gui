@@ -14,7 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           dangerouslySetInnerHTML={{
             __html: `
 try {
-  var theme = window.localStorage.getItem("azure-cert-gui-theme") || window.localStorage.getItem("gstack-theme");
+  var theme = window.localStorage.getItem("azure-cert-gui-theme");
   if (theme === "dark" || theme === "light") {
     document.documentElement.dataset.theme = theme;
     document.documentElement.style.colorScheme = theme;

@@ -1,7 +1,3 @@
-# Project-local Gstack install and generated skill links
-/.agents/skills/gstack/
-/.agents/skills/gstack-*
-
 # Dependencies and build output
 node_modules/
 .next/
@@ -16,4 +12,3 @@ coverage/
 .env.local
 /data/*.sqlite
 /data/*.sqlite-*
-.gstack/

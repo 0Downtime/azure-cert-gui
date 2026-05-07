@@ -13,8 +13,8 @@ type RefreshScheduleState = RefreshScheduleStatus & {
 };
 
 type RefreshGlobal = typeof globalThis & {
-  __gstackRefreshState?: RefreshState;
-  __gstackRefreshScheduleState?: RefreshScheduleState;
+  __azureCertGuiRefreshState?: RefreshState;
+  __azureCertGuiRefreshScheduleState?: RefreshScheduleState;
 };
 
 const MAX_LOG_LINES = 80;
@@ -38,10 +38,10 @@ function initialState(): RefreshState {
 
 function state(): RefreshState {
   const globalState = globalThis as RefreshGlobal;
-  if (!globalState.__gstackRefreshState) {
-    globalState.__gstackRefreshState = initialState();
+  if (!globalState.__azureCertGuiRefreshState) {
+    globalState.__azureCertGuiRefreshState = initialState();
   }
-  return globalState.__gstackRefreshState;
+  return globalState.__azureCertGuiRefreshState;
 }
 
 function initialScheduleState(): RefreshScheduleState {
@@ -63,18 +63,21 @@ function initialScheduleState(): RefreshScheduleState {
 function scheduleState(): RefreshScheduleState {
   const globalState = globalThis as RefreshGlobal;
   const currentDbPath = dbPath();
-  if (!globalState.__gstackRefreshScheduleState || globalState.__gstackRefreshScheduleState.loadedDbPath !== currentDbPath) {
-    globalState.__gstackRefreshScheduleState = {
+  if (
+    !globalState.__azureCertGuiRefreshScheduleState ||
+    globalState.__azureCertGuiRefreshScheduleState.loadedDbPath !== currentDbPath
+  ) {
+    globalState.__azureCertGuiRefreshScheduleState = {
       ...initialScheduleState(),
       ...loadPersistedSchedule(),
       loadedDbPath: currentDbPath
     };
-    if (globalState.__gstackRefreshScheduleState.enabled) {
-      scheduleNextRun(globalState.__gstackRefreshScheduleState);
-      persistSchedule(globalState.__gstackRefreshScheduleState, "restored", "scheduler");
+    if (globalState.__azureCertGuiRefreshScheduleState.enabled) {
+      scheduleNextRun(globalState.__azureCertGuiRefreshScheduleState);
+      persistSchedule(globalState.__azureCertGuiRefreshScheduleState, "restored", "scheduler");
     }
   }
-  return globalState.__gstackRefreshScheduleState;
+  return globalState.__azureCertGuiRefreshScheduleState;
 }
 
 export function getRefreshStatus(): RefreshRunStatus {
@@ -230,10 +233,10 @@ function runScheduledRefresh(): void {
 
 export function resetRefreshScheduleForTests(): void {
   const globalState = globalThis as RefreshGlobal;
-  if (globalState.__gstackRefreshScheduleState?.timer) {
-    clearTimeout(globalState.__gstackRefreshScheduleState.timer);
+  if (globalState.__azureCertGuiRefreshScheduleState?.timer) {
+    clearTimeout(globalState.__azureCertGuiRefreshScheduleState.timer);
   }
-  globalState.__gstackRefreshScheduleState = undefined;
+  globalState.__azureCertGuiRefreshScheduleState = undefined;
 }
 
 function handleOutput(current: RefreshState, text: string, isError: boolean): string {

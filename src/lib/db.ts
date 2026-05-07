@@ -2,10 +2,10 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-const DEFAULT_DB_PATH = "./data/gstack.sqlite";
+const DEFAULT_DB_PATH = "./data/azure-cert-gui.sqlite";
 
 export function dbPath(): string {
-  return resolve(process.env.GSTACK_DB_PATH ?? DEFAULT_DB_PATH);
+  return resolve(process.env.AZURE_CERT_GUI_DB_PATH ?? DEFAULT_DB_PATH);
 }
 
 export function openDatabase(): DatabaseSync {

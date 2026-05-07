@@ -187,7 +187,7 @@ export function Dashboard({
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
-    const stored = window.localStorage.getItem("azure-cert-gui-theme") || window.localStorage.getItem("gstack-theme");
+    const stored = window.localStorage.getItem("azure-cert-gui-theme");
     if (stored === "dark" || stored === "light") {
       setTheme(stored);
       document.documentElement.dataset.theme = stored;

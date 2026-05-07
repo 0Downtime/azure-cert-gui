@@ -12,7 +12,7 @@ import {
 
 describe("refresh schedule", () => {
   beforeEach(() => {
-    process.env.GSTACK_DB_PATH = join(mkdtempSync(join(tmpdir(), "gstack-refresh-")), "test.sqlite");
+    process.env.AZURE_CERT_GUI_DB_PATH = join(mkdtempSync(join(tmpdir(), "azure-cert-gui-refresh-")), "test.sqlite");
     resetRefreshScheduleForTests();
   });
 
@@ -52,7 +52,7 @@ describe("refresh schedule", () => {
     expect(restored.intervalMinutes).toBe(30);
     expect(restored.updatedBy).toBe("operator@example.com");
 
-    const db = new DatabaseSync(process.env.GSTACK_DB_PATH ?? "");
+    const db = new DatabaseSync(process.env.AZURE_CERT_GUI_DB_PATH ?? "");
     const events = db.prepare("SELECT event_type, created_by FROM refresh_schedule_events ORDER BY id").all() as {
       event_type: string;
       created_by: string;

@@ -275,7 +275,7 @@ For a focused rollout, set `AZURE_SUBSCRIPTION_IDS` and/or `AZURE_KEYVAULT_RESOU
 
 Supported environment values:
 
-- `GSTACK_DB_PATH`: SQLite path. Defaults to `./data/gstack.sqlite`.
+- `AZURE_CERT_GUI_DB_PATH`: SQLite path. Defaults to `./data/azure-cert-gui.sqlite`.
 - `AZURE_TENANT_ID`: optional tenant override. When blank, the Azure CLI current account tenant is used.
 - `AZURE_SUBSCRIPTION_IDS`: optional comma-separated subscription IDs. When blank, enabled Azure CLI subscriptions are scanned.
 - `AZURE_KEYVAULT_RESOURCE_IDS`: optional comma-separated Key Vault ARM resource IDs. When blank, vaults are discovered from subscriptions.
