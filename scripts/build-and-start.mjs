@@ -8,7 +8,8 @@ import net from "node:net";
 import path from "node:path";
 
 const root = process.cwd();
-const runtimeEnvPath = path.join(root, ".runtime", "azure-cert-gui.env.ps1");
+const runtimePowerShellEnvPath = path.join(root, ".runtime", "azure-cert-gui.env.ps1");
+const runtimeEnvPath = path.join(root, ".runtime", "azure-cert-gui.env");
 const cachePath = path.join(root, ".next", "azure-cert-gui-build-cache.json");
 const buildIdPath = path.join(root, ".next", "BUILD_ID");
 const inputPaths = [
@@ -70,11 +71,22 @@ function parsePort(value) {
 }
 
 function loadRuntimeEnvFile() {
-  if (!existsSync(runtimeEnvPath)) {
-    return;
+  let loaded = 0;
+
+  if (existsSync(runtimeEnvPath)) {
+    loaded += loadDotEnvFile(runtimeEnvPath);
+  }
+  if (existsSync(runtimePowerShellEnvPath)) {
+    loaded += loadPowerShellEnvFile(runtimePowerShellEnvPath);
   }
 
-  const content = readFileSync(runtimeEnvPath, "utf8");
+  if (loaded > 0) {
+    console.log("[ui] Loaded runtime environment from .runtime.");
+  }
+}
+
+function loadPowerShellEnvFile(absolutePath) {
+  const content = readFileSync(absolutePath, "utf8");
   let loaded = 0;
   for (const line of content.split(/\r?\n/)) {
     const singleQuoted = line.match(/^\s*\$env:([A-Za-z0-9_]+)\s*=\s*'(.*)'\s*$/);
@@ -92,10 +104,32 @@ function loadRuntimeEnvFile() {
     process.env[name] = singleQuoted ? rawValue.replaceAll("''", "'") : rawValue.replaceAll('`"', '"');
     loaded += 1;
   }
+  return loaded;
+}
 
-  if (loaded > 0) {
-    console.log(`[ui] Loaded runtime environment from ${path.relative(root, runtimeEnvPath)}.`);
+function loadDotEnvFile(absolutePath) {
+  const content = readFileSync(absolutePath, "utf8");
+  let loaded = 0;
+  for (const line of content.split(/\r?\n/)) {
+    const match = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.*)\s*$/);
+    if (!match) continue;
+    const [, name, rawValue] = match;
+    if (process.env[name] !== undefined) continue;
+    process.env[name] = parseEnvValue(rawValue);
+    loaded += 1;
   }
+  return loaded;
+}
+
+function parseEnvValue(rawValue) {
+  const trimmed = rawValue.trim();
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    return trimmed.slice(1, -1).replaceAll("\\$", "$").replaceAll('\\"', '"').replaceAll("\\`", "`").replaceAll("\\\\", "\\");
+  }
+  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
 }
 
 async function ensureDependencies() {

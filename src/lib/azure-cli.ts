@@ -1,5 +1,4 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { AzureCliError, execAzureCliJson } from "./azure-command";
 import type {
   GraphApplicationInput,
   GraphCredentialInput,
@@ -8,7 +7,6 @@ import type {
   KeyVaultItemInput
 } from "./normalize";
 
-const execFileAsync = promisify(execFile);
 const GRAPH_ROOT = "https://graph.microsoft.com/v1.0";
 const JSON_BUFFER_BYTES = 1024 * 1024 * 100;
 
@@ -112,12 +110,7 @@ interface KeyVaultRawItem {
   tags?: unknown;
 }
 
-export class AzureCliError extends Error {
-  constructor(args: string[], stderr: string) {
-    super(`az ${args.join(" ")} failed: ${stderr.trim() || "no stderr"}`);
-    this.name = "AzureCliError";
-  }
-}
+export { AzureCliError };
 
 export function azureSyncConfigFromEnv(env: NodeJS.ProcessEnv = process.env): AzureSyncConfig {
   return {
@@ -138,16 +131,7 @@ function csv(value: string | undefined): string[] {
 }
 
 async function azJson<T>(args: string[]): Promise<T> {
-  try {
-    const { stdout } = await execFileAsync("az", [...args, "--only-show-errors", "-o", "json"], {
-      maxBuffer: JSON_BUFFER_BYTES
-    });
-    return JSON.parse(stdout || "null") as T;
-  } catch (error) {
-    const stderr =
-      error && typeof error === "object" && "stderr" in error ? String(error.stderr) : String(error);
-    throw new AzureCliError(args, stderr);
-  }
+  return execAzureCliJson<T>(args, { maxBuffer: JSON_BUFFER_BYTES });
 }
 
 async function graphList<T>(url: string): Promise<T[]> {

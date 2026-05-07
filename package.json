@@ -17,6 +17,7 @@
     "sync:fixtures": "tsx scripts/sync-fixtures.ts",
     "sync:azure": "tsx scripts/sync-azure.ts",
     "schedule:launchagent": "tsx scripts/print-launchagent.ts",
+    "systemd:write": "node scripts/write-systemd-user-units.mjs",
     "local:azure": "npm run db:migrate && npm run sync:azure -- --verbose && npm run dev",
     "local:fixtures": "npm run db:reset && npm run fixtures:sync -- --verbose && npm run dev"
   },

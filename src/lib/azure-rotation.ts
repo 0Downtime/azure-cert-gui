@@ -1,10 +1,8 @@
-import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { promisify } from "node:util";
 import type { DashboardItem } from "@/types";
+import { execAzureCliJson, execAzureCliText } from "./azure-command";
 import { isRenewalActionable } from "./rotation";
 
-const execFileAsync = promisify(execFile);
 const JSON_BUFFER_BYTES = 1024 * 1024 * 20;
 const GRAPH_ROOT = "https://graph.microsoft.com/v1.0";
 
@@ -316,10 +314,7 @@ function normalizeDate(value: string | number | null | undefined): string | null
 
 const defaultRunner: AzureRotationRunner = {
   async azJson<T>(args: string[]): Promise<T> {
-    const { stdout } = await execFileAsync("az", [...args, "--only-show-errors", "-o", "json"], {
-      maxBuffer: JSON_BUFFER_BYTES
-    });
-    return JSON.parse(stdout || "null") as T;
+    return execAzureCliJson<T>(args, { maxBuffer: JSON_BUFFER_BYTES });
   },
   setKeyVaultSecret: setKeyVaultSecretWithRest
 };
@@ -359,8 +354,7 @@ function safeKeyVaultName(value: string): string {
 }
 
 async function keyVaultAccessToken(): Promise<string> {
-  const { stdout } = await execFileAsync(
-    "az",
+  const stdout = await execAzureCliText(
     ["account", "get-access-token", "--resource", "https://vault.azure.net", "--query", "accessToken", "-o", "tsv"],
     { maxBuffer: JSON_BUFFER_BYTES }
   );

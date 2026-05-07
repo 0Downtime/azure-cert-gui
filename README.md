@@ -156,9 +156,11 @@ On macOS or Linux:
 
 ```bash
 pwsh ./scripts/install-server.ps1
+# or
+./scripts/install-server.sh
 ```
 
-The script supports Windows Server, macOS, and common Linux server distributions. It installs Node.js 22 and Azure CLI when they are missing, runs `npm ci`, migrates the SQLite database, builds the app, and writes a local run helper at `.runtime\start-azure-cert-gui.ps1`. On Windows, run from an elevated PowerShell session when system dependencies need to be installed. On macOS, missing system dependencies are installed with Homebrew. On Linux, missing system dependencies are installed with the native package manager when available: `apt`, `dnf`, `yum`, or `zypper`; otherwise install Node.js and Azure CLI manually and pass `-SkipSystemDependencies`.
+The script supports Windows Server, macOS, and common Linux server distributions. It installs Node.js 22 and Azure CLI when they are missing, runs `npm ci`, migrates the SQLite database, builds the app, writes runtime environment files at `.runtime\azure-cert-gui.env.ps1` and `.runtime\azure-cert-gui.env`, and writes a local run helper at `.runtime\start-azure-cert-gui.ps1`. On Windows, run from an elevated PowerShell session when system dependencies need to be installed. On macOS, missing system dependencies are installed with Homebrew. On Linux, missing system dependencies are installed with the native package manager when available: `apt`, `dnf`, `yum`, or `zypper`; otherwise install Node.js and Azure CLI manually and pass `-SkipSystemDependencies`. macOS and Linux need PowerShell 7 (`pwsh`); `scripts/install-server.sh` checks for it before invoking the shared bootstrap.
 
 Useful options:
 
@@ -166,6 +168,7 @@ Useful options:
 .\scripts\install-server.ps1 -SyncAzure
 .\scripts\install-server.ps1 -LoadFixtures
 .\scripts\install-server.ps1 -InstallLogonTask
+.\scripts\install-server.ps1 -WriteSystemdUserUnits
 .\scripts\install-server.ps1 -Start
 ```
 
@@ -180,7 +183,7 @@ To provision Microsoft Entra ID OIDC for the current or requested Azure CLI tena
   -PublicOrigin https://azure-cert-gui.contoso.com
 ```
 
-`-ConfigureOidc` reuses an existing app registration by object id, client id, display name, or redirect URI, or creates a new app registration when none exists. It creates or reuses Viewer, Operator, and Admin security groups, enables security-group claims in the token, creates the enterprise app, creates a client secret when no local runtime secret exists, and writes the app runtime values to ignored `.runtime\azure-cert-gui.env.ps1`.
+`-ConfigureOidc` reuses an existing app registration by object id, client id, display name, or redirect URI, or creates a new app registration when none exists. It creates or reuses Viewer, Operator, and Admin security groups, enables security-group claims in the token, creates the enterprise app, creates a client secret when no local runtime secret exists, and writes the app runtime values to ignored `.runtime\azure-cert-gui.env.ps1` and `.runtime\azure-cert-gui.env`.
 
 Use `-AuthMode hybrid` only when you want local loopback break-glass auth left available. Keep the default `-AuthMode oidc` before exposing the app beyond loopback.
 
@@ -210,6 +213,22 @@ launchctl kickstart -k gui/$(id -u)/com.local.azure-cert-gui.sync
 ```
 
 By default the generated LaunchAgent runs at 7:30 AM. Set `SYNC_HOUR` and `SYNC_MINUTE` when generating the file to use a different local time.
+
+Run the UI and sync schedule on Linux with user-level systemd units:
+
+```bash
+npm run systemd:write
+mkdir -p ~/.config/systemd/user
+cp .runtime/systemd-user/*.service .runtime/systemd-user/*.timer ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now azure-cert-gui.service
+systemctl --user enable --now azure-cert-gui-sync.timer
+
+# For headless servers where the user logs out:
+sudo loginctl enable-linger "$USER"
+```
+
+The systemd units use `.runtime/azure-cert-gui.env` and run under the same OS user that performed `az login`, so the Azure CLI token cache remains available. Set `SYNC_HOUR` and `SYNC_MINUTE` before `npm run systemd:write` to change the daily sync time.
 
 In the dashboard:
 
@@ -321,6 +340,7 @@ For a focused rollout, set `AZURE_SUBSCRIPTION_IDS` and/or `AZURE_KEYVAULT_RESOU
 Supported environment values:
 
 - `AZURE_CERT_GUI_DB_PATH`: SQLite path. Defaults to `./data/azure-cert-gui.sqlite`.
+- `AZURE_CLI_PATH`: optional absolute Azure CLI path for daemon contexts that cannot find `az` on `PATH`, such as `/usr/bin/az` or `/opt/homebrew/bin/az`.
 - `AZURE_TENANT_ID`: optional tenant override. When blank, the Azure CLI current account tenant is used.
 - `AZURE_SUBSCRIPTION_IDS`: optional comma-separated subscription IDs. When blank, enabled Azure CLI subscriptions are scanned.
 - `AZURE_KEYVAULT_RESOURCE_IDS`: optional comma-separated Key Vault ARM resource IDs. When blank, vaults are discovered from subscriptions.
