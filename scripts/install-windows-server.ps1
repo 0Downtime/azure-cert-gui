@@ -374,6 +374,18 @@ function Resolve-PublicOrigin {
   return "{0}://{1}:{2}" -f $scheme, (Format-UrlHost -HostName $UiHost), $Port
 }
 
+function Resolve-OidcRedirectUris {
+  param([string]$PrimaryOrigin)
+  $origins = @($PrimaryOrigin)
+  if ((Test-IsLoopbackHost -HostName $UiHost) -or ($PrimaryOrigin -match "^https?://(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?$")) {
+    $origins += @(
+      "http://localhost:$Port",
+      "http://127.0.0.1:$Port"
+    )
+  }
+  return Join-UniqueStrings -Values ($origins | ForEach-Object { "$($_.TrimEnd('/'))/api/auth/callback" })
+}
+
 function Join-UniqueStrings {
   param([string[]]$Values)
   $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -427,7 +439,7 @@ function Resolve-ExistingApplication {
     [string]$ObjectId,
     [string]$AppId,
     [string]$DisplayName,
-    [string]$RedirectUri
+    [string[]]$RedirectUris
   )
   if (-not [string]::IsNullOrWhiteSpace($ObjectId)) {
     Write-Host "Searching Entra application by object id $ObjectId..."
@@ -450,13 +462,14 @@ function Resolve-ExistingApplication {
 
   Write-Host "Searching Entra applications by redirect URI..."
   $applications = @(Get-GraphCollection -Uri "https://graph.microsoft.com/v1.0/applications")
+  $redirectSet = [System.Collections.Generic.HashSet[string]]::new($RedirectUris, [System.StringComparer]::OrdinalIgnoreCase)
   $matches = @($applications | Where-Object {
     $web = $_.PSObject.Properties["web"]
     if (-not $web -or -not $web.Value -or -not $web.Value.redirectUris) {
       return $false
     }
     foreach ($candidate in @($web.Value.redirectUris)) {
-      if ([string]::Equals([string]$candidate, $RedirectUri, [System.StringComparison]::OrdinalIgnoreCase)) {
+      if ($redirectSet.Contains([string]$candidate)) {
         return $true
       }
     }
@@ -476,9 +489,9 @@ function Resolve-ExistingApplication {
 function Ensure-OidcApplication {
   param(
     [string]$DisplayName,
-    [string]$RedirectUri
+    [string[]]$RedirectUris
   )
-  $application = Resolve-ExistingApplication -ObjectId $ApplicationObjectId -AppId $ClientId -DisplayName $DisplayName -RedirectUri $RedirectUri
+  $application = Resolve-ExistingApplication -ObjectId $ApplicationObjectId -AppId $ClientId -DisplayName $DisplayName -RedirectUris $RedirectUris
   if (-not $application) {
     Write-Host "Creating Entra application '$DisplayName'..."
     $application = Invoke-AzRestJson -Method POST -Uri "https://graph.microsoft.com/v1.0/applications" -Body @{
@@ -486,7 +499,7 @@ function Ensure-OidcApplication {
       signInAudience = "AzureADMyOrg"
       groupMembershipClaims = "SecurityGroup"
       web = @{
-        redirectUris = @($RedirectUri)
+        redirectUris = $RedirectUris
         implicitGrantSettings = @{
           enableAccessTokenIssuance = $false
           enableIdTokenIssuance = $false
@@ -501,7 +514,7 @@ function Ensure-OidcApplication {
   if ($application.web -and $application.web.redirectUris) {
     $existingRedirects = @($application.web.redirectUris | ForEach-Object { [string]$_ })
   }
-  $redirectUris = Join-UniqueStrings -Values (@($existingRedirects) + @($RedirectUri))
+  $redirectUris = Join-UniqueStrings -Values (@($existingRedirects) + @($RedirectUris))
   Invoke-AzRestJson -Method PATCH -Uri "https://graph.microsoft.com/v1.0/applications/$($application.id)" -Body @{
     groupMembershipClaims = "SecurityGroup"
     web = @{
@@ -588,12 +601,12 @@ function Configure-Oidc {
   Write-Step "Configuring Entra ID OIDC"
   $resolvedTenantId = Ensure-AzureCliLogin -RequestedTenantId $TenantId
   $origin = Resolve-PublicOrigin
-  $redirectUri = "$origin/api/auth/callback"
   if (($origin -notmatch "^https://") -and ($origin -notmatch "^http://(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?$")) {
     throw "OIDC redirect origins must use HTTPS unless they are localhost loopback. Pass -PublicOrigin https://<dns-name> for shared Windows Server access."
   }
+  $redirectUris = Resolve-OidcRedirectUris -PrimaryOrigin $origin
 
-  $application = Ensure-OidcApplication -DisplayName $OidcAppDisplayName -RedirectUri $redirectUri
+  $application = Ensure-OidcApplication -DisplayName $OidcAppDisplayName -RedirectUris $redirectUris
   $servicePrincipal = Ensure-ServicePrincipal -AppId ([string]$application.appId)
   $viewerGroup = Ensure-SecurityGroup -ObjectId $ViewerGroupObjectId -DisplayName $ViewerGroupName
   $operatorGroup = Ensure-SecurityGroup -ObjectId $OperatorGroupObjectId -DisplayName $OperatorGroupName
@@ -620,7 +633,10 @@ function Configure-Oidc {
 
   Write-Host "OIDC authority:      $($values.AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY)"
   Write-Host "OIDC client id:      $($values.AZURE_CERT_GUI__AUTH__OIDC__CLIENTID)"
-  Write-Host "OIDC redirect URI:   $redirectUri"
+  Write-Host "OIDC redirect URIs:"
+  foreach ($redirectUri in $redirectUris) {
+    Write-Host "  $redirectUri"
+  }
   Write-Host "Enterprise app id:   $($servicePrincipal.id)"
   Write-Host "Runtime env file:    $runtimeEnvPath"
   Write-Host "Role groups:"
