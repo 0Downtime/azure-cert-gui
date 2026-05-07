@@ -86,10 +86,23 @@ The app is not a hosted service and does not include multi-user authentication, 
 
 ## Local Development
 
-Install dependencies and start against your current Azure CLI tenant/subscription:
+Install dependencies once:
 
 ```bash
 npm install
+```
+
+Build only when the app has changed, then start the UI:
+
+```bash
+npm run ui
+```
+
+The command prints a clickable local URL such as `http://127.0.0.1:3000`. Set `PORT=3001` if you prefer a different starting port; if that port is busy, the script uses the next open one.
+
+Start against your current Azure CLI tenant/subscription:
+
+```bash
 npm run local:azure
 ```
 
