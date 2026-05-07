@@ -13,7 +13,7 @@
 <p align="center">
   <a href="#current-state">Current State</a> •
   <a href="#local-development">Local Development</a> •
-  <a href="#windows-server-bootstrap">Windows Server</a> •
+  <a href="#server-bootstrap">Server Bootstrap</a> •
   <a href="#daily-use">Daily Use</a> •
   <a href="#real-azure-setup">Real Azure Setup</a> •
   <a href="#configuration">Configuration</a> •
@@ -142,24 +142,31 @@ npm run build
 
 If you run `npm run build` while `npm run dev` is already running, restart the dev server before testing forms again. Next dev and Next build both write to `.next`, so a live dev server can serve stale asset paths after a production build.
 
-## Windows Server Bootstrap
+## Server Bootstrap
 
-Run the Windows Server bootstrap from an elevated PowerShell session in a checkout of this repository:
+Run the server bootstrap from PowerShell in a checkout of this repository:
 
 ```powershell
+# Windows only, when execution policy blocks local scripts:
 Set-ExecutionPolicy -Scope Process Bypass -Force
-.\scripts\install-windows-server.ps1
+.\scripts\install-server.ps1
 ```
 
-The script installs Node.js 22 and Azure CLI when they are missing, runs `npm ci`, migrates the SQLite database, builds the app, and writes a local run helper at `.runtime\start-azure-cert-gui.ps1`.
+On macOS:
+
+```bash
+pwsh ./scripts/install-server.ps1
+```
+
+The script supports Windows Server and macOS. It installs Node.js 22 and Azure CLI when they are missing, runs `npm ci`, migrates the SQLite database, builds the app, and writes a local run helper at `.runtime\start-azure-cert-gui.ps1`. On Windows, run from an elevated PowerShell session when system dependencies need to be installed. On macOS, missing system dependencies are installed with Homebrew.
 
 Useful options:
 
 ```powershell
-.\scripts\install-windows-server.ps1 -SyncAzure
-.\scripts\install-windows-server.ps1 -LoadFixtures
-.\scripts\install-windows-server.ps1 -InstallLogonTask
-.\scripts\install-windows-server.ps1 -Start
+.\scripts\install-server.ps1 -SyncAzure
+.\scripts\install-server.ps1 -LoadFixtures
+.\scripts\install-server.ps1 -InstallLogonTask
+.\scripts\install-server.ps1 -Start
 ```
 
 By default the generated helper binds the UI to `127.0.0.1:3000` with local break-glass auth.
@@ -167,7 +174,7 @@ By default the generated helper binds the UI to `127.0.0.1:3000` with local brea
 To provision Microsoft Entra ID OIDC for the current or requested Azure CLI tenant:
 
 ```powershell
-.\scripts\install-windows-server.ps1 `
+.\scripts\install-server.ps1 `
   -ConfigureOidc `
   -TenantId <tenant-id> `
   -PublicOrigin https://azure-cert-gui.contoso.com
@@ -176,6 +183,8 @@ To provision Microsoft Entra ID OIDC for the current or requested Azure CLI tena
 `-ConfigureOidc` reuses an existing app registration by object id, client id, display name, or redirect URI, or creates a new app registration when none exists. It creates or reuses Viewer, Operator, and Admin security groups, enables security-group claims in the token, creates the enterprise app, creates a client secret when no local runtime secret exists, and writes the app runtime values to ignored `.runtime\azure-cert-gui.env.ps1`.
 
 Use `-AuthMode hybrid` only when you want local loopback break-glass auth left available. Keep the default `-AuthMode oidc` before exposing the app beyond loopback.
+
+The previous Windows-specific entry point, `scripts\install-windows-server.ps1`, remains available for compatibility and now uses the same cross-platform bootstrap implementation.
 
 ## Daily Use
 

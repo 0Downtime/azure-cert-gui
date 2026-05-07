@@ -44,13 +44,26 @@ function Write-Step {
   Write-Host "==> $Message" -ForegroundColor Cyan
 }
 
-function Assert-Windows {
-  if ([System.Environment]::OSVersion.Platform -ne [System.PlatformID]::Win32NT) {
-    throw "This bootstrap script is intended for Windows Server."
+function Test-IsWindows {
+  return [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
+}
+
+function Test-IsMacOS {
+  $isMac = Get-Variable -Name IsMacOS -Scope Global -ErrorAction SilentlyContinue
+  return [bool]($isMac -and $isMac.Value)
+}
+
+function Assert-SupportedPlatform {
+  if ((Test-IsWindows) -or (Test-IsMacOS)) {
+    return
   }
+  throw "This bootstrap script supports Windows Server and macOS. Install Node.js $NodeMajorVersion and Azure CLI manually, then re-run with -SkipSystemDependencies on this platform."
 }
 
 function Test-IsAdministrator {
+  if (-not (Test-IsWindows)) {
+    return $false
+  }
   $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
   $principal = New-Object Security.Principal.WindowsPrincipal($identity)
   return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -61,6 +74,21 @@ function Enable-Tls12 {
 }
 
 function Update-ProcessPath {
+  if (-not (Test-IsWindows)) {
+    $candidatePaths = @(
+      "/opt/homebrew/opt/node@$NodeMajorVersion/bin",
+      "/usr/local/opt/node@$NodeMajorVersion/bin",
+      "/opt/homebrew/bin",
+      "/usr/local/bin"
+    )
+    foreach ($candidatePath in $candidatePaths) {
+      if ((Test-Path $candidatePath) -and (($env:Path -split ":") -notcontains $candidatePath)) {
+        $env:Path = "$candidatePath`:$env:Path"
+      }
+    }
+    return
+  }
+
   $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
   $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
   $paths = @()
@@ -119,6 +147,16 @@ function Install-MsiFromUri {
   Update-ProcessPath
 }
 
+function Invoke-Brew {
+  param([string[]]$Arguments)
+  $brew = Get-ExecutablePath @("brew")
+  if (-not $brew) {
+    throw "Homebrew is required to install missing system dependencies on macOS. Install it from https://brew.sh, or install Node.js $NodeMajorVersion and Azure CLI manually and re-run with -SkipSystemDependencies."
+  }
+  Invoke-Checked -Command $brew -Arguments $Arguments
+  Update-ProcessPath
+}
+
 function Get-NodeMajor {
   $node = Get-ExecutablePath @("node.exe", "node")
   if (-not $node) {
@@ -155,6 +193,16 @@ function Ensure-Node {
     return
   }
 
+  if (Test-IsMacOS) {
+    Invoke-Brew -Arguments @("install", "node@$NodeMajorVersion")
+    Update-ProcessPath
+    $major = Get-NodeMajor
+    if ($major -ne [int]$NodeMajorVersion) {
+      throw "Node.js v$NodeMajorVersion was not available on PATH after Homebrew installation. Add the Homebrew node@$NodeMajorVersion bin directory to PATH, then re-run this script."
+    }
+    return
+  }
+
   $uri = Get-LatestNodeMsiUri -MajorVersion $NodeMajorVersion
   Install-MsiFromUri -Name "Node.js $NodeMajorVersion" -Uri $uri
 
@@ -173,6 +221,10 @@ function Ensure-AzureCli {
     } else {
       Write-Host "Azure CLI is already installed."
     }
+    return
+  }
+  if (Test-IsMacOS) {
+    Invoke-Brew -Arguments @("install", "azure-cli")
     return
   }
   Install-MsiFromUri -Name "Azure CLI" -Uri "https://aka.ms/installazurecliwindowsx64"
@@ -225,7 +277,7 @@ function Invoke-AzRestJson {
   $arguments = @("rest", "--method", $Method, "--url", $Uri)
   $bodyPath = $null
   if ($Body) {
-    $bodyPath = Join-Path $env:TEMP ("azure-cert-gui-graph-{0}.json" -f ([Guid]::NewGuid().ToString("N")))
+    $bodyPath = Join-Path ([IO.Path]::GetTempPath()) ("azure-cert-gui-graph-{0}.json" -f ([Guid]::NewGuid().ToString("N")))
     $json = $Body | ConvertTo-Json -Depth 20 -Compress
     [System.IO.File]::WriteAllText($bodyPath, $json, (New-Object System.Text.UTF8Encoding($false)))
     $arguments += @("--headers", "Content-Type=application/json")
@@ -655,14 +707,25 @@ function Write-RunHelper {
   $runtimeDir = Join-Path $AppRoot ".runtime"
   New-Item -ItemType Directory -Path $runtimeDir -Force | Out-Null
   $helperPath = Join-Path $runtimeDir "start-azure-cert-gui.ps1"
-  $nodePath = Join-Path $env:ProgramFiles "nodejs"
+  $nodePath = if (Test-IsWindows) { Join-Path $env:ProgramFiles "nodejs" } else { "" }
 
   $content = @"
 `$ErrorActionPreference = "Stop"
 Set-Location $(Quote-PowerShellString $AppRoot)
 
+foreach (`$candidatePath in @(
+  "/opt/homebrew/opt/node@$NodeMajorVersion/bin",
+  "/usr/local/opt/node@$NodeMajorVersion/bin",
+  "/opt/homebrew/bin",
+  "/usr/local/bin"
+)) {
+  if ((Test-Path `$candidatePath) -and ((`$env:Path -split ":") -notcontains `$candidatePath)) {
+    `$env:Path = "`${candidatePath}:`$env:Path"
+  }
+}
+
 `$nodePath = $(Quote-PowerShellString $nodePath)
-if (Test-Path `$nodePath) {
+if (-not [string]::IsNullOrWhiteSpace(`$nodePath) -and (Test-Path `$nodePath)) {
   `$env:Path = "`$nodePath;`$env:Path"
 }
 
@@ -681,7 +744,7 @@ if ((`$env:AZURE_CERT_GUI__AUTH__MODE -eq "local") -and (-not `$env:AZURE_CERT_G
 `$env:UI_HOST = $(Quote-PowerShellString $ResolvedHost)
 `$env:PORT = $(Quote-PowerShellString ([string]$ResolvedPort))
 
-& npm.cmd run ui
+& node scripts/build-and-start.mjs
 if (`$LASTEXITCODE -ne 0) {
   exit `$LASTEXITCODE
 }
@@ -707,6 +770,9 @@ function Register-AppLogonTask {
     [string]$HelperPath,
     [string]$Name
   )
+  if (-not (Test-IsWindows)) {
+    throw "-InstallLogonTask is currently supported only on Windows. Use your OS service manager to run $HelperPath on this platform."
+  }
   $powerShellPath = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
   $action = New-ScheduledTaskAction -Execute $powerShellPath -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$HelperPath`""
   $trigger = New-ScheduledTaskTrigger -AtLogOn
@@ -715,8 +781,9 @@ function Register-AppLogonTask {
   Register-ScheduledTask -TaskName $Name -Action $action -Trigger $trigger -Principal $principal -Description "Start Azure Cert GUI at user logon." -Force | Out-Null
 }
 
-Assert-Windows
+Assert-SupportedPlatform
 Enable-Tls12
+Update-ProcessPath
 
 $AppRoot = [IO.Path]::GetFullPath($AppRoot)
 if (-not (Test-Path (Join-Path $AppRoot "package.json"))) {
@@ -730,7 +797,7 @@ Write-Step "Preparing Azure Cert GUI under $AppRoot"
 if (-not $SkipSystemDependencies) {
   $nodeReady = ((Get-NodeMajor) -eq [int]$NodeMajorVersion)
   $azureCliReady = ($SkipAzureCli -or [bool](Get-ExecutablePath @("az.cmd", "az")))
-  if ((-not $nodeReady -or -not $azureCliReady) -and -not (Test-IsAdministrator)) {
+  if ((Test-IsWindows) -and (-not $nodeReady -or -not $azureCliReady) -and -not (Test-IsAdministrator)) {
     throw "Run this script from an elevated PowerShell session so it can install missing system dependencies, or pass -SkipSystemDependencies when Node.js and Azure CLI are already installed."
   }
 
@@ -779,7 +846,7 @@ if (-not $SkipBuild) {
   Invoke-Npm -Arguments @("run", "build")
 }
 
-Write-Step "Writing Windows run helper"
+Write-Step "Writing run helper"
 $helperPath = Write-RunHelper -ResolvedDatabasePath $resolvedDatabasePath -ResolvedPort $Port -ResolvedHost $UiHost
 Write-Host "Run helper: $helperPath"
 
@@ -793,11 +860,12 @@ Write-Step "Bootstrap complete"
 Write-Host "Database: $resolvedDatabasePath"
 Write-Host "UI host:  $UiHost"
 Write-Host "UI port:  $Port"
-Write-Host "Start UI: powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$helperPath`""
+Write-Host "Start UI: pwsh -NoProfile -ExecutionPolicy Bypass -File `"$helperPath`""
 
 if ($Start) {
   Write-Step "Starting Azure Cert GUI"
-  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $helperPath
+  $powerShellCommand = if (Get-ExecutablePath @("pwsh")) { "pwsh" } elseif (Test-IsWindows) { "powershell.exe" } else { "pwsh" }
+  & $powerShellCommand -NoProfile -ExecutionPolicy Bypass -File $helperPath
   if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
   }
