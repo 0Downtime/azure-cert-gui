@@ -151,10 +151,10 @@ let seededKeyVaultResourceId: string | null = null;
 
 const scenarios: SeedScenario[] = [
   {
-    nameSuffix: "01 Expired Unknown Owner",
+    nameSuffix: "01 Critical Unknown Owner",
     ownerMode: "none",
-    appSecrets: [{ displayName: "expired-client-secret", daysFromNow: -14 }],
-    appCertificates: [{ displayName: "expired-signing-certificate", daysFromNow: -10 }]
+    appSecrets: [{ displayName: "unknown-owner-1-day-secret", daysFromNow: 1 }],
+    appCertificates: [{ displayName: "unknown-owner-2-day-certificate", daysFromNow: 2 }]
   },
   {
     nameSuffix: "02 Critical Current Owner",
@@ -208,8 +208,8 @@ const scenarios: SeedScenario[] = [
 
 const keyVaultKeys: KeyVaultSeedKey[] = [
   {
-    name: "azcg-seed-key-expired",
-    daysFromNow: -7,
+    name: "azcg-seed-key-critical",
+    daysFromNow: 3,
     ownerName: "Data Platform",
     ownerEmail: "data-platform@example.com"
   },
@@ -281,6 +281,10 @@ async function main(): Promise<void> {
   if (args.cleanup) {
     await cleanupSeedApps();
     return;
+  }
+
+  if (args.keyVaultName) {
+    await resolveSeedKeyVault();
   }
 
   const currentUser = await currentUserOrNull();
@@ -596,8 +600,7 @@ async function currentUserOrNull(): Promise<DirectoryObject | null> {
 
 async function seedKeyVault(): Promise<void> {
   if (!args.keyVaultName) return;
-  const vault = await showKeyVault(args.keyVaultName);
-  seededKeyVaultResourceId = vault.id ?? null;
+  await resolveSeedKeyVault();
 
   for (const key of keyVaultKeys) {
     await upsertKeyVaultKey(key);
@@ -616,6 +619,15 @@ async function showKeyVault(vaultName: string): Promise<AzureVault> {
     vaultName,
     ...subscriptionArgs()
   ]);
+}
+
+async function resolveSeedKeyVault(): Promise<void> {
+  if (!args.keyVaultName || seededKeyVaultResourceId) return;
+  const vault = await showKeyVault(args.keyVaultName);
+  seededKeyVaultResourceId = vault.id ?? null;
+  if (!seededKeyVaultResourceId) {
+    throw new Error(`KeyVaultResourceIdMissing:${args.keyVaultName}`);
+  }
 }
 
 async function upsertKeyVaultKey(key: KeyVaultSeedKey): Promise<void> {
@@ -913,8 +925,9 @@ function printHelp(): void {
 
 Creates or reuses synthetic Microsoft Entra app registrations, removes previous
 AZCGUI-SEED credentials on those apps, and adds password/certificate credentials
-across expired, 0-30, 31-60, 61-90, and 90+ UI buckets. Optionally seeds keys
-and self-signed certificates into an existing Key Vault.
+across urgent, 0-30, 31-60, 61-90, and 90+ UI buckets. Optionally seeds keys
+and self-signed certificates into an existing Key Vault. Live Azure APIs do not
+allow creating already-expired Entra password credentials.
 
 Options:
   --yes                 Required for live Entra mutations

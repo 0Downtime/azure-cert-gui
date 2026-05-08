@@ -275,7 +275,7 @@ npm run seed:entra -- --yes --sync-after --verbose
 npm run dev
 ```
 
-The seed script requires permission to create app registrations and manage app/service-principal credentials. It creates or reuses app registrations with names beginning `Azure Cert GUI Seed`, removes prior `AZCGUI-SEED` password credentials, sets synthetic certificate credentials on those seed apps, adds expired, urgent, 31-60 day, 61-90 day, and 90+ day credentials, and discards one-time secret values returned by Graph. It also creates one enterprise-app/service-principal secret and certificate so both Entra inventory sources have data.
+The seed script requires permission to create app registrations and manage app/service-principal credentials. It creates or reuses app registrations with names beginning `Azure Cert GUI Seed`, removes prior `AZCGUI-SEED` password credentials, sets synthetic certificate credentials on those seed apps, adds urgent, 31-60 day, 61-90 day, and 90+ day credentials, and discards one-time secret values returned by Graph. It also creates one enterprise-app/service-principal secret and certificate so both Entra inventory sources have data. Live Azure APIs do not allow creating already-expired Entra password credentials; use fixtures when you need a true expired row without editing local SQLite state.
 
 To also seed Key Vault keys and self-signed certificates in an existing vault:
 
