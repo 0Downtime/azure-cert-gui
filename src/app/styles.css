@@ -968,6 +968,66 @@ table {
   min-width: 1120px;
 }
 
+.inventory-table table {
+  min-width: 1900px;
+  table-layout: fixed;
+}
+
+.inventory-table th:nth-child(1),
+.inventory-table td:nth-child(1) {
+  width: 42px;
+}
+
+.inventory-table th:nth-child(2),
+.inventory-table td:nth-child(2) {
+  width: 104px;
+}
+
+.inventory-table th:nth-child(3),
+.inventory-table td:nth-child(3) {
+  width: 108px;
+}
+
+.inventory-table th:nth-child(4),
+.inventory-table td:nth-child(4) {
+  width: 430px;
+}
+
+.inventory-table th:nth-child(5),
+.inventory-table td:nth-child(5) {
+  width: 290px;
+}
+
+.inventory-table th:nth-child(6),
+.inventory-table td:nth-child(6) {
+  width: 160px;
+}
+
+.inventory-table th:nth-child(7),
+.inventory-table td:nth-child(7) {
+  width: 230px;
+}
+
+.inventory-table th:nth-child(8),
+.inventory-table td:nth-child(8) {
+  width: 170px;
+}
+
+.inventory-table th:nth-child(9),
+.inventory-table td:nth-child(9) {
+  width: 170px;
+}
+
+.inventory-table th:nth-child(10),
+.inventory-table td:nth-child(10) {
+  width: 130px;
+}
+
+.inventory-table th:nth-child(11),
+.inventory-table td:nth-child(11) {
+  width: 56px;
+}
+
 .renewal-table table {
   min-width: 1180px;
 }
@@ -992,6 +1052,45 @@ th {
 td strong,
 td span {
   display: block;
+}
+
+.inventory-table th,
+.inventory-table td {
+  overflow: hidden;
+  padding: 8px 10px;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.inventory-table td > strong,
+.inventory-table td > span:not(.risk):not(.rotation-mode):not(.days-out):not(.confidence):not(.renewal-pill),
+.inventory-table .owner-summary strong,
+.inventory-table .status-summary strong {
+  display: inline-block;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.inventory-table .credential {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.inventory-table .credential svg {
+  flex: 0 0 auto;
+}
+
+.inventory-table td:nth-child(7) .days-out {
+  margin-left: 8px;
 }
 
 tr.removed {
@@ -1160,6 +1259,25 @@ tr.selected-row {
   gap: 3px;
 }
 
+.inventory-table .owner-summary,
+.inventory-table .status-summary {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.inventory-table .owner-summary strong,
+.inventory-table .status-summary strong {
+  flex: 0 1 auto;
+}
+
+.inventory-table .owner-summary .confidence,
+.inventory-table .status-summary .renewal-pill {
+  flex: 0 0 auto;
+}
+
 .owner-summary.missing strong {
   color: var(--amber);
 }
@@ -1199,6 +1317,10 @@ tr.selected-row {
 
 .status-summary {
   min-width: 150px;
+}
+
+.inventory-table .status-summary {
+  min-width: 0;
 }
 
 .status-history {

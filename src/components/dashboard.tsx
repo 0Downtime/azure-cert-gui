@@ -606,7 +606,7 @@ export function Dashboard({
 
   function credentialTable(rows: DashboardItem[], label: string) {
     return (
-      <section className="table-wrap" aria-label={label}>
+      <section className="table-wrap inventory-table" aria-label={label}>
         {items.length === 0 ? (
           <EmptyState />
         ) : rows.length === 0 ? (
@@ -646,17 +646,15 @@ export function Dashboard({
                   <td>
                     <RiskBadge item={item} />
                   </td>
-                  <td>{SOURCE_LABELS[item.source]}</td>
-                  <td>
+                  <td title={SOURCE_LABELS[item.source]}>{SOURCE_LABELS[item.source]}</td>
+                  <td title={`${item.parentName}\n${item.naturalKey}`}>
                     <strong>{item.parentName}</strong>
-                    <span className="muted mono">{item.naturalKey.split(":").slice(0, 3).join(":")}</span>
                   </td>
-                  <td>
+                  <td title={`${item.credentialName}\n${item.credentialType}\n${item.credentialId}`}>
                     <span className="credential">
                       <KeyRound size={15} />
                       {item.credentialName}
                     </span>
-                    <span className="muted">{item.credentialType}</span>
                   </td>
                   <td>
                     <RotationBadge item={item} />
@@ -671,9 +669,8 @@ export function Dashboard({
                   <td>
                     <StatusSummary item={item} />
                   </td>
-                  <td>
+                  <td title={item.removedAt ? `Removed from source ${formatDateTime(item.removedAt)}` : formatDate(item.lastSeenAt)}>
                     <span>{formatDate(item.lastSeenAt)}</span>
-                    {item.removedAt ? <span className="muted danger-text">Removed from source</span> : null}
                   </td>
                   <td>
                     <button
@@ -2018,17 +2015,15 @@ function RotationBadge({ item }: { item: DashboardItem }) {
 function OwnerSummary({ item }: { item: DashboardItem }) {
   if (!item.ownerName) {
     return (
-      <div className="owner-summary missing">
+      <div className="owner-summary missing" title="Open details to assign">
         <strong>Unassigned</strong>
-        <span className="muted">Open details to assign</span>
       </div>
     );
   }
 
   return (
-    <div className="owner-summary">
+    <div className="owner-summary" title={[item.ownerName, item.ownerEmail ?? "No email", `${item.ownerConfidence} confidence`].join("\n")}>
       <strong>{item.ownerName}</strong>
-      <span className="muted">{item.ownerEmail ?? "No email"}</span>
       <span className={`confidence ${item.ownerConfidence}`}>{item.ownerConfidence}</span>
     </div>
   );
@@ -2036,12 +2031,10 @@ function OwnerSummary({ item }: { item: DashboardItem }) {
 
 function StatusSummary({ item }: { item: DashboardItem }) {
   const lastStatus = item.statusHistory[0];
+  const title = lastStatus ? `${lastStatus.changedBy} ${formatDateTime(lastStatus.changedAt)}` : "No status updates";
   return (
-    <div className="status-summary">
+    <div className="status-summary" title={title}>
       <strong>{STATUS_LABELS[item.status]}</strong>
-      <span className="muted">
-        {lastStatus ? `${lastStatus.changedBy} ${formatDateTime(lastStatus.changedAt)}` : "No status updates"}
-      </span>
       {item.renewalCase ? <span className="renewal-pill">{RENEWAL_CASE_LABELS[item.renewalCase.status]}</span> : null}
     </div>
   );
