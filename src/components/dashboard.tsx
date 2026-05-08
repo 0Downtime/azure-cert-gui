@@ -71,6 +71,10 @@ type DashboardTab = "inventory" | "renewals" | "owners" | "coverage";
 type SourceFilter = InventorySource | "all" | "key_vault";
 type OwnerSuggestionFilter = "all" | "users" | "groups";
 type InventorySort = "expires_soonest" | "recently_expired";
+type RenewalCaseFilter = RenewalCaseStatus | "all" | "needs_case";
+type RenewalOwnerFilter = "all" | "assigned" | "unassigned";
+type RenewalHandoffFilter = RenewalHandoffStatus | "all" | "none";
+type RenewalSort = "due_soonest" | "expires_soonest" | "recent_activity";
 type DropdownOption = {
   value: string;
   label: string;
@@ -196,6 +200,30 @@ const INVENTORY_SORT_OPTIONS: DropdownOption[] = Object.entries(INVENTORY_SORT_L
   label
 }));
 
+const RENEWAL_CASE_FILTER_OPTIONS: DropdownOption[] = [
+  { value: "all", label: "All renewal work" },
+  { value: "needs_case", label: "Needs case" },
+  ...Object.entries(RENEWAL_CASE_LABELS).map(([value, label]) => ({ value, label }))
+];
+
+const RENEWAL_OWNER_FILTER_OPTIONS: DropdownOption[] = [
+  { value: "all", label: "All owners" },
+  { value: "assigned", label: "Assigned" },
+  { value: "unassigned", label: "Unassigned" }
+];
+
+const RENEWAL_HANDOFF_FILTER_OPTIONS: DropdownOption[] = [
+  { value: "all", label: "All handoffs" },
+  { value: "none", label: "No handoff started" },
+  ...Object.entries(HANDOFF_LABELS).map(([value, label]) => ({ value, label }))
+];
+
+const RENEWAL_SORT_OPTIONS: DropdownOption[] = [
+  { value: "due_soonest", label: "Due soonest" },
+  { value: "expires_soonest", label: "Expires soonest" },
+  { value: "recent_activity", label: "Recent activity" }
+];
+
 const SECRET_MODE_OPTIONS: DropdownOption[] = [
   { value: "generated", label: "Generate value" },
   { value: "provided", label: "Use provided value" }
@@ -244,6 +272,11 @@ export function Dashboard({
   const [ownerMode, setOwnerMode] = useState<"all" | "unknown" | "low">("all");
   const [rotationScope, setRotationScope] = useState<RotationScope>("actionable");
   const [inventorySort, setInventorySort] = useState<InventorySort>("expires_soonest");
+  const [renewalCaseFilter, setRenewalCaseFilter] = useState<RenewalCaseFilter>("all");
+  const [renewalRiskFilter, setRenewalRiskFilter] = useState<RiskBucket | "all">("all");
+  const [renewalOwnerFilter, setRenewalOwnerFilter] = useState<RenewalOwnerFilter>("all");
+  const [renewalHandoffFilter, setRenewalHandoffFilter] = useState<RenewalHandoffFilter>("all");
+  const [renewalSort, setRenewalSort] = useState<RenewalSort>("due_soonest");
   const [workflowMode, setWorkflowMode] = useState<WorkflowMode>(() => (summary.unknownOwners > 0 ? "unknown" : "all"));
   const [activeTab, setActiveTab] = useState<DashboardTab>("inventory");
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -473,6 +506,16 @@ export function Dashboard({
               item.riskBucket === "61-90"))
       ),
     [items]
+  );
+  const visibleRenewalWorkItems = useMemo(
+    () =>
+      sortRenewalItems(
+        renewalWorkItems.filter((item) =>
+          matchesRenewalFilters(item, renewalCaseFilter, renewalRiskFilter, renewalOwnerFilter, renewalHandoffFilter)
+        ),
+        renewalSort
+      ),
+    [renewalCaseFilter, renewalHandoffFilter, renewalOwnerFilter, renewalRiskFilter, renewalSort, renewalWorkItems]
   );
   const ownerGapItems = useMemo(() => items.filter((item) => !item.ownerName), [items]);
   const detailCoverage = useMemo(
@@ -1191,11 +1234,43 @@ export function Dashboard({
             <span>Active cases and actionable credentials due within 90 days</span>
           </div>
           <div className="tab-counts">
-            <strong>{renewalWorkItems.length}</strong>
+            <strong>{visibleRenewalWorkItems.length}</strong>
             <span>items</span>
           </div>
         </section>
-        {renewalTable(renewalWorkItems)}
+        <section className="toolbar renewal-toolbar" aria-label="Renewal filters">
+          <DropdownSelect
+            label="Case"
+            value={renewalCaseFilter}
+            onChange={(value) => setRenewalCaseFilter(value as RenewalCaseFilter)}
+            options={RENEWAL_CASE_FILTER_OPTIONS}
+          />
+          <DropdownSelect
+            label="Risk"
+            value={renewalRiskFilter}
+            onChange={(value) => setRenewalRiskFilter(value as RiskBucket | "all")}
+            options={RISK_FILTER_OPTIONS}
+          />
+          <DropdownSelect
+            label="Owner"
+            value={renewalOwnerFilter}
+            onChange={(value) => setRenewalOwnerFilter(value as RenewalOwnerFilter)}
+            options={RENEWAL_OWNER_FILTER_OPTIONS}
+          />
+          <DropdownSelect
+            label="Handoff"
+            value={renewalHandoffFilter}
+            onChange={(value) => setRenewalHandoffFilter(value as RenewalHandoffFilter)}
+            options={RENEWAL_HANDOFF_FILTER_OPTIONS}
+          />
+          <DropdownSelect
+            label="Sort"
+            value={renewalSort}
+            onChange={(value) => setRenewalSort(value as RenewalSort)}
+            options={RENEWAL_SORT_OPTIONS}
+          />
+        </section>
+        {renewalTable(visibleRenewalWorkItems)}
       </section>
 
       <section
@@ -2010,7 +2085,14 @@ function OwnerAutocompleteInputs({
   }
 
   const ownerInput = (
-    <div className="owner-autocomplete">
+    <div
+      className="owner-autocomplete"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setSuggestionsOpen(false);
+        }
+      }}
+    >
       <div className="owner-autocomplete-filter" role="group" aria-label="Owner suggestion type">
         <button
           type="button"
@@ -2037,25 +2119,26 @@ function OwnerAutocompleteInputs({
           Groups
         </button>
       </div>
-      <input
-        name="ownerLookup"
-        value={ownerLookup}
-        onChange={(event) => {
-          setOwnerLookup(event.target.value);
-          setSuggestionsOpen(true);
-          setActiveOptionIndex(0);
-        }}
-        onFocus={() => setSuggestionsOpen(true)}
-        onBlur={() => window.setTimeout(() => setSuggestionsOpen(false), 120)}
-        onKeyDown={handleOwnerKeyDown}
-        placeholder={ownerPlaceholder}
-        aria-label={ownerAriaLabel}
-        aria-autocomplete="list"
-        aria-controls={listboxId}
-        aria-expanded={showSuggestions}
-        autoComplete="off"
-      />
-      <span aria-hidden="true" className="owner-autocomplete-caret" />
+      <div className="owner-autocomplete-control">
+        <input
+          name="ownerLookup"
+          value={ownerLookup}
+          onChange={(event) => {
+            setOwnerLookup(event.target.value);
+            setSuggestionsOpen(true);
+            setActiveOptionIndex(0);
+          }}
+          onFocus={() => setSuggestionsOpen(true)}
+          onKeyDown={handleOwnerKeyDown}
+          placeholder={ownerPlaceholder}
+          aria-label={ownerAriaLabel}
+          aria-autocomplete="list"
+          aria-controls={listboxId}
+          aria-expanded={showSuggestionPanel}
+          autoComplete="off"
+        />
+        <span aria-hidden="true" className="owner-autocomplete-caret" />
+      </div>
       {showSuggestionPanel ? (
         <div id={listboxId} className="owner-autocomplete-list" role="listbox">
           {filteredIdentityOptions.length ? (
@@ -2063,9 +2146,9 @@ function OwnerAutocompleteInputs({
               <button
                 type="button"
                 key={`${option.value}:${option.label}`}
-                className={index === activeOptionIndex ? "active" : ""}
+                className={`${option.value === ownerLookup ? "selected" : ""} ${index === activeOptionIndex ? "active" : ""}`}
                 role="option"
-                aria-selected={index === activeOptionIndex}
+                aria-selected={option.value === ownerLookup}
                 onMouseEnter={() => setActiveOptionIndex(index)}
                 onMouseDown={(event) => {
                   event.preventDefault();
@@ -2676,6 +2759,43 @@ function sortInventoryItems(items: DashboardItem[], sortMode: InventorySort): Da
   });
 }
 
+function sortRenewalItems(items: DashboardItem[], sortMode: RenewalSort): DashboardItem[] {
+  return [...items].sort((a, b) => {
+    if (sortMode === "recent_activity") {
+      const recentCompare = compareRenewalRecentActivity(a, b);
+      if (recentCompare !== 0) return recentCompare;
+    } else if (sortMode === "expires_soonest") {
+      const expiryCompare = compareNearestExpiration(a, b);
+      if (expiryCompare !== 0) return expiryCompare;
+    } else {
+      const dueCompare = compareRenewalDue(a, b);
+      if (dueCompare !== 0) return dueCompare;
+    }
+
+    const riskCompare = riskRank(a.riskBucket) - riskRank(b.riskBucket);
+    if (riskCompare !== 0) return riskCompare;
+    return compareInventoryFallback(a, b);
+  });
+}
+
+function compareRenewalDue(a: DashboardItem, b: DashboardItem): number {
+  const aTime = renewalDueTime(a);
+  const bTime = renewalDueTime(b);
+  if (aTime === null && bTime === null) return 0;
+  if (aTime === null) return 1;
+  if (bTime === null) return -1;
+  return aTime - bTime;
+}
+
+function compareRenewalRecentActivity(a: DashboardItem, b: DashboardItem): number {
+  const aTime = renewalRecentActivityTime(a);
+  const bTime = renewalRecentActivityTime(b);
+  if (aTime === null && bTime === null) return 0;
+  if (aTime === null) return 1;
+  if (bTime === null) return -1;
+  return bTime - aTime;
+}
+
 function compareNearestExpiration(a: DashboardItem, b: DashboardItem): number {
   const aDays = expiryDistance(a);
   const bDays = expiryDistance(b);
@@ -2729,6 +2849,23 @@ function expiryTime(item: DashboardItem): number | null {
   return Number.isNaN(time) ? null : time;
 }
 
+function renewalDueTime(item: DashboardItem): number | null {
+  return dateValueTime(item.renewalCase?.dueAt ?? item.expiresAt);
+}
+
+function renewalRecentActivityTime(item: DashboardItem): number | null {
+  return dateValueTime(item.renewalCase?.events[0]?.createdAt ?? null);
+}
+
+function dateValueTime(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const dateOnly = dateOnlyParts(value);
+  const time = dateOnly
+    ? Date.UTC(dateOnly.year, dateOnly.month - 1, dateOnly.day)
+    : new Date(value).getTime();
+  return Number.isNaN(time) ? null : time;
+}
+
 function isExpiredItem(item: DashboardItem): boolean {
   if (item.riskBucket === "expired") return true;
   const distance = expiryDistance(item);
@@ -2759,6 +2896,28 @@ function matchesSourceFilter(item: DashboardItem, source: SourceFilter): boolean
   if (source === "all") return true;
   if (source === "key_vault") return KEY_VAULT_SOURCES.has(item.source);
   return item.source === source;
+}
+
+function matchesRenewalFilters(
+  item: DashboardItem,
+  caseFilter: RenewalCaseFilter,
+  riskFilter: RiskBucket | "all",
+  ownerFilter: RenewalOwnerFilter,
+  handoffFilter: RenewalHandoffFilter
+): boolean {
+  const renewalCase = item.renewalCase;
+  if (caseFilter === "needs_case" && renewalCase) return false;
+  if (caseFilter !== "all" && caseFilter !== "needs_case" && renewalCase?.status !== caseFilter) return false;
+  if (riskFilter !== "all" && item.riskBucket !== riskFilter) return false;
+
+  const ownerName = renewalCase?.ownerName ?? item.ownerName;
+  if (ownerFilter === "assigned" && !ownerName) return false;
+  if (ownerFilter === "unassigned" && ownerName) return false;
+
+  if (handoffFilter === "none" && renewalCase) return false;
+  if (handoffFilter !== "all" && handoffFilter !== "none" && renewalCase?.handoffStatus !== handoffFilter) return false;
+
+  return true;
 }
 
 function matchesRotationScope(item: DashboardItem, rotationScope: RotationScope): boolean {

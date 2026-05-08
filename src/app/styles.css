@@ -487,6 +487,7 @@ h1 {
 .mapping-form input,
 .renewal-form input,
 .owner-detail-form input,
+.owner-autocomplete-control input,
 .ui-select-trigger {
   background: var(--field);
   border: 0;
@@ -504,7 +505,7 @@ select option {
 
 .owner-autocomplete {
   display: grid;
-  gap: 8px;
+  gap: 0;
   position: relative;
   width: 100%;
 }
@@ -522,6 +523,7 @@ select option {
 
 .owner-autocomplete-filter {
   border: 1px solid var(--line);
+  border-bottom: 0;
   display: inline-grid;
   grid-template-columns: repeat(3, minmax(72px, 1fr));
   width: fit-content;
@@ -546,7 +548,13 @@ select option {
   color: var(--text);
 }
 
-.owner-autocomplete input {
+.owner-autocomplete-control {
+  display: grid;
+  position: relative;
+  width: 100%;
+}
+
+.owner-autocomplete-control input {
   padding-right: 44px;
   width: 100%;
 }
@@ -630,7 +638,12 @@ select option {
   right: 16px;
   top: 50%;
   transform: translateY(-40%);
+  transition: transform var(--motion-standard);
   width: 0;
+}
+
+.owner-autocomplete-control input[aria-expanded="true"] + .owner-autocomplete-caret {
+  transform: translateY(-40%) rotate(180deg);
 }
 
 .ui-select-list,
@@ -686,7 +699,8 @@ select option {
 }
 
 .owner-autocomplete-list button:hover,
-.owner-autocomplete-list button.active {
+.owner-autocomplete-list button.active,
+.owner-autocomplete-list button.selected {
   background: var(--selected-row);
 }
 
@@ -752,7 +766,11 @@ select option {
 .ui-select-list button.selected strong,
 .ui-select-list button.selected span:not(.ui-select-kind),
 .ui-select-list button.active strong,
-.ui-select-list button.active span:not(.ui-select-kind) {
+.ui-select-list button.active span:not(.ui-select-kind),
+.owner-autocomplete-list button.selected strong,
+.owner-autocomplete-list button.selected span:not(.owner-autocomplete-kind),
+.owner-autocomplete-list button.active strong,
+.owner-autocomplete-list button.active span:not(.owner-autocomplete-kind) {
   color: var(--text);
 }
 
