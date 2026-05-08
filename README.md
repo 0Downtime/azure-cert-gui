@@ -267,6 +267,24 @@ npm run sync:azure -- --graph-only
 npm run sync:azure -- --keyvault-only
 ```
 
+To seed a test Entra tenant with synthetic app registrations and client secrets across expiry buckets:
+
+```bash
+az login
+npm run seed:entra -- --yes --sync-after --verbose
+npm run dev
+```
+
+The seed script requires permission to create app registrations and manage app/service-principal credentials. It creates or reuses app registrations with names beginning `Azure Cert GUI Seed`, removes prior `AZCGUI-SEED` password credentials, sets synthetic certificate credentials on those seed apps, adds expired, urgent, 31-60 day, 61-90 day, and 90+ day credentials, and discards one-time secret values returned by Graph. It also creates one enterprise-app/service-principal secret and certificate so both Entra inventory sources have data.
+
+To also seed Key Vault keys and self-signed certificates in an existing vault:
+
+```bash
+npm run seed:entra -- --yes --keyvault-name <vault-name> --sync-after --verbose
+```
+
+Use `--keyvault-subscription <subscription-id>` when the vault is not in the current Azure CLI subscription. Key Vault keys are created or updated with explicit expiration dates; Key Vault certificates are created with 1, 3, and 12 month validity because Key Vault does not expose a direct certificate expiration setter. Use `npm run seed:entra -- --dry-run` to preview names, or `npm run seed:entra -- --cleanup --yes` to delete the Entra seed apps.
+
 The default behavior scans:
 
 - Microsoft Graph applications and service principals, including password/key credential metadata.
