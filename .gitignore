@@ -13,3 +13,7 @@ coverage/
 .runtime/
 /data/*.sqlite
 /data/*.sqlite-*
+
+# Local design references
+/DESIGN.md
+/ibm/
