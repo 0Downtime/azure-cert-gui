@@ -275,15 +275,15 @@ npm run seed:entra -- --yes --sync-after --verbose
 npm run dev
 ```
 
-The seed script requires permission to create app registrations and manage app/service-principal credentials. It creates or reuses app registrations with names beginning `Azure Cert GUI Seed`, removes prior `AZCGUI-SEED` password credentials, sets synthetic certificate credentials on those seed apps, adds urgent, 31-60 day, 61-90 day, and 90+ day credentials, and discards one-time secret values returned by Graph. It also creates one enterprise-app/service-principal secret and certificate so both Entra inventory sources have data. Live Azure APIs do not allow creating already-expired Entra password credentials; use fixtures when you need a true expired row without editing local SQLite state.
+The seed script is intended to be portal-free: the operator should not need to open Azure Portal for the normal bootstrap path. The signed-in Azure CLI identity still needs permission to create app registrations and manage app/service-principal credentials. The script creates or reuses app registrations with names beginning `Azure Cert GUI Seed`, removes prior `AZCGUI-SEED` password credentials, sets synthetic certificate credentials on those seed apps, adds urgent, 31-60 day, 61-90 day, and 90+ day credentials, and discards one-time secret values returned by Graph. It also creates one enterprise-app/service-principal secret and certificate so both Entra inventory sources have data. Live Azure APIs do not allow creating already-expired Entra password credentials; use fixtures when you need a true expired row without editing local SQLite state.
 
-To also seed Key Vault keys and self-signed certificates in an existing vault:
+To also seed Key Vault secrets, keys, and self-signed certificates:
 
 ```bash
 npm run seed:entra -- --yes --keyvault-name <vault-name> --sync-after --verbose
 ```
 
-Use `--keyvault-subscription <subscription-id>` when the vault is not in the current Azure CLI subscription. Key Vault keys are created or updated with explicit expiration dates; Key Vault certificates are created with 1, 3, and 12 month validity because Key Vault does not expose a direct certificate expiration setter. Use `npm run seed:entra -- --dry-run` to preview names, or `npm run seed:entra -- --cleanup --yes` to delete the Entra seed apps.
+By default this uses the Azure CLI default subscription. If the vault is missing, the script creates resource group `azure-cert-gui-seed-rg`, creates the vault in access-policy mode so the current CLI identity can seed data immediately, then syncs that vault back into SQLite. Use `--keyvault-subscription <subscription-id>` only when you want to override the default subscription, and `--keyvault-resource-group` / `--keyvault-location` to change where a missing vault is created. Key Vault secrets and keys are created or updated with explicit expiration dates; Key Vault certificates are created with 1, 3, and 12 month validity because Key Vault does not expose a direct certificate expiration setter. If any step fails, fix the Azure permission or policy error and rerun the command rather than completing setup in the portal. Use `npm run seed:entra -- --dry-run` to preview names, or `npm run seed:entra -- --cleanup --yes` to delete the Entra seed apps.
 
 The default behavior scans:
 

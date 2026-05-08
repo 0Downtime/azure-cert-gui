@@ -8,6 +8,8 @@ const JSON_BUFFER_BYTES = 1024 * 1024 * 20;
 const DEFAULT_PREFIX = "Azure Cert GUI Seed";
 const SEED_SECRET_PREFIX = "AZCGUI-SEED:";
 const SEED_CERT_PREFIX = "AZCGUI-SEED-CERT:";
+const DEFAULT_KEYVAULT_RESOURCE_GROUP = "azure-cert-gui-seed-rg";
+const DEFAULT_KEYVAULT_LOCATION = "eastus";
 const SEED_PUBLIC_CERT_DER_BASE64 =
   "MIIDNTCCAh2gAwIBAgIUWW9kq/2QrwJ/fAUlMzPmm0PtGa4wDQYJKoZIhvcNAQELBQAwKjEoMCYGA1UEAwwfQXp1cmUgQ2VydCBHVUkgU2VlZCBDZXJ0aWZpY2F0ZTAeFw0yNjA1MDgwMTM3NDlaFw0zNjA1MDUwMTM3NDlaMCoxKDAmBgNVBAMMH0F6dXJlIENlcnQgR1VJIFNlZWQgQ2VydGlmaWNhdGUwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDnz0VsdWZkdtS0Ej8kwvOoTvg4umewravhJ1EqiATF9Z9imbguxzvMPlT/s2Y6K6/T8Drr+KkFOn9hLAjsyLr18A5aURDxLQ+nI/MGocjHT8DaGRPi7WfTbI2+zM0TmaqZBL+0fA5xlS0S98AUTkln1r0hUC15o2Q7doTfu0j4jY4Q5H5I4McR2uLvVNqczUIqMk78/5XsmK6PIFVO8xKSHPsxn7JTJB1CDIhrycxbTxqb2XqwI3IVZjnOQNYSgEOViNnKaDhz+TB/Vtx2RxASeoO4rgzAjxD9jyEibC6c1N4q+SsYxuE+v+P2DJrHjn7naLFvn5INpwqtM3tJjz7tAgMBAAGjUzBRMB0GA1UdDgQWBBTJKY+SBV5Wu+NTscWZt3Gur7wXpzAfBgNVHSMEGDAWgBTJKY+SBV5Wu+NTscWZt3Gur7wXpzAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQCbuWZK12hT5SgHmoVVSKIhIU1mokHN7lI0RNcWrgrKJXQsG3ScU6qEtEvD6Mc761rDyrhOrAZfSzRUNYHuU3KWnIJR5Bindr5N4RiA/1lhJqFlMjitNFmg5yJzfYaFgHbPn8ygA25HiAnuTxFwrP1v8pfRD99Ix4sskmQAZybNoFycaPEFveqkaT4inru4gMRQSWWQAMQkoQWSP2XHklvINi3OiEpZuf2d5LzvaQ5Wcppc8RIH32GgSjQ17+uhkQ3BW+qKMzM/lm7jnUsfFOYvgR6xEgIPAFuMgJHYpEIbaZtE+bl3ev2tibpuWp7AWAb24pdEw0qt4KMDL4BzdxKp";
 const execFileAsync = promisify(execFile);
@@ -23,6 +25,8 @@ interface Args {
   preserveOwners: boolean;
   keyVaultName: string | null;
   keyVaultSubscription: string | null;
+  keyVaultResourceGroup: string;
+  keyVaultLocation: string;
   verbose: boolean;
 }
 
@@ -104,6 +108,7 @@ interface AzureVault {
   id?: string | null;
   name?: string | null;
   resourceGroup?: string | null;
+  location?: string | null;
 }
 
 interface KeyVaultPolicy {
@@ -134,6 +139,13 @@ interface KeyVaultPolicy {
 }
 
 interface KeyVaultSeedKey {
+  name: string;
+  daysFromNow: number;
+  ownerName: string;
+  ownerEmail: string;
+}
+
+interface KeyVaultSeedSecret {
   name: string;
   daysFromNow: number;
   ownerName: string;
@@ -227,6 +239,27 @@ const keyVaultKeys: KeyVaultSeedKey[] = [
   }
 ];
 
+const keyVaultSecrets: KeyVaultSeedSecret[] = [
+  {
+    name: "azcg-seed-secret-critical",
+    daysFromNow: 5,
+    ownerName: "Payments Platform",
+    ownerEmail: "payments-platform@example.com"
+  },
+  {
+    name: "azcg-seed-secret-urgent",
+    daysFromNow: 28,
+    ownerName: "Identity Automation",
+    ownerEmail: "identity-automation@example.com"
+  },
+  {
+    name: "azcg-seed-secret-long",
+    daysFromNow: 180,
+    ownerName: "Release Engineering",
+    ownerEmail: "release-engineering@example.com"
+  }
+];
+
 const keyVaultCertificates: KeyVaultSeedCertificate[] = [
   {
     name: "azcg-seed-cert-30day",
@@ -272,6 +305,10 @@ async function main(): Promise<void> {
       console.log(`dry-run: would ensure ${displayNameFor(scenario)}`);
     }
     if (args.keyVaultName) {
+      console.log(
+        `dry-run: would create Key Vault ${args.keyVaultName} in ${keyVaultSubscriptionLabel()} if it is missing`
+      );
+      console.log(`dry-run: would seed ${keyVaultSecrets.length} secret(s) in Key Vault ${args.keyVaultName}`);
       console.log(`dry-run: would seed ${keyVaultKeys.length} key(s) in Key Vault ${args.keyVaultName}`);
       console.log(`dry-run: would seed ${keyVaultCertificates.length} certificate(s) in Key Vault ${args.keyVaultName}`);
     }
@@ -602,6 +639,10 @@ async function seedKeyVault(): Promise<void> {
   if (!args.keyVaultName) return;
   await resolveSeedKeyVault();
 
+  for (const secret of keyVaultSecrets) {
+    await upsertKeyVaultSecret(secret);
+  }
+
   for (const key of keyVaultKeys) {
     await upsertKeyVaultKey(key);
   }
@@ -623,11 +664,80 @@ async function showKeyVault(vaultName: string): Promise<AzureVault> {
 
 async function resolveSeedKeyVault(): Promise<void> {
   if (!args.keyVaultName || seededKeyVaultResourceId) return;
-  const vault = await showKeyVault(args.keyVaultName);
+  const vault = (await showKeyVaultOrNull(args.keyVaultName)) ?? (await createSeedKeyVault(args.keyVaultName));
   seededKeyVaultResourceId = vault.id ?? null;
   if (!seededKeyVaultResourceId) {
     throw new Error(`KeyVaultResourceIdMissing:${args.keyVaultName}`);
   }
+}
+
+async function showKeyVaultOrNull(vaultName: string): Promise<AzureVault | null> {
+  try {
+    return await showKeyVault(vaultName);
+  } catch {
+    return null;
+  }
+}
+
+async function createSeedKeyVault(vaultName: string): Promise<AzureVault> {
+  console.log(
+    `Key Vault ${vaultName} was not found in ${keyVaultSubscriptionLabel()}; creating it in ${args.keyVaultResourceGroup} (${args.keyVaultLocation}).`
+  );
+  await ensureResourceGroup();
+  return azureJson<AzureVault>([
+    "keyvault",
+    "create",
+    "--name",
+    vaultName,
+    "--resource-group",
+    args.keyVaultResourceGroup,
+    "--location",
+    args.keyVaultLocation,
+    "--sku",
+    "standard",
+    "--enable-rbac-authorization",
+    "false",
+    "--tags",
+    "azure-cert-gui-seed=true",
+    ...subscriptionArgs()
+  ]);
+}
+
+async function ensureResourceGroup(): Promise<void> {
+  await azureJson<unknown>([
+    "group",
+    "create",
+    "--name",
+    args.keyVaultResourceGroup,
+    "--location",
+    args.keyVaultLocation,
+    "--tags",
+    "azure-cert-gui-seed=true",
+    ...subscriptionArgs()
+  ]);
+}
+
+async function upsertKeyVaultSecret(secret: KeyVaultSeedSecret): Promise<void> {
+  const expiresAt = dateFromNowForAzureCli(secret.daysFromNow);
+  await azureJson<unknown>([
+    "keyvault",
+    "secret",
+    "set",
+    "--vault-name",
+    requiredKeyVaultName(),
+    "--name",
+    secret.name,
+    "--value",
+    syntheticKeyVaultSecretValue(secret.name),
+    "--expires",
+    expiresAt,
+    "--content-type",
+    "azure-cert-gui synthetic secret",
+    "--tags",
+    ...keyVaultTags(secret.ownerName, secret.ownerEmail, "secret"),
+    ...subscriptionArgs()
+  ]);
+  console.log(`keyVaultSecret: ${secret.name}: created/updated expiry ${expiresAt}`);
 }
 
 async function upsertKeyVaultKey(key: KeyVaultSeedKey): Promise<void> {
@@ -787,7 +897,7 @@ async function defaultCertificatePolicy(certificate: KeyVaultSeedCertificate): P
   };
 }
 
-function keyVaultTags(ownerName: string, ownerEmail: string, credentialType: "key" | "certificate"): string[] {
+function keyVaultTags(ownerName: string, ownerEmail: string, credentialType: "secret" | "key" | "certificate"): string[] {
   return [
     "azure-cert-gui-seed=true",
     `seedCredentialType=${credentialType}`,
@@ -798,6 +908,10 @@ function keyVaultTags(ownerName: string, ownerEmail: string, credentialType: "ke
 
 function subscriptionArgs(): string[] {
   return args.keyVaultSubscription ? ["--subscription", args.keyVaultSubscription] : [];
+}
+
+function keyVaultSubscriptionLabel(): string {
+  return args.keyVaultSubscription ? `subscription ${args.keyVaultSubscription}` : "the Azure CLI default subscription";
 }
 
 function requiredKeyVaultName(): string {
@@ -829,6 +943,10 @@ function dateFromNow(days: number): string {
 
 function dateFromNowForAzureCli(days: number): string {
   return dateFromNow(days).replace(/\.\d{3}Z$/, "Z");
+}
+
+function syntheticKeyVaultSecretValue(name: string): string {
+  return `azure-cert-gui-seed:${name}:${randomUuid()}`;
 }
 
 function odataString(value: string): string {
@@ -883,6 +1001,9 @@ function parseArgs(argv: string[]): Args {
     preserveOwners: false,
     keyVaultName: process.env.AZURE_CERT_GUI_SEED_KEYVAULT_NAME?.trim() || null,
     keyVaultSubscription: process.env.AZURE_CERT_GUI_SEED_KEYVAULT_SUBSCRIPTION?.trim() || null,
+    keyVaultResourceGroup:
+      process.env.AZURE_CERT_GUI_SEED_KEYVAULT_RESOURCE_GROUP?.trim() || DEFAULT_KEYVAULT_RESOURCE_GROUP,
+    keyVaultLocation: process.env.AZURE_CERT_GUI_SEED_KEYVAULT_LOCATION?.trim() || DEFAULT_KEYVAULT_LOCATION,
     verbose: false
   };
 
@@ -904,6 +1025,10 @@ function parseArgs(argv: string[]): Args {
       parsed.keyVaultName = requireValue(argv, (index += 1), "--keyvault-name");
     } else if (arg === "--keyvault-subscription") {
       parsed.keyVaultSubscription = requireValue(argv, (index += 1), "--keyvault-subscription");
+    } else if (arg === "--keyvault-resource-group") {
+      parsed.keyVaultResourceGroup = requireValue(argv, (index += 1), "--keyvault-resource-group");
+    } else if (arg === "--keyvault-location") {
+      parsed.keyVaultLocation = requireValue(argv, (index += 1), "--keyvault-location");
     } else if (arg === "--verbose") {
       parsed.verbose = true;
     } else if (arg !== "--help") {
@@ -925,18 +1050,28 @@ function printHelp(): void {
 
 Creates or reuses synthetic Microsoft Entra app registrations, removes previous
 AZCGUI-SEED credentials on those apps, and adds password/certificate credentials
-across urgent, 0-30, 31-60, 61-90, and 90+ UI buckets. Optionally seeds keys
-and self-signed certificates into an existing Key Vault. Live Azure APIs do not
-allow creating already-expired Entra password credentials.
+across urgent, 0-30, 31-60, 61-90, and 90+ UI buckets. Optionally creates a
+Key Vault in the Azure CLI default subscription and seeds secrets, keys, and
+self-signed certificates. Live Azure APIs do not allow creating already-expired
+Entra password credentials.
+
+No Azure Portal setup is expected for the happy path. The signed-in Azure CLI
+identity must already have permission to create app registrations, resource
+groups, Key Vaults, and Key Vault data-plane objects.
 
 Options:
   --yes                 Required for live Entra mutations
   --dry-run             Show the seed app names without changing Entra
   --cleanup             Delete seed applications created with the prefix
   --prefix <name>       Display-name prefix. Default: ${DEFAULT_PREFIX}
-  --keyvault-name <name> Also seed Key Vault keys and certificates
+  --keyvault-name <name> Also seed Key Vault secrets, keys, and certificates;
+                        creates the vault when missing
   --keyvault-subscription <id>
-                        Subscription for --keyvault-name when not the default
+                        Subscription override. Defaults to Azure CLI default
+  --keyvault-resource-group <name>
+                        Resource group for created vaults. Default: ${DEFAULT_KEYVAULT_RESOURCE_GROUP}
+  --keyvault-location <region>
+                        Region for created vaults. Default: ${DEFAULT_KEYVAULT_LOCATION}
   --sync-after          Run the repo Graph sync after seeding
   --preserve-owners     Do not adjust owners on seed app registrations
   --verbose             Print created credential IDs and expiry metadata
