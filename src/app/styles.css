@@ -515,7 +515,7 @@ h1 {
 .renewal-form input,
 .renewal-form select,
 .owner-detail-form input,
-.status-detail-form select {
+.status-select-trigger {
   background: var(--field);
   border: 0;
   border-bottom: 1px solid var(--line-strong);
@@ -579,6 +579,66 @@ select option {
   width: 100%;
 }
 
+.status-select-field {
+  display: grid;
+  gap: 4px;
+}
+
+.status-select-field > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.status-select {
+  display: grid;
+  position: relative;
+  width: 100%;
+}
+
+.status-select-trigger {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  min-width: 0;
+  padding-right: 44px;
+  position: relative;
+  text-align: left;
+  width: 100%;
+}
+
+.status-select-trigger:hover {
+  transform: none;
+}
+
+.status-select-trigger strong {
+  display: block;
+  font-weight: 600;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-select-caret {
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 8px solid var(--text);
+  height: 0;
+  pointer-events: none;
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-40%);
+  transition: transform var(--motion-standard);
+  width: 0;
+}
+
+.status-select-trigger[aria-expanded="true"] .status-select-caret {
+  transform: translateY(-40%) rotate(180deg);
+}
+
 .owner-autocomplete-caret {
   border-left: 6px solid transparent;
   border-right: 6px solid transparent;
@@ -592,6 +652,7 @@ select option {
   width: 0;
 }
 
+.status-select-list,
 .owner-autocomplete-list {
   animation: ui-rise 180ms var(--motion-ease) both;
   background: var(--panel);
@@ -607,6 +668,7 @@ select option {
   z-index: 45;
 }
 
+.status-select-list button,
 .owner-autocomplete-list button {
   background: var(--panel);
   border: 0;
@@ -622,6 +684,7 @@ select option {
   text-align: left;
 }
 
+.status-select-list button:last-child,
 .owner-autocomplete-list button:last-child {
   border-bottom: 0;
 }
@@ -637,6 +700,14 @@ select option {
   background: var(--selected-row);
 }
 
+.status-select-list button:hover,
+.status-select-list button.active,
+.status-select-list button.selected {
+  background: var(--selected-row);
+}
+
+.status-select-list strong,
+.status-select-list span,
 .owner-autocomplete-list strong,
 .owner-autocomplete-list span {
   display: block;
@@ -647,6 +718,7 @@ select option {
   white-space: nowrap;
 }
 
+.status-select-kind,
 .owner-autocomplete-list .owner-autocomplete-kind {
   align-self: start;
   background: var(--field);
@@ -656,6 +728,11 @@ select option {
   grid-row: 1 / span 2;
   padding: 2px 6px;
   text-transform: none;
+}
+
+.status-select-list .status-select-kind {
+  background: var(--blue-soft);
+  color: var(--blue);
 }
 
 .owner-autocomplete-list .owner-autocomplete-kind.user {
@@ -668,16 +745,25 @@ select option {
   color: var(--green);
 }
 
+.status-select-list strong,
 .owner-autocomplete-list strong {
   font-size: 15px;
   font-weight: 600;
   grid-column: 2;
 }
 
+.status-select-list span,
 .owner-autocomplete-list span {
   color: var(--muted);
   font-size: 13px;
   grid-column: 2;
+}
+
+.status-select-list button.selected strong,
+.status-select-list button.selected span:not(.status-select-kind),
+.status-select-list button.active strong,
+.status-select-list button.active span:not(.status-select-kind) {
+  color: var(--text);
 }
 
 .scheduler-form button {
@@ -1724,7 +1810,7 @@ tr.selected-row {
   border: 0;
   border-left: 4px solid var(--teal);
   grid-template-columns: repeat(3, minmax(220px, 1fr));
-  overflow: hidden;
+  overflow: visible;
 }
 
 .detail-inline > * {

@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   Ban,
   CheckCircle2,
+  ChevronRight,
   Clock,
   Copy,
   Database,
@@ -690,7 +691,7 @@ export function Dashboard({
                           aria-label={`${expanded ? "Collapse" : "Open"} details for ${item.credentialName}`}
                           title={expanded ? "Collapse details" : "Open details"}
                         >
-                          <PanelRightOpen size={15} />
+                          <ChevronRight size={18} strokeWidth={2.25} />
                         </button>
                       </td>
                     </tr>
@@ -1380,16 +1381,7 @@ function CredentialDetailPanel({
         </form>
         <form action={updateCredentialStatus} className="status-detail-form">
           <input type="hidden" name="id" value={item.id} />
-          <label>
-            <span>Status</span>
-            <select name="status" defaultValue={item.status} aria-label={`Status for ${item.credentialName}`}>
-              {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <StatusDropdown name="status" defaultValue={item.status} ariaLabel={`Status for ${item.credentialName}`} />
           <button type="submit">Save status</button>
         </form>
       </section>
@@ -1776,6 +1768,129 @@ function OwnerAutocompleteFields({
       ownerPlaceholder={ownerPlaceholder}
       withLabels
     />
+  );
+}
+
+const STATUS_DESCRIPTIONS: Record<WorkflowStatus, string> = {
+  not_started: "No owner action has been recorded.",
+  owner_contacted: "The rotation owner has been contacted.",
+  rotation_scheduled: "A rotation date or rollout window is planned.",
+  rotated: "Replacement or rotation work is complete.",
+  ignored: "Excluded from active follow-up."
+};
+
+const STATUS_OPTIONS = Object.entries(STATUS_LABELS).map(([value, label]) => ({
+  value: value as WorkflowStatus,
+  label,
+  description: STATUS_DESCRIPTIONS[value as WorkflowStatus]
+}));
+
+function StatusDropdown({
+  name,
+  defaultValue,
+  ariaLabel
+}: {
+  name: string;
+  defaultValue: WorkflowStatus;
+  ariaLabel: string;
+}) {
+  const listboxId = `status-options-${useId().replaceAll(":", "")}`;
+  const [value, setValue] = useState<WorkflowStatus>(defaultValue);
+  const [open, setOpen] = useState(false);
+  const selectedIndex = Math.max(
+    STATUS_OPTIONS.findIndex((option) => option.value === value),
+    0
+  );
+  const [activeOptionIndex, setActiveOptionIndex] = useState(selectedIndex);
+  const selectedOption = STATUS_OPTIONS[selectedIndex];
+
+  useEffect(() => {
+    setValue(defaultValue);
+  }, [defaultValue]);
+
+  function chooseStatus(next: WorkflowStatus) {
+    setValue(next);
+    setOpen(false);
+    setActiveOptionIndex(Math.max(STATUS_OPTIONS.findIndex((option) => option.value === next), 0));
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (!open) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Enter" || event.key === " ") {
+        setOpen(true);
+        setActiveOptionIndex(selectedIndex);
+        event.preventDefault();
+      }
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      setActiveOptionIndex((current) => Math.min(current + 1, STATUS_OPTIONS.length - 1));
+      event.preventDefault();
+    } else if (event.key === "ArrowUp") {
+      setActiveOptionIndex((current) => Math.max(current - 1, 0));
+      event.preventDefault();
+    } else if (event.key === "Enter" || event.key === " ") {
+      chooseStatus(STATUS_OPTIONS[activeOptionIndex].value);
+      event.preventDefault();
+    } else if (event.key === "Escape") {
+      setOpen(false);
+      event.preventDefault();
+    }
+  }
+
+  return (
+    <div
+      className="status-select-field"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setOpen(false);
+        }
+      }}
+    >
+      <span>Status</span>
+      <input type="hidden" name={name} value={value} />
+      <div className="status-select">
+        <button
+          type="button"
+          className="status-select-trigger"
+          aria-label={ariaLabel}
+          aria-controls={listboxId}
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          onClick={() => {
+            setOpen((current) => !current);
+            setActiveOptionIndex(selectedIndex);
+          }}
+          onKeyDown={handleKeyDown}
+        >
+          <strong>{selectedOption.label}</strong>
+          <span aria-hidden="true" className="status-select-caret" />
+        </button>
+        {open ? (
+          <div id={listboxId} className="status-select-list" role="listbox">
+            {STATUS_OPTIONS.map((option, index) => (
+              <button
+                type="button"
+                key={option.value}
+                className={`${option.value === value ? "selected" : ""} ${index === activeOptionIndex ? "active" : ""}`}
+                role="option"
+                aria-selected={option.value === value}
+                onMouseEnter={() => setActiveOptionIndex(index)}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  chooseStatus(option.value);
+                }}
+              >
+                <span className="status-select-kind">Status</span>
+                <strong>{option.label}</strong>
+                <span>{option.description}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
