@@ -23,7 +23,17 @@ import {
   XCircle
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
+import {
+  Fragment,
+  type FormEvent,
+  type KeyboardEvent,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useTransition
+} from "react";
 import type {
   CoverageHealth,
   DashboardAuthState,
@@ -631,54 +641,75 @@ export function Dashboard({
               </tr>
             </thead>
             <tbody>
-              {rows.map((item) => (
-                <tr key={item.id} className={`${item.removedAt ? "removed" : ""} ${selectedDetailId === item.id ? "selected-row" : ""}`}>
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.includes(item.id)}
-                      onChange={() => toggleSelection(item.id)}
-                      aria-label={`Select ${item.credentialName}`}
-                    />
-                  </td>
-                  <td>
-                    <RiskBadge item={item} />
-                  </td>
-                  <td title={`${SOURCE_LABELS[item.source]}\n${item.parentName}\n${item.naturalKey}`}>
-                    <strong>{item.parentName}</strong>
-                  </td>
-                  <td title={`${item.credentialName}\n${item.credentialType}\n${item.credentialId}`}>
-                    <span className="credential">
-                      <KeyRound size={15} />
-                      {item.credentialName}
-                    </span>
-                  </td>
-                  <td>
-                    <RotationBadge item={item} />
-                  </td>
-                  <td>
-                    <strong>{formatDate(item.expiresAt)}</strong>
-                    <DaysOut days={item.daysUntilExpiry} />
-                  </td>
-                  <td>
-                    <OwnerSummary item={item} />
-                  </td>
-                  <td>
-                    <StatusSummary item={item} />
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      className="icon-button"
-                      onClick={() => setSelectedDetailId(item.id)}
-                      aria-label={`Open details for ${item.credentialName}`}
-                      title="Open details"
-                    >
-                      <PanelRightOpen size={15} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {rows.map((item) => {
+                const expanded = selectedDetailId === item.id;
+                return (
+                  <Fragment key={item.id}>
+                    <tr className={`${item.removedAt ? "removed" : ""} ${expanded ? "selected-row" : ""}`}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(item.id)}
+                          onChange={() => toggleSelection(item.id)}
+                          aria-label={`Select ${item.credentialName}`}
+                        />
+                      </td>
+                      <td>
+                        <RiskBadge item={item} />
+                      </td>
+                      <td title={`${SOURCE_LABELS[item.source]}\n${item.parentName}\n${item.naturalKey}`}>
+                        <strong>{item.parentName}</strong>
+                      </td>
+                      <td title={`${item.credentialName}\n${item.credentialType}\n${item.credentialId}`}>
+                        <span className="credential">
+                          <KeyRound size={15} />
+                          {item.credentialName}
+                        </span>
+                      </td>
+                      <td>
+                        <RotationBadge item={item} />
+                      </td>
+                      <td>
+                        <strong>{formatDate(item.expiresAt)}</strong>
+                        <DaysOut days={item.daysUntilExpiry} />
+                      </td>
+                      <td>
+                        <OwnerSummary item={item} />
+                      </td>
+                      <td>
+                        <StatusSummary item={item} />
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="icon-button"
+                          onClick={() => setSelectedDetailId(expanded ? null : item.id)}
+                          aria-expanded={expanded}
+                          aria-label={`${expanded ? "Collapse" : "Open"} details for ${item.credentialName}`}
+                          title={expanded ? "Collapse details" : "Open details"}
+                        >
+                          <PanelRightOpen size={15} />
+                        </button>
+                      </td>
+                    </tr>
+                    {expanded ? (
+                      <tr className="inventory-detail-row">
+                        <td colSpan={9}>
+                          <CredentialDetailPanel
+                            item={item}
+                            coverage={coverage.filter((row) => coverageMatchesItem(row, item))}
+                            ownerSuggestions={ownerSuggestions}
+                            canOperate={auth.canOperate}
+                            onClose={() => setSelectedDetailId(null)}
+                            onCopy={copyText}
+                            inline
+                          />
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -1219,8 +1250,8 @@ export function Dashboard({
         </section>
       ) : null}
 
-      {selectedDetail && (activeTab === "inventory" || activeTab === "renewals" || activeTab === "owners") ? (
-        <CredentialDetailDrawer
+      {selectedDetail && (activeTab === "renewals" || activeTab === "owners") ? (
+        <CredentialDetailPanel
           item={selectedDetail}
           coverage={detailCoverage}
           ownerSuggestions={ownerSuggestions}
@@ -1242,13 +1273,14 @@ function AzureCertLogo() {
   );
 }
 
-function CredentialDetailDrawer({
+function CredentialDetailPanel({
   item,
   coverage,
   ownerSuggestions,
   canOperate,
   onClose,
-  onCopy
+  onCopy,
+  inline = false
 }: {
   item: DashboardItem;
   coverage: DashboardCoverage[];
@@ -1256,6 +1288,7 @@ function CredentialDetailDrawer({
   canOperate: boolean;
   onClose: () => void;
   onCopy: (title: string, text: string) => Promise<void>;
+  inline?: boolean;
 }) {
   const router = useRouter();
   const metadata = Object.entries(item.metadata);
@@ -1300,9 +1333,8 @@ function CredentialDetailDrawer({
     });
   }
 
-  return (
-    <>
-    <aside className="detail-drawer" aria-label="Credential detail">
+  const detailPanel = (
+    <div className={inline ? "detail-inline" : "detail-drawer"} aria-label="Credential detail">
       <div className="detail-header">
         <div>
           <p className="eyebrow">{SOURCE_LABELS[item.source]}</p>
@@ -1641,7 +1673,12 @@ function CredentialDetailDrawer({
           </dl>
         </section>
       ) : null}
-    </aside>
+    </div>
+  );
+
+  return (
+    <>
+    {detailPanel}
     {pendingRotation ? (
       <div className="modal-backdrop" role="presentation">
         <div className="modal" role="dialog" aria-modal="true" aria-labelledby="rotation-confirm-title">
@@ -1735,38 +1772,99 @@ function OwnerAutocompleteInputs({
   ownerAriaLabel?: string;
   withLabels?: boolean;
 }) {
-  const datalistId = useId().replaceAll(":", "");
+  const listboxId = `owner-identities-${useId().replaceAll(":", "")}`;
   const defaultOwnerValue = defaultOwnerName || defaultOwnerEmail;
   const [ownerLookup, setOwnerLookup] = useState(defaultOwnerValue);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [activeOptionIndex, setActiveOptionIndex] = useState(0);
 
   useEffect(() => {
     setOwnerLookup(defaultOwnerName || defaultOwnerEmail);
   }, [defaultOwnerName, defaultOwnerEmail]);
 
-  const listId = `owner-identities-${datalistId}`;
-  const identityOptions = ownerIdentityOptions(suggestions);
+  const identityOptions = useMemo(() => ownerIdentityOptions(suggestions), [suggestions]);
+  const filteredIdentityOptions = useMemo(() => {
+    const needle = ownerLookup.trim().toLowerCase();
+    const matches = needle
+      ? identityOptions.filter((option) => `${option.value} ${option.label}`.toLowerCase().includes(needle))
+      : identityOptions;
+    return matches.slice(0, 8);
+  }, [identityOptions, ownerLookup]);
+  const showSuggestions = suggestionsOpen && filteredIdentityOptions.length > 0;
+
+  function chooseOwner(option: { value: string; label: string }) {
+    setOwnerLookup(option.value);
+    setSuggestionsOpen(false);
+    setActiveOptionIndex(0);
+  }
+
+  function handleOwnerKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (!showSuggestions) {
+      if (event.key === "ArrowDown" && filteredIdentityOptions.length > 0) {
+        setSuggestionsOpen(true);
+        event.preventDefault();
+      }
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      setActiveOptionIndex((current) => Math.min(current + 1, filteredIdentityOptions.length - 1));
+      event.preventDefault();
+    } else if (event.key === "ArrowUp") {
+      setActiveOptionIndex((current) => Math.max(current - 1, 0));
+      event.preventDefault();
+    } else if (event.key === "Enter") {
+      chooseOwner(filteredIdentityOptions[activeOptionIndex]);
+      event.preventDefault();
+    } else if (event.key === "Escape") {
+      setSuggestionsOpen(false);
+      event.preventDefault();
+    }
+  }
 
   const ownerInput = (
-    <input
+    <div className="owner-autocomplete">
+      <input
         name="ownerLookup"
         value={ownerLookup}
-        onChange={(event) => setOwnerLookup(event.target.value)}
-        list={listId}
+        onChange={(event) => {
+          setOwnerLookup(event.target.value);
+          setSuggestionsOpen(true);
+          setActiveOptionIndex(0);
+        }}
+        onFocus={() => setSuggestionsOpen(true)}
+        onBlur={() => window.setTimeout(() => setSuggestionsOpen(false), 120)}
+        onKeyDown={handleOwnerKeyDown}
         placeholder={ownerPlaceholder}
         aria-label={ownerAriaLabel}
+        aria-autocomplete="list"
+        aria-controls={listboxId}
+        aria-expanded={showSuggestions}
         autoComplete="off"
       />
-  );
-  const lists = (
-    <datalist id={listId}>
-        {identityOptions.map((option) => (
-          <option
-            key={`${option.value}:${option.label}`}
-            value={option.value}
-            label={option.label}
-          />
-        ))}
-      </datalist>
+      <span aria-hidden="true" className="owner-autocomplete-caret" />
+      {showSuggestions ? (
+        <div id={listboxId} className="owner-autocomplete-list" role="listbox">
+          {filteredIdentityOptions.map((option, index) => (
+            <button
+              type="button"
+              key={`${option.value}:${option.label}`}
+              className={index === activeOptionIndex ? "active" : ""}
+              role="option"
+              aria-selected={index === activeOptionIndex}
+              onMouseEnter={() => setActiveOptionIndex(index)}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                chooseOwner(option);
+              }}
+            >
+              <strong>{option.value}</strong>
+              <span>{option.label}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 
   if (withLabels) {
@@ -1776,7 +1874,6 @@ function OwnerAutocompleteInputs({
           <span>Owner</span>
           {ownerInput}
         </label>
-        {lists}
       </>
     );
   }
@@ -1784,7 +1881,6 @@ function OwnerAutocompleteInputs({
   return (
     <>
       {ownerInput}
-      {lists}
     </>
   );
 }

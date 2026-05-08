@@ -397,6 +397,91 @@ h1 {
   padding: 8px 16px;
 }
 
+select option {
+  background: var(--panel);
+  color: var(--text);
+}
+
+.owner-autocomplete {
+  position: relative;
+  width: 100%;
+}
+
+.owner-autocomplete input {
+  padding-right: 44px;
+  width: 100%;
+}
+
+.owner-autocomplete-caret {
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 8px solid var(--text);
+  height: 0;
+  pointer-events: none;
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-40%);
+  width: 0;
+}
+
+.owner-autocomplete-list {
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 18px 32px rgb(0 0 0 / 28%);
+  display: grid;
+  left: 0;
+  max-height: 280px;
+  overflow: auto;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 45;
+}
+
+.owner-autocomplete-list button {
+  background: var(--panel);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  display: grid;
+  gap: 4px;
+  justify-content: stretch;
+  justify-items: start;
+  min-height: 64px;
+  padding: 12px 16px;
+  text-align: left;
+}
+
+.owner-autocomplete-list button:last-child {
+  border-bottom: 0;
+}
+
+.owner-autocomplete-list button:hover,
+.owner-autocomplete-list button.active {
+  background: var(--selected-row);
+}
+
+.owner-autocomplete-list strong,
+.owner-autocomplete-list span {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owner-autocomplete-list strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.owner-autocomplete-list span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .scheduler-form button {
   border-bottom: 0;
   border-right: 0;
@@ -1184,6 +1269,15 @@ tr.selected-row {
   background: var(--selected-row);
 }
 
+.inventory-detail-row > td {
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  overflow: visible;
+  padding: 0;
+  text-align: left;
+  white-space: normal;
+}
+
 .muted {
   color: var(--muted);
   font-size: 12px;
@@ -1283,20 +1377,39 @@ tr.selected-row {
   margin: 12px 0 6px;
 }
 
-.detail-drawer {
+.detail-drawer,
+.detail-inline {
   background: var(--panel);
   border: 1px solid var(--line-strong);
-  bottom: 24px;
   display: grid;
   gap: 16px;
+  padding: 16px;
+}
+
+.detail-drawer {
+  bottom: 24px;
   max-width: calc(100vw - 48px);
   overflow: auto;
-  padding: 16px;
   position: fixed;
   right: 24px;
   top: 160px;
   width: 500px;
   z-index: 20;
+}
+
+.detail-inline {
+  border: 0;
+  border-left: 4px solid var(--teal);
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
+}
+
+.detail-inline .detail-header,
+.detail-inline .detail-actions {
+  grid-column: 1 / -1;
+}
+
+.detail-inline .detail-section {
+  align-content: start;
 }
 
 .detail-header,
@@ -1591,6 +1704,10 @@ tr.selected-row {
     right: 14px;
     top: 14px;
     width: calc(100vw - 28px);
+  }
+
+  .detail-inline {
+    grid-template-columns: 1fr;
   }
 }
 
