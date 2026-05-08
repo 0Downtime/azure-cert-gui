@@ -786,13 +786,19 @@ export function Dashboard({
 
   return (
     <main className="shell">
+      <section className="utility-bar" aria-label="Environment context">
+        <span>Azure Cert GUI</span>
+        <span>{summary.total} synced credentials</span>
+        <span>{summary.lastSuccessfulSyncAt ? `Last successful sync ${formatDateTime(summary.lastSuccessfulSyncAt)}` : "No successful sync yet"}</span>
+      </section>
+
       <header className="topbar">
         <div className="brand-lockup">
           <AzureCertLogo />
           <div>
-            <p className="eyebrow">Azure / Entra Inventory</p>
+            <p className="eyebrow">Credential command center</p>
             <h1>Azure Cert GUI</h1>
-            <span>Credential Expiration Dashboard</span>
+            <span>Azure and Entra renewal operations</span>
           </div>
         </div>
         <div className="topbar-actions">
@@ -864,6 +870,10 @@ export function Dashboard({
       </header>
 
       <section className="operations-strip" aria-label="Refresh operations">
+        <div className="operations-title">
+          <strong>Inventory control plane</strong>
+          <span>Refresh source metadata, schedule syncs, and watch the active run.</span>
+        </div>
         <div className={`sync-pill ${refreshStatus?.status === "running" ? "running" : refreshStatus?.status ?? ""}`}>
           {refreshStatus?.status === "running" ? (
             <span className="sync-loader" aria-hidden="true" />
@@ -934,6 +944,19 @@ export function Dashboard({
           </span>
         </section>
       ) : null}
+
+      <section className="summary-band" aria-label="Operational summary">
+        <div>
+          <p className="eyebrow">Current posture</p>
+          <h2>{summary.expired + summary.next30} urgent credentials need attention</h2>
+          <span>
+            {summary.unknownOwners} owner gaps, {summary.coverageGaps} source coverage gaps, and {summary.excludedFromRenewal} credentials excluded from owner rotation exports.
+          </span>
+        </div>
+        <button type="button" onClick={() => setActiveTab("renewals")}>
+          Review renewals
+        </button>
+      </section>
 
       <section className="metrics" aria-label="Inventory summary">
         <Metric label="Total" value={summary.total} icon={<Database size={18} />} />
