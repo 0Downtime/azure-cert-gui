@@ -1,8 +1,8 @@
 <h1 align="center">[Alpha] Azure Cert GUI</h1>
 
 <p align="center">
-  <img src="src/app/azure-cert-logo-light.png#gh-light-mode-only" alt="Azure Cert GUI" width="220" />
-  <img src="src/app/azure-cert-logo-dark.png#gh-dark-mode-only" alt="Azure Cert GUI" width="220" />
+  <img src="public/azure-cert-logo-light.png#gh-light-mode-only" alt="Azure Cert GUI" width="180" />
+  <img src="public/azure-cert-logo-dark.png#gh-dark-mode-only" alt="Azure Cert GUI" width="180" />
 </p>
 
 <p align="center">

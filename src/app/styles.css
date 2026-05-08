@@ -154,7 +154,6 @@ textarea {
   padding: 0 24px 32px;
 }
 
-.utility-bar,
 .topbar,
 .operations-strip,
 .summary-band,
@@ -188,36 +187,25 @@ textarea {
   animation-delay: 250ms;
 }
 
-.utility-bar {
-  align-items: center;
-  background: var(--field);
-  border-bottom: 1px solid var(--line);
-  color: var(--muted);
-  display: flex;
-  flex-wrap: wrap;
-  font-size: 12px;
-  gap: 18px;
-  min-height: 32px;
-  margin: 0 -24px;
-  padding: 4px 24px;
-}
-
 .topbar {
-  align-items: stretch;
+  align-items: center;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
   display: flex;
-  gap: 24px;
+  gap: 16px;
   justify-content: space-between;
   margin: 0 -24px;
-  min-height: 80px;
-  padding: 0 24px;
+  min-height: 64px;
+  overflow: visible;
+  padding: 10px 24px;
+  position: relative;
+  z-index: 70;
 }
 
 .brand-lockup {
   align-items: center;
   display: flex;
-  gap: 16px;
+  gap: 12px;
   min-width: 260px;
 }
 
@@ -229,7 +217,7 @@ textarea {
 
 .brand-lockup > div:last-child > span {
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.3;
 }
 
@@ -237,17 +225,17 @@ textarea {
   align-items: center;
   display: grid;
   flex: 0 0 auto;
-  height: 48px;
+  height: 40px;
   justify-items: center;
-  width: 48px;
+  width: 40px;
 }
 
 .azure-cert-logo img {
   display: block;
   grid-area: 1 / 1;
-  height: 40px;
+  height: 34px;
   object-fit: contain;
-  width: 40px;
+  width: 34px;
 }
 
 .azure-cert-logo .logo-dark {
@@ -266,15 +254,15 @@ textarea {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: 0;
+  gap: 6px;
   justify-content: flex-end;
+  overflow: visible;
 }
 
 .topbar-actions > button,
 .topbar-actions > form,
 .topbar-actions > .auth-pill {
-  border-left: 0;
-  min-height: 48px;
+  min-height: 40px;
 }
 
 .refresh-button {
@@ -286,10 +274,6 @@ textarea {
 .refresh-button:hover {
   background: #0050e6;
   border-color: #0050e6;
-}
-
-.refresh-label-short {
-  display: none;
 }
 
 .theme-toggle[aria-pressed="true"] {
@@ -304,20 +288,17 @@ textarea {
   display: inline-flex;
   font-size: 14px;
   gap: 8px;
-  padding: 8px 16px;
+  min-height: 40px;
+  padding: 8px 12px;
 }
 
 .auth-name {
   color: var(--text);
   font-weight: 600;
-  max-width: 180px;
+  max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.auth-role {
-  color: var(--muted);
 }
 
 .auth-pill a {
@@ -348,8 +329,8 @@ textarea {
 }
 
 h1 {
-  font-size: 32px;
-  font-weight: 300;
+  font-size: 26px;
+  font-weight: 400;
   letter-spacing: 0;
   line-height: 1.2;
   margin: 0;
@@ -360,24 +341,15 @@ h1 {
   background: var(--field);
   border-bottom: 1px solid var(--line);
   display: grid;
-  gap: 16px;
-  grid-template-columns: minmax(260px, 1fr) auto auto;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  justify-content: space-between;
   margin: 0 -24px 0;
-  padding: 16px 24px;
+  padding: 8px 24px;
+  position: relative;
+  z-index: 10;
 }
 
-.operations-title {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.operations-title strong {
-  font-size: 20px;
-  font-weight: 400;
-}
-
-.operations-title span,
 .scheduler-state,
 .scheduler-note,
 .sync-pill {
@@ -391,9 +363,9 @@ h1 {
   border: 1px solid var(--line);
   display: inline-flex;
   gap: 8px;
-  min-height: 40px;
+  min-height: 32px;
   overflow: hidden;
-  padding: 8px 12px;
+  padding: 6px 10px;
   position: relative;
 }
 
@@ -490,32 +462,32 @@ h1 {
   display: flex;
   flex-wrap: wrap;
   gap: 0;
-  min-height: 48px;
+  min-height: 40px;
+  overflow: visible;
 }
 
 .scheduler-state.enabled {
   color: var(--teal);
 }
 
-.scheduler-form label {
+.scheduler-form .ui-select-field {
   align-items: center;
   display: flex;
   gap: 8px;
-  min-height: 48px;
-  padding: 0 12px;
+  min-height: 40px;
 }
 
-.scheduler-form select,
-.select select,
+.scheduler-form .ui-select {
+  min-width: 98px;
+}
+
 .status-form select,
 .owner-form input,
 .owner-bulk-form input,
 .mapping-form input,
-.mapping-form select,
 .renewal-form input,
-.renewal-form select,
 .owner-detail-form input,
-.status-select-trigger {
+.ui-select-trigger {
   background: var(--field);
   border: 0;
   border-bottom: 1px solid var(--line-strong);
@@ -579,26 +551,28 @@ select option {
   width: 100%;
 }
 
-.status-select-field {
+.ui-select-field {
   display: grid;
   gap: 4px;
+  min-width: 0;
 }
 
-.status-select-field > span {
+.ui-select-field > span {
   color: var(--muted);
   font-size: 12px;
   font-weight: 400;
 }
 
-.status-select {
+.ui-select {
   display: grid;
   position: relative;
   width: 100%;
 }
 
-.status-select-trigger {
+.ui-select-trigger {
   align-items: center;
   display: flex;
+  gap: 8px;
   justify-content: space-between;
   min-width: 0;
   padding-right: 44px;
@@ -607,11 +581,11 @@ select option {
   width: 100%;
 }
 
-.status-select-trigger:hover {
+.ui-select-trigger:hover {
   transform: none;
 }
 
-.status-select-trigger strong {
+.ui-select-trigger strong {
   display: block;
   font-weight: 600;
   max-width: 100%;
@@ -621,7 +595,14 @@ select option {
   white-space: nowrap;
 }
 
-.status-select-caret {
+.ui-select-icon {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.ui-select-caret {
   border-left: 6px solid transparent;
   border-right: 6px solid transparent;
   border-top: 8px solid var(--text);
@@ -635,7 +616,7 @@ select option {
   width: 0;
 }
 
-.status-select-trigger[aria-expanded="true"] .status-select-caret {
+.ui-select-trigger[aria-expanded="true"] .ui-select-caret {
   transform: translateY(-40%) rotate(180deg);
 }
 
@@ -652,7 +633,7 @@ select option {
   width: 0;
 }
 
-.status-select-list,
+.ui-select-list,
 .owner-autocomplete-list {
   animation: ui-rise 180ms var(--motion-ease) both;
   background: var(--panel);
@@ -665,10 +646,10 @@ select option {
   position: absolute;
   right: 0;
   top: calc(100% + 4px);
-  z-index: 45;
+  z-index: 90;
 }
 
-.status-select-list button,
+.ui-select-list button,
 .owner-autocomplete-list button {
   background: var(--panel);
   border: 0;
@@ -684,9 +665,18 @@ select option {
   text-align: left;
 }
 
-.status-select-list button:last-child,
+.ui-select-list button:last-child,
 .owner-autocomplete-list button:last-child {
   border-bottom: 0;
+}
+
+.ui-select-list button.simple {
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 44px;
+}
+
+.ui-select-list button.simple strong {
+  grid-column: 1;
 }
 
 .owner-autocomplete-empty {
@@ -700,14 +690,14 @@ select option {
   background: var(--selected-row);
 }
 
-.status-select-list button:hover,
-.status-select-list button.active,
-.status-select-list button.selected {
+.ui-select-list button:hover,
+.ui-select-list button.active,
+.ui-select-list button.selected {
   background: var(--selected-row);
 }
 
-.status-select-list strong,
-.status-select-list span,
+.ui-select-list strong,
+.ui-select-list span,
 .owner-autocomplete-list strong,
 .owner-autocomplete-list span {
   display: block;
@@ -718,7 +708,7 @@ select option {
   white-space: nowrap;
 }
 
-.status-select-kind,
+.ui-select-kind,
 .owner-autocomplete-list .owner-autocomplete-kind {
   align-self: start;
   background: var(--field);
@@ -730,7 +720,7 @@ select option {
   text-transform: none;
 }
 
-.status-select-list .status-select-kind {
+.ui-select-list .ui-select-kind {
   background: var(--blue-soft);
   color: var(--blue);
 }
@@ -745,32 +735,34 @@ select option {
   color: var(--green);
 }
 
-.status-select-list strong,
+.ui-select-list strong,
 .owner-autocomplete-list strong {
   font-size: 15px;
   font-weight: 600;
   grid-column: 2;
 }
 
-.status-select-list span,
+.ui-select-list span,
 .owner-autocomplete-list span {
   color: var(--muted);
   font-size: 13px;
   grid-column: 2;
 }
 
-.status-select-list button.selected strong,
-.status-select-list button.selected span:not(.status-select-kind),
-.status-select-list button.active strong,
-.status-select-list button.active span:not(.status-select-kind) {
+.ui-select-list button.selected strong,
+.ui-select-list button.selected span:not(.ui-select-kind),
+.ui-select-list button.active strong,
+.ui-select-list button.active span:not(.ui-select-kind) {
   color: var(--text);
 }
 
-.scheduler-form button {
+.scheduler-form > button {
   border-bottom: 0;
   border-right: 0;
   border-top: 0;
-  min-height: 48px;
+  min-height: 40px;
+  padding-left: 12px;
+  padding-right: 12px;
 }
 
 .icon-button {
@@ -1332,7 +1324,7 @@ select option {
 .renewal-form label,
 .owner-detail-form label,
 .status-detail-form label,
-.select {
+.ui-select-field {
   display: grid;
   gap: 4px;
 }
@@ -1342,7 +1334,7 @@ select option {
 .one-time-secret > span,
 .owner-detail-form label span,
 .status-detail-form label span,
-.select span {
+.ui-select-field > span {
   color: var(--muted);
   font-size: 12px;
   font-weight: 400;
@@ -2149,7 +2141,6 @@ tr.selected-row {
     padding: 0 14px 24px;
   }
 
-  .utility-bar,
   .topbar,
   .operations-strip,
   .summary-band,
@@ -2172,24 +2163,10 @@ tr.selected-row {
     justify-content: flex-start;
   }
 
-  .topbar-actions > button,
-  .topbar-actions > form,
-  .topbar-actions > .auth-pill {
-    border-left: 1px solid var(--line);
-  }
-
   .operations-strip,
   .summary-band {
     align-items: stretch;
     grid-template-columns: 1fr;
-  }
-
-  .refresh-label-full {
-    display: none;
-  }
-
-  .refresh-label-short {
-    display: inline;
   }
 
   .coverage-row,
@@ -2213,17 +2190,17 @@ tr.selected-row {
 }
 
 @media (max-width: 700px) {
-  .utility-bar {
-    display: none;
-  }
-
   .brand-lockup {
-    align-items: flex-start;
-    padding-top: 14px;
+    align-items: center;
   }
 
   h1 {
-    font-size: 28px;
+    font-size: 24px;
+  }
+
+  .operations-strip {
+    align-items: center;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .summary-band {
@@ -2259,15 +2236,42 @@ tr.selected-row {
     width: 100%;
   }
 
-  .scheduler-form label,
-  .scheduler-form select,
-  .topbar-actions > button,
+  .topbar-actions {
+    display: grid;
+    grid-template-columns: 84px 180px 40px 40px;
+  }
+
   .topbar-actions > .auth-pill {
     width: 100%;
   }
 
-  .scheduler-form button {
-    flex: 1 1 50%;
+  .scheduler-form .ui-select-field {
+    flex: 1 1 92px;
+    min-width: 0;
+    width: auto;
+  }
+
+  .scheduler-form .ui-select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .topbar-actions .auth-name {
+    display: none;
+  }
+
+  .topbar-actions .auth-pill {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .topbar-actions .auth-pill a {
+    display: none;
+  }
+
+  .scheduler-form > button {
+    flex: 0 0 40px;
     width: auto;
   }
 

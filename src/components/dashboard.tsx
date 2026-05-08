@@ -1,7 +1,5 @@
 "use client";
 
-import azureCertLogoDark from "@/app/azure-cert-logo-dark.png";
-import azureCertLogoLight from "@/app/azure-cert-logo-light.png";
 import {
   AlertTriangle,
   Ban,
@@ -73,6 +71,12 @@ type DashboardTab = "inventory" | "renewals" | "owners" | "coverage";
 type SourceFilter = InventorySource | "all" | "key_vault";
 type OwnerSuggestionFilter = "all" | "users" | "groups";
 type InventorySort = "expires_soonest" | "recently_expired";
+type DropdownOption = {
+  value: string;
+  label: string;
+  description?: string;
+  kind?: string;
+};
 
 const SOURCE_LABELS: Record<InventorySource, string> = {
   entra_application: "Entra app",
@@ -158,6 +162,44 @@ const INVENTORY_SORT_LABELS: Record<InventorySort, string> = {
   expires_soonest: "Nearest expiration",
   recently_expired: "Recently expired"
 };
+
+const SOURCE_FILTER_OPTIONS: DropdownOption[] = [
+  { value: "all", label: "All sources" },
+  { value: "key_vault", label: "All Key Vault" },
+  ...Object.entries(SOURCE_LABELS).map(([value, label]) => ({ value, label }))
+];
+
+const RISK_FILTER_OPTIONS: DropdownOption[] = [
+  { value: "all", label: "All risks" },
+  ...Object.entries(BUCKET_LABELS).map(([value, label]) => ({ value, label }))
+];
+
+const STATUS_FILTER_OPTIONS: DropdownOption[] = [
+  { value: "all", label: "All statuses" },
+  ...Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))
+];
+
+const OWNER_FILTER_OPTIONS: DropdownOption[] = [
+  { value: "all", label: "All owners" },
+  { value: "unknown", label: "Unassigned" },
+  { value: "low", label: "Low confidence" }
+];
+
+const ROTATION_FILTER_OPTIONS: DropdownOption[] = [
+  { value: "actionable", label: "Owner rotates" },
+  { value: "all", label: "All rotation modes" },
+  ...Object.entries(ROTATION_LABELS).map(([value, label]) => ({ value, label }))
+];
+
+const INVENTORY_SORT_OPTIONS: DropdownOption[] = Object.entries(INVENTORY_SORT_LABELS).map(([value, label]) => ({
+  value,
+  label
+}));
+
+const SECRET_MODE_OPTIONS: DropdownOption[] = [
+  { value: "generated", label: "Generate value" },
+  { value: "provided", label: "Use provided value" }
+];
 
 const REFRESH_INTERVAL_OPTIONS = [
   { value: "5", label: "5m" },
@@ -828,19 +870,15 @@ export function Dashboard({
 
   return (
     <main className="shell">
-      <section className="utility-bar" aria-label="Environment context">
-        <span>Azure Cert GUI</span>
-        <span>{summary.total} synced credentials</span>
-        <span>{summary.lastSuccessfulSyncAt ? `Last successful sync ${formatDateTime(summary.lastSuccessfulSyncAt)}` : "No successful sync yet"}</span>
-      </section>
-
       <header className="topbar">
         <div className="brand-lockup">
           <AzureCertLogo />
           <div>
-            <p className="eyebrow">Credential command center</p>
             <h1>Azure Cert GUI</h1>
-            <span>Azure and Entra renewal operations</span>
+            <span>
+              Credential command center | {summary.total} credentials |{" "}
+              {summary.lastSuccessfulSyncAt ? `Last sync ${formatDateTime(summary.lastSuccessfulSyncAt)}` : "No successful sync"}
+            </span>
           </div>
         </div>
         <div className="topbar-actions">
@@ -855,37 +893,26 @@ export function Dashboard({
             title={auth.canOperate ? "Refresh data" : "Operator access required"}
           >
             <RefreshCw size={16} className={refreshStatus?.status === "running" ? "spin" : ""} />
-            <span className="refresh-label-full" aria-hidden="true">
-              {refreshStatus?.status === "running" ? "Refreshing" : "Refresh data"}
-            </span>
-            <span className="refresh-label-short" aria-hidden="true">
-              {refreshStatus?.status === "running" ? "Refreshing" : "Refresh"}
-            </span>
+            <span>{refreshStatus?.status === "running" ? "Refreshing" : "Refresh"}</span>
           </button>
           <form className="scheduler-form" onSubmit={saveRefreshSchedule}>
-            <label>
-              <Clock size={14} aria-hidden="true" />
-              <select
-                name="intervalMinutes"
-                value={scheduleInterval}
-                onChange={(event) => setScheduleInterval(event.currentTarget.value)}
-                disabled={!auth.canOperate}
-                aria-label="Automatic refresh interval"
-              >
-                {refreshIntervalOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <DropdownSelect
+              name="intervalMinutes"
+              value={scheduleInterval}
+              onChange={setScheduleInterval}
+              options={refreshIntervalOptions}
+              disabled={!auth.canOperate}
+              ariaLabel="Automatic refresh interval"
+              leadingIcon={<Clock size={14} aria-hidden="true" />}
+              compact
+            />
             <button
               type="submit"
               disabled={!auth.canOperate}
               title={scheduleStatus?.enabled ? "Update automatic refresh" : "Enable automatic refresh"}
+              aria-label={scheduleStatus?.enabled ? "Update automatic refresh" : "Enable automatic refresh"}
             >
               <RefreshCw size={14} aria-hidden="true" />
-              <span>{scheduleStatus?.enabled ? "Update" : "Auto"}</span>
             </button>
             <button
               type="button"
@@ -898,24 +925,25 @@ export function Dashboard({
               <X size={14} aria-hidden="true" />
             </button>
           </form>
-          <button type="button" className="theme-toggle" onClick={toggleTheme} aria-pressed={theme === "dark"}>
+          <button
+            type="button"
+            className="icon-button theme-toggle"
+            onClick={toggleTheme}
+            aria-pressed={theme === "dark"}
+            aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+            title={theme === "dark" ? "Light theme" : "Dark theme"}
+          >
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-            <span>{theme === "dark" ? "Light" : "Dark"}</span>
           </button>
           <div className="auth-pill" title={authTitle}>
             <UserRound size={16} />
             <span className="auth-name">{signedInName}</span>
-            <span className="auth-role">{auth.accessLevel}</span>
             {auth.source === "oidc" ? <a href={auth.signOutPath}>Sign out</a> : null}
           </div>
         </div>
       </header>
 
       <section className="operations-strip" aria-label="Refresh operations">
-        <div className="operations-title">
-          <strong>Inventory control plane</strong>
-          <span>Refresh source metadata, schedule syncs, and watch the active run.</span>
-        </div>
         <div className={`sync-pill ${refreshStatus?.status === "running" ? "running" : refreshStatus?.status ?? ""}`}>
           {refreshStatus?.status === "running" ? (
             <span className="sync-loader" aria-hidden="true" />
@@ -925,10 +953,15 @@ export function Dashboard({
           <span>
             {refreshStatus?.status === "running"
               ? `Refreshing ${refreshStatus.progress}%`
-              : `Last sync ${summary.lastSuccessfulSyncAt ? formatDateTime(summary.lastSuccessfulSyncAt) : "never"}`}
+              : refreshStatus?.status === "succeeded"
+                ? "Refresh complete"
+                : refreshStatus?.status === "failed"
+                  ? "Refresh failed"
+                  : "Sync idle"}
           </span>
         </div>
-        <span className={`scheduler-state ${scheduleStatus?.enabled ? "enabled" : ""}`}>
+        <span className={`scheduler-state sync-pill ${scheduleStatus?.enabled ? "enabled" : ""}`}>
+          <Clock size={16} aria-hidden="true" />
           {scheduleStatus?.enabled && scheduleStatus.nextRunAt
             ? `Auto ${scheduleStatus.intervalMinutes}m / next ${formatDateTime(scheduleStatus.nextRunAt)}`
             : "Auto refresh off"}
@@ -1076,52 +1109,12 @@ export function Dashboard({
             <Search size={16} />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search app, vault, owner, credential" />
           </label>
-          <Select label="Source" value={source} onChange={(value) => setSource(value as SourceFilter)}>
-            <option value="all">All sources</option>
-            <option value="key_vault">Key Vault certs, secrets, keys</option>
-            {Object.entries(SOURCE_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
-          <Select label="Risk" value={bucket} onChange={(value) => setBucket(value as RiskBucket | "all")}>
-            <option value="all">All risk</option>
-            {Object.entries(BUCKET_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
-          <Select label="Status" value={status} onChange={(value) => setStatus(value as WorkflowStatus | "all")}>
-            <option value="all">All status</option>
-            {Object.entries(STATUS_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
-          <Select label="Owner" value={ownerMode} onChange={(value) => setOwnerMode(value as "all" | "unknown" | "low")}>
-            <option value="all">All owners</option>
-            <option value="unknown">Unknown only</option>
-            <option value="low">Low confidence</option>
-          </Select>
-          <Select label="Rotation" value={rotationScope} onChange={(value) => setRotationScope(value as RotationScope)}>
-            <option value="actionable">Actionable only</option>
-            <option value="all">All rotation modes</option>
-            {Object.entries(ROTATION_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
-          <Select label="Sort" value={inventorySort} onChange={(value) => setInventorySort(value as InventorySort)}>
-            {(Object.keys(INVENTORY_SORT_LABELS) as InventorySort[]).map((value) => (
-              <option key={value} value={value}>
-                {INVENTORY_SORT_LABELS[value]}
-              </option>
-            ))}
-          </Select>
+          <DropdownSelect label="Source" value={source} onChange={(value) => setSource(value as SourceFilter)} options={SOURCE_FILTER_OPTIONS} />
+          <DropdownSelect label="Risk" value={bucket} onChange={(value) => setBucket(value as RiskBucket | "all")} options={RISK_FILTER_OPTIONS} />
+          <DropdownSelect label="Status" value={status} onChange={(value) => setStatus(value as WorkflowStatus | "all")} options={STATUS_FILTER_OPTIONS} />
+          <DropdownSelect label="Owner" value={ownerMode} onChange={(value) => setOwnerMode(value as "all" | "unknown" | "low")} options={OWNER_FILTER_OPTIONS} />
+          <DropdownSelect label="Rotation" value={rotationScope} onChange={(value) => setRotationScope(value as RotationScope)} options={ROTATION_FILTER_OPTIONS} />
+          <DropdownSelect label="Sort" value={inventorySort} onChange={(value) => setInventorySort(value as InventorySort)} options={INVENTORY_SORT_OPTIONS} />
         </section>
 
         <section className="actionbar" aria-label="Bulk actions">
@@ -1285,8 +1278,8 @@ export function Dashboard({
 function AzureCertLogo() {
   return (
     <div className="azure-cert-logo" aria-hidden="true">
-      <img className="logo-light" src={azureCertLogoLight.src} alt="" width={72} height={72} decoding="async" />
-      <img className="logo-dark" src={azureCertLogoDark.src} alt="" width={72} height={72} decoding="async" />
+      <img className="logo-light" src="/azure-cert-logo-light.png" alt="" width={512} height={512} decoding="async" />
+      <img className="logo-dark" src="/azure-cert-logo-dark.png" alt="" width={512} height={512} decoding="async" />
     </div>
   );
 }
@@ -1473,16 +1466,12 @@ function CredentialDetailPanel({
                 <span>Notes</span>
                 <input name="notes" defaultValue={item.renewalCase.notes ?? ""} />
               </label>
-              <label>
-                <span>Handoff</span>
-                <select name="handoffStatus" defaultValue={item.renewalCase.handoffStatus}>
-                  {Object.entries(HANDOFF_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <DropdownSelect
+                label="Handoff"
+                name="handoffStatus"
+                defaultValue={item.renewalCase.handoffStatus}
+                options={Object.entries(HANDOFF_LABELS).map(([value, label]) => ({ value, label }))}
+              />
               <label>
                 <span>Last contacted</span>
                 <input type="date" name="lastContactedAt" defaultValue={dateInputValue(item.renewalCase.lastContactedAt)} />
@@ -1531,13 +1520,7 @@ function CredentialDetailPanel({
               </label>
               {item.source === "key_vault_secret" ? (
                 <>
-                  <label>
-                    <span>Secret mode</span>
-                    <select name="secretMode" defaultValue="generated">
-                      <option value="generated">Generate value</option>
-                      <option value="provided">Use provided value</option>
-                    </select>
-                  </label>
+                  <DropdownSelect label="Secret mode" name="secretMode" defaultValue="generated" options={SECRET_MODE_OPTIONS} />
                   <label>
                     <span>Provided value</span>
                     <input type="password" name="providedSecretValue" autoComplete="new-password" />
@@ -1809,27 +1792,62 @@ function StatusDropdown({
   defaultValue: WorkflowStatus;
   ariaLabel: string;
 }) {
-  const listboxId = `status-options-${useId().replaceAll(":", "")}`;
-  const [value, setValue] = useState<WorkflowStatus>(defaultValue);
+  return <DropdownSelect label="Status" name={name} defaultValue={defaultValue} ariaLabel={ariaLabel} options={STATUS_OPTIONS} />;
+}
+
+function DropdownSelect({
+  label,
+  name,
+  value,
+  defaultValue,
+  onChange,
+  options,
+  ariaLabel,
+  disabled = false,
+  leadingIcon,
+  compact = false
+}: {
+  label?: string;
+  name?: string;
+  value?: string;
+  defaultValue?: string;
+  onChange?: (value: string) => void;
+  options: DropdownOption[];
+  ariaLabel?: string;
+  disabled?: boolean;
+  leadingIcon?: React.ReactNode;
+  compact?: boolean;
+}) {
+  const listboxId = `dropdown-options-${useId().replaceAll(":", "")}`;
+  const firstValue = options[0]?.value ?? "";
+  const [internalValue, setInternalValue] = useState(defaultValue ?? value ?? firstValue);
   const [open, setOpen] = useState(false);
+  const currentValue = value ?? internalValue;
   const selectedIndex = Math.max(
-    STATUS_OPTIONS.findIndex((option) => option.value === value),
+    options.findIndex((option) => option.value === currentValue),
     0
   );
   const [activeOptionIndex, setActiveOptionIndex] = useState(selectedIndex);
-  const selectedOption = STATUS_OPTIONS[selectedIndex];
+  const selectedOption = options[selectedIndex] ?? { value: firstValue, label: firstValue };
 
   useEffect(() => {
-    setValue(defaultValue);
-  }, [defaultValue]);
+    if (value === undefined) {
+      setInternalValue(defaultValue ?? firstValue);
+    }
+  }, [defaultValue, firstValue, value]);
 
-  function chooseStatus(next: WorkflowStatus) {
-    setValue(next);
+  function chooseOption(next: string) {
+    if (value === undefined) {
+      setInternalValue(next);
+    }
+    onChange?.(next);
     setOpen(false);
-    setActiveOptionIndex(Math.max(STATUS_OPTIONS.findIndex((option) => option.value === next), 0));
+    setActiveOptionIndex(Math.max(options.findIndex((option) => option.value === next), 0));
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (disabled) return;
+
     if (!open) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Enter" || event.key === " ") {
         setOpen(true);
@@ -1840,13 +1858,13 @@ function StatusDropdown({
     }
 
     if (event.key === "ArrowDown") {
-      setActiveOptionIndex((current) => Math.min(current + 1, STATUS_OPTIONS.length - 1));
+      setActiveOptionIndex((current) => Math.min(current + 1, options.length - 1));
       event.preventDefault();
     } else if (event.key === "ArrowUp") {
       setActiveOptionIndex((current) => Math.max(current - 1, 0));
       event.preventDefault();
     } else if (event.key === "Enter" || event.key === " ") {
-      chooseStatus(STATUS_OPTIONS[activeOptionIndex].value);
+      chooseOption(options[activeOptionIndex].value);
       event.preventDefault();
     } else if (event.key === "Escape") {
       setOpen(false);
@@ -1856,50 +1874,54 @@ function StatusDropdown({
 
   return (
     <div
-      className="status-select-field"
+      className={`ui-select-field${compact ? " compact" : ""}`}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget)) {
           setOpen(false);
         }
       }}
     >
-      <span>Status</span>
-      <input type="hidden" name={name} value={value} />
-      <div className="status-select">
+      {label ? <span>{label}</span> : null}
+      {name ? <input type="hidden" name={name} value={currentValue} /> : null}
+      <div className="ui-select">
         <button
           type="button"
-          className="status-select-trigger"
-          aria-label={ariaLabel}
+          className="ui-select-trigger"
+          aria-label={ariaLabel ?? label}
           aria-controls={listboxId}
           aria-expanded={open}
           aria-haspopup="listbox"
+          disabled={disabled}
           onClick={() => {
             setOpen((current) => !current);
             setActiveOptionIndex(selectedIndex);
           }}
           onKeyDown={handleKeyDown}
         >
+          {leadingIcon ? <span className="ui-select-icon">{leadingIcon}</span> : null}
           <strong>{selectedOption.label}</strong>
-          <span aria-hidden="true" className="status-select-caret" />
+          <span aria-hidden="true" className="ui-select-caret" />
         </button>
         {open ? (
-          <div id={listboxId} className="status-select-list" role="listbox">
-            {STATUS_OPTIONS.map((option, index) => (
+          <div id={listboxId} className="ui-select-list" role="listbox">
+            {options.map((option, index) => (
               <button
                 type="button"
                 key={option.value}
-                className={`${option.value === value ? "selected" : ""} ${index === activeOptionIndex ? "active" : ""}`}
+                className={`${option.value === currentValue ? "selected" : ""} ${index === activeOptionIndex ? "active" : ""} ${
+                  option.kind || option.description ? "" : "simple"
+                }`}
                 role="option"
-                aria-selected={option.value === value}
+                aria-selected={option.value === currentValue}
                 onMouseEnter={() => setActiveOptionIndex(index)}
                 onMouseDown={(event) => {
                   event.preventDefault();
-                  chooseStatus(option.value);
+                  chooseOption(option.value);
                 }}
               >
-                <span className="status-select-kind">Status</span>
+                {option.kind || option.description ? <span className="ui-select-kind">{option.kind ?? label ?? "Option"}</span> : null}
                 <strong>{option.label}</strong>
-                <span>{option.description}</span>
+                {option.description ? <span>{option.description}</span> : null}
               </button>
             ))}
           </div>
@@ -2138,16 +2160,13 @@ function OwnerDirectory({
       </div>
 
       <form action={saveOwnerOverride} className="mapping-form">
-        <label>
-          <span>Match</span>
-          <select name="matchType" defaultValue="parent_id" aria-label="Owner mapping match type">
-            {Object.entries(MATCH_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <DropdownSelect
+          label="Match"
+          name="matchType"
+          defaultValue="parent_id"
+          ariaLabel="Owner mapping match type"
+          options={Object.entries(MATCH_LABELS).map(([value, label]) => ({ value, label }))}
+        />
         <label>
           <span>Value</span>
           <input name="matchValue" placeholder="Application ID, credential ID, app name, or vault name" />
@@ -2272,27 +2291,6 @@ function Metric({
       <strong>{value}</strong>
       <span>{label}</span>
     </div>
-  );
-}
-
-function Select({
-  label,
-  value,
-  onChange,
-  children
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="select">
-      <span>{label}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)}>
-        {children}
-      </select>
-    </label>
   );
 }
 
