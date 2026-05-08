@@ -10,6 +10,7 @@ import {
   Copy,
   Database,
   Download,
+  ExternalLink,
   Filter,
   KeyRound,
   Moon,
@@ -69,6 +70,7 @@ type WorkflowMode = "all" | "urgent" | "due60" | "unknown" | "contacted_pending"
 type RotationScope = "actionable" | "all" | RotationMode;
 type DashboardTab = "inventory" | "renewals" | "owners" | "coverage";
 type SourceFilter = InventorySource | "all" | "key_vault";
+type OwnerSuggestionFilter = "all" | "users" | "groups";
 
 const SOURCE_LABELS: Record<InventorySource, string> = {
   entra_application: "Entra app",
@@ -682,7 +684,7 @@ export function Dashboard({
                       <td>
                         <button
                           type="button"
-                          className="icon-button"
+                          className="icon-button detail-toggle"
                           onClick={() => setSelectedDetailId(expanded ? null : item.id)}
                           aria-expanded={expanded}
                           aria-label={`${expanded ? "Collapse" : "Open"} details for ${item.credentialName}`}
@@ -1292,6 +1294,7 @@ function CredentialDetailPanel({
 }) {
   const router = useRouter();
   const metadata = Object.entries(item.metadata);
+  const resourceLink = resourceAdminLink(item);
   const inAppRotationSupported = supportsInAppRotation(item);
   const checklist = item.renewalCase ? renewalChecklist(item) : [];
   const [rotationResult, setRotationResult] = useState<{
@@ -1347,6 +1350,12 @@ function CredentialDetailPanel({
       </div>
 
       <div className="detail-actions">
+        {resourceLink ? (
+          <a className="detail-action-link" href={resourceLink.href} target="_blank" rel="noreferrer" title={resourceLink.title}>
+            <ExternalLink size={15} />
+            {resourceLink.label}
+          </a>
+        ) : null}
         <button type="button" onClick={() => void onCopy("Credential identifiers", detailCopyText(item))}>
           <Copy size={15} />
           Copy identifiers
@@ -1610,6 +1619,19 @@ function CredentialDetailPanel({
       <section className="detail-section">
         <h3>Identifiers</h3>
         <dl className="detail-list">
+          <DetailRow
+            label="Admin link"
+            value={
+              resourceLink ? (
+                <a className="resource-admin-link" href={resourceLink.href} target="_blank" rel="noreferrer" title={resourceLink.title}>
+                  {resourceLink.label}
+                  <ExternalLink size={13} />
+                </a>
+              ) : (
+                "No direct portal link"
+              )
+            }
+          />
           <DetailRow label="Natural key" value={<CodeValue value={item.naturalKey} />} />
           <DetailRow label="Parent ID" value={<CodeValue value={item.parentId} />} />
           <DetailRow label="Credential ID" value={<CodeValue value={item.credentialId} />} />
@@ -1777,6 +1799,7 @@ function OwnerAutocompleteInputs({
   const [ownerLookup, setOwnerLookup] = useState(defaultOwnerValue);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [activeOptionIndex, setActiveOptionIndex] = useState(0);
+  const [ownerSuggestionFilter, setOwnerSuggestionFilter] = useState<OwnerSuggestionFilter>("all");
 
   useEffect(() => {
     setOwnerLookup(defaultOwnerName || defaultOwnerEmail);
@@ -1785,16 +1808,28 @@ function OwnerAutocompleteInputs({
   const identityOptions = useMemo(() => ownerIdentityOptions(suggestions), [suggestions]);
   const filteredIdentityOptions = useMemo(() => {
     const needle = ownerLookup.trim().toLowerCase();
+    const filteredByType = identityOptions.filter((option) => {
+      if (ownerSuggestionFilter === "groups") return option.kind === "group";
+      if (ownerSuggestionFilter === "users") return option.kind === "user";
+      return true;
+    });
     const matches = needle
-      ? identityOptions.filter((option) => `${option.value} ${option.label}`.toLowerCase().includes(needle))
-      : identityOptions;
+      ? filteredByType.filter((option) => `${option.value} ${option.label}`.toLowerCase().includes(needle))
+      : filteredByType;
     return matches.slice(0, 8);
-  }, [identityOptions, ownerLookup]);
-  const showSuggestions = suggestionsOpen && filteredIdentityOptions.length > 0;
+  }, [identityOptions, ownerLookup, ownerSuggestionFilter]);
+  const showSuggestionPanel = suggestionsOpen;
+  const showSuggestions = showSuggestionPanel && filteredIdentityOptions.length > 0;
 
-  function chooseOwner(option: { value: string; label: string }) {
+  function chooseOwner(option: OwnerIdentityOption) {
     setOwnerLookup(option.value);
     setSuggestionsOpen(false);
+    setActiveOptionIndex(0);
+  }
+
+  function setFilter(filter: OwnerSuggestionFilter) {
+    setOwnerSuggestionFilter(filter);
+    setSuggestionsOpen(true);
     setActiveOptionIndex(0);
   }
 
@@ -1824,6 +1859,32 @@ function OwnerAutocompleteInputs({
 
   const ownerInput = (
     <div className="owner-autocomplete">
+      <div className="owner-autocomplete-filter" role="group" aria-label="Owner suggestion type">
+        <button
+          type="button"
+          className={ownerSuggestionFilter === "all" ? "active" : ""}
+          aria-pressed={ownerSuggestionFilter === "all"}
+          onClick={() => setFilter("all")}
+        >
+          All
+        </button>
+        <button
+          type="button"
+          className={ownerSuggestionFilter === "users" ? "active" : ""}
+          aria-pressed={ownerSuggestionFilter === "users"}
+          onClick={() => setFilter("users")}
+        >
+          Users
+        </button>
+        <button
+          type="button"
+          className={ownerSuggestionFilter === "groups" ? "active" : ""}
+          aria-pressed={ownerSuggestionFilter === "groups"}
+          onClick={() => setFilter("groups")}
+        >
+          Groups
+        </button>
+      </div>
       <input
         name="ownerLookup"
         value={ownerLookup}
@@ -1843,25 +1904,32 @@ function OwnerAutocompleteInputs({
         autoComplete="off"
       />
       <span aria-hidden="true" className="owner-autocomplete-caret" />
-      {showSuggestions ? (
+      {showSuggestionPanel ? (
         <div id={listboxId} className="owner-autocomplete-list" role="listbox">
-          {filteredIdentityOptions.map((option, index) => (
-            <button
-              type="button"
-              key={`${option.value}:${option.label}`}
-              className={index === activeOptionIndex ? "active" : ""}
-              role="option"
-              aria-selected={index === activeOptionIndex}
-              onMouseEnter={() => setActiveOptionIndex(index)}
-              onMouseDown={(event) => {
-                event.preventDefault();
-                chooseOwner(option);
-              }}
-            >
-              <strong>{option.value}</strong>
-              <span>{option.label}</span>
-            </button>
-          ))}
+          {filteredIdentityOptions.length ? (
+            filteredIdentityOptions.map((option, index) => (
+              <button
+                type="button"
+                key={`${option.value}:${option.label}`}
+                className={index === activeOptionIndex ? "active" : ""}
+                role="option"
+                aria-selected={index === activeOptionIndex}
+                onMouseEnter={() => setActiveOptionIndex(index)}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  chooseOwner(option);
+                }}
+              >
+                <span className={`owner-autocomplete-kind ${option.kind}`}>{option.kindLabel}</span>
+                <strong>{option.value}</strong>
+                <span>{option.label}</span>
+              </button>
+            ))
+          ) : (
+            <div className="owner-autocomplete-empty" role="status">
+              No matching {ownerSuggestionFilter === "groups" ? "groups" : ownerSuggestionFilter === "users" ? "users" : "owners"}
+            </div>
+          )}
         </div>
       ) : null}
     </div>
@@ -1869,12 +1937,10 @@ function OwnerAutocompleteInputs({
 
   if (withLabels) {
     return (
-      <>
-        <label>
-          <span>Owner</span>
-          {ownerInput}
-        </label>
-      </>
+      <div className="owner-autocomplete-field">
+        <span>Owner</span>
+        {ownerInput}
+      </div>
     );
   }
 
@@ -1885,13 +1951,23 @@ function OwnerAutocompleteInputs({
   );
 }
 
-function ownerIdentityOptions(suggestions: DashboardOwnerSuggestion[]): Array<{ value: string; label: string }> {
+interface OwnerIdentityOption {
+  value: string;
+  label: string;
+  kind: "user" | "group" | "other";
+  kindLabel: string;
+}
+
+function ownerIdentityOptions(suggestions: DashboardOwnerSuggestion[]): OwnerIdentityOption[] {
   const seen = new Set<string>();
-  const options: Array<{ value: string; label: string }> = [];
+  const options: OwnerIdentityOption[] = [];
   for (const suggestion of suggestions) {
+    const kind = ownerSuggestionKind(suggestion.source);
     const entries = [
-      { value: suggestion.ownerName, label: suggestion.ownerEmail ?? suggestion.source },
-      ...(suggestion.ownerEmail ? [{ value: suggestion.ownerEmail, label: suggestion.ownerName }] : [])
+      { value: suggestion.ownerName, label: suggestion.ownerEmail ?? suggestion.source, kind, kindLabel: ownerSuggestionKindLabel(kind) },
+      ...(suggestion.ownerEmail
+        ? [{ value: suggestion.ownerEmail, label: suggestion.ownerName, kind, kindLabel: ownerSuggestionKindLabel(kind) }]
+        : [])
     ];
     for (const entry of entries) {
       const key = entry.value.toLowerCase();
@@ -1901,6 +1977,18 @@ function ownerIdentityOptions(suggestions: DashboardOwnerSuggestion[]): Array<{ 
     }
   }
   return options;
+}
+
+function ownerSuggestionKind(source: string): OwnerIdentityOption["kind"] {
+  if (source === "entra_group") return "group";
+  if (source === "entra_user") return "user";
+  return "other";
+}
+
+function ownerSuggestionKindLabel(kind: OwnerIdentityOption["kind"]): string {
+  if (kind === "group") return "Group";
+  if (kind === "user") return "User";
+  return "Other";
 }
 
 function OwnerDirectory({
@@ -2305,6 +2393,59 @@ function coverageMatchesItem(row: DashboardCoverage, item: DashboardItem): boole
   if (row.resourceId?.startsWith("graph-")) return true;
   if (!row.resourceId) return true;
   return row.resourceId === item.parentId || row.resourceName === item.parentName;
+}
+
+type ResourceAdminLink = {
+  href: string;
+  label: string;
+  title: string;
+};
+
+function resourceAdminLink(item: DashboardItem): ResourceAdminLink | null {
+  const appId = stringMetadata(item.metadata.appId);
+
+  if (item.source === "entra_application" && appId) {
+    return {
+      href: `https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/Credentials/appId/${encodeURIComponent(
+        appId
+      )}/isMSAApp~/false`,
+      label: "Open app registration",
+      title: "Open this application registration in Entra"
+    };
+  }
+
+  if (item.source === "service_principal" && appId) {
+    return {
+      href: `https://entra.microsoft.com/#view/Microsoft_AAD_IAM/ManagedAppMenuBlade/~/Overview/objectId/${encodeURIComponent(
+        item.parentId
+      )}/appId/${encodeURIComponent(appId)}`,
+      label: "Open enterprise app",
+      title: "Open this enterprise application in Entra"
+    };
+  }
+
+  if (KEY_VAULT_SOURCES.has(item.source) && isAzureResourceId(item.parentId)) {
+    return {
+      href: azurePortalResourceUrl(item),
+      label: "Open vault",
+      title: "Open this Key Vault resource in Azure Portal"
+    };
+  }
+
+  return null;
+}
+
+function stringMetadata(value: DashboardItem["metadata"][string]): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function isAzureResourceId(value: string): boolean {
+  return /^\/subscriptions\/[^/]+\/resourceGroups\/[^/]+\/providers\/[^/]+\/[^/]+\/[^/]+/i.test(value);
+}
+
+function azurePortalResourceUrl(item: DashboardItem): string {
+  const tenant = item.sourceTenantId ? `@${encodeURIComponent(item.sourceTenantId)}/` : "";
+  return `https://portal.azure.com/#${tenant}resource${encodeURI(item.parentId)}/overview`;
 }
 
 function detailCopyText(item: DashboardItem): string {

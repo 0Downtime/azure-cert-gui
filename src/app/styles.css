@@ -26,6 +26,11 @@
   --green-soft: #defbe6;
   --blue: #0f62fe;
   --blue-soft: #edf5ff;
+  --motion-ease: cubic-bezier(0.2, 0, 0.38, 0.9);
+  --motion-exit: cubic-bezier(0.4, 0.14, 1, 1);
+  --motion-fast: 160ms var(--motion-ease);
+  --motion-standard: 240ms var(--motion-ease);
+  --motion-rollout: 640ms var(--motion-ease);
 }
 
 :root[data-theme="dark"] {
@@ -92,11 +97,28 @@ button {
   justify-content: center;
   min-height: 40px;
   padding: 11px 16px;
+  transition:
+    background-color var(--motion-fast),
+    border-color var(--motion-fast),
+    color var(--motion-fast),
+    transform var(--motion-fast);
+}
+
+a {
+  color: inherit;
+  transition:
+    color var(--motion-fast),
+    text-decoration-color var(--motion-fast);
 }
 
 button:hover {
   background: var(--field);
   border-color: var(--line-strong);
+  transform: translateY(-1px);
+}
+
+button:active {
+  transform: translateY(0);
 }
 
 button:focus-visible,
@@ -112,10 +134,58 @@ button:disabled {
   opacity: 0.45;
 }
 
+button:disabled:hover {
+  transform: none;
+}
+
+input,
+select,
+textarea {
+  transition:
+    background-color var(--motion-fast),
+    border-color var(--motion-fast),
+    box-shadow var(--motion-fast),
+    color var(--motion-fast);
+}
+
 .shell {
   margin: 0 auto;
   max-width: 1584px;
   padding: 0 24px 32px;
+}
+
+.utility-bar,
+.topbar,
+.operations-strip,
+.summary-band,
+.metrics,
+.tabs,
+.tab-panel {
+  animation: ui-rise 520ms var(--motion-ease) both;
+}
+
+.topbar {
+  animation-delay: 40ms;
+}
+
+.operations-strip {
+  animation-delay: 80ms;
+}
+
+.summary-band {
+  animation-delay: 120ms;
+}
+
+.metrics {
+  animation-delay: 170ms;
+}
+
+.tabs {
+  animation-delay: 210ms;
+}
+
+.tab-panel {
+  animation-delay: 250ms;
 }
 
 .utility-bar {
@@ -355,6 +425,64 @@ h1 {
   }
 }
 
+@keyframes ui-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes detail-scan {
+  from {
+    transform: translateX(-130%);
+  }
+
+  to {
+    transform: translateX(130%);
+  }
+}
+
+@keyframes detail-cell-open {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes detail-panel-rollout {
+  from {
+    clip-path: inset(0 100% 0 0);
+    opacity: 0.55;
+  }
+
+  to {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+}
+
+@keyframes detail-content-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .scheduler-form {
   align-items: center;
   background: var(--panel);
@@ -403,8 +531,47 @@ select option {
 }
 
 .owner-autocomplete {
+  display: grid;
+  gap: 8px;
   position: relative;
   width: 100%;
+}
+
+.owner-autocomplete-field {
+  display: grid;
+  gap: 4px;
+}
+
+.owner-autocomplete-field > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.owner-autocomplete-filter {
+  border: 1px solid var(--line);
+  display: inline-grid;
+  grid-template-columns: repeat(3, minmax(72px, 1fr));
+  width: fit-content;
+}
+
+.owner-autocomplete-filter button {
+  background: var(--panel);
+  border: 0;
+  border-right: 1px solid var(--line);
+  color: var(--muted);
+  min-height: 32px;
+  padding: 6px 12px;
+}
+
+.owner-autocomplete-filter button:last-child {
+  border-right: 0;
+}
+
+.owner-autocomplete-filter button:hover,
+.owner-autocomplete-filter button.active {
+  background: var(--selected-row);
+  color: var(--text);
 }
 
 .owner-autocomplete input {
@@ -426,6 +593,7 @@ select option {
 }
 
 .owner-autocomplete-list {
+  animation: ui-rise 180ms var(--motion-ease) both;
   background: var(--panel);
   border: 1px solid var(--line-strong);
   box-shadow: 0 18px 32px rgb(0 0 0 / 28%);
@@ -446,6 +614,7 @@ select option {
   color: var(--text);
   display: grid;
   gap: 4px;
+  grid-template-columns: auto minmax(0, 1fr);
   justify-content: stretch;
   justify-items: start;
   min-height: 64px;
@@ -455,6 +624,12 @@ select option {
 
 .owner-autocomplete-list button:last-child {
   border-bottom: 0;
+}
+
+.owner-autocomplete-empty {
+  color: var(--muted);
+  font-size: 14px;
+  padding: 16px;
 }
 
 .owner-autocomplete-list button:hover,
@@ -472,14 +647,37 @@ select option {
   white-space: nowrap;
 }
 
+.owner-autocomplete-list .owner-autocomplete-kind {
+  align-self: start;
+  background: var(--field);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  grid-row: 1 / span 2;
+  padding: 2px 6px;
+  text-transform: none;
+}
+
+.owner-autocomplete-list .owner-autocomplete-kind.user {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.owner-autocomplete-list .owner-autocomplete-kind.group {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
 .owner-autocomplete-list strong {
   font-size: 15px;
   font-weight: 600;
+  grid-column: 2;
 }
 
 .owner-autocomplete-list span {
   color: var(--muted);
   font-size: 13px;
+  grid-column: 2;
 }
 
 .scheduler-form button {
@@ -492,6 +690,69 @@ select option {
 .icon-button {
   min-width: 40px;
   padding: 0;
+}
+
+.detail-toggle {
+  overflow: hidden;
+  position: relative;
+}
+
+.detail-toggle::before,
+.detail-toggle::after {
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.detail-toggle::before {
+  border: 1px solid var(--teal);
+  opacity: 0;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition:
+    opacity var(--motion-standard),
+    transform var(--motion-standard);
+}
+
+.detail-toggle::after {
+  background: linear-gradient(90deg, transparent, rgb(15 98 254 / 20%), transparent);
+  opacity: 0;
+  transform: translateX(-130%);
+}
+
+.detail-toggle svg {
+  position: relative;
+  transform-origin: center;
+  transition:
+    color var(--motion-standard),
+    transform var(--motion-standard);
+  z-index: 1;
+}
+
+.detail-toggle:hover::after {
+  animation: detail-scan 900ms var(--motion-ease);
+  opacity: 1;
+}
+
+.detail-toggle[aria-expanded="true"] {
+  background: var(--teal-soft);
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.detail-toggle[aria-expanded="true"]::before {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+.detail-toggle[aria-expanded="true"]::after {
+  animation: detail-scan 1100ms var(--motion-ease);
+  opacity: 0.7;
+}
+
+.detail-toggle[aria-expanded="true"] svg {
+  transform: rotate(90deg);
 }
 
 .scheduler-stop {
@@ -655,6 +916,10 @@ select option {
   gap: 8px;
   min-width: 0;
   padding: 16px;
+  transition:
+    background-color var(--motion-standard),
+    border-color var(--motion-standard),
+    transform var(--motion-standard);
 }
 
 .metric:first-child {
@@ -674,6 +939,12 @@ select option {
 .metric span {
   color: var(--muted);
   font-size: 12px;
+}
+
+.metric:hover {
+  background: var(--field);
+  border-color: var(--line-strong);
+  transform: translateY(-2px);
 }
 
 .metric.warning {
@@ -710,6 +981,10 @@ select option {
   flex: 0 1 auto;
   min-height: 48px;
   padding: 14px 20px;
+}
+
+.tabs button:hover {
+  color: var(--text);
 }
 
 .tabs button.active,
@@ -764,6 +1039,7 @@ select option {
   justify-content: stretch;
   justify-items: start;
   min-height: 76px;
+  position: relative;
 }
 
 .queuebar button:first-child {
@@ -774,6 +1050,24 @@ select option {
   background: var(--teal-soft);
   border-bottom: 3px solid var(--teal);
   color: var(--text);
+}
+
+.queuebar button::after {
+  background: var(--teal);
+  bottom: -1px;
+  content: "";
+  height: 3px;
+  left: -1px;
+  position: absolute;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--motion-standard);
+  width: calc(100% + 2px);
+}
+
+.queuebar button:hover::after,
+.queuebar button.active::after {
+  transform: scaleX(1);
 }
 
 .queuebar span {
@@ -800,6 +1094,9 @@ select option {
   gap: 12px;
   margin: 0;
   padding: 16px;
+  transition:
+    background-color var(--motion-standard),
+    border-color var(--motion-standard);
 }
 
 .toolbar {
@@ -980,6 +1277,19 @@ select option {
   display: grid;
   gap: 12px;
   padding: 16px;
+  transition:
+    background-color var(--motion-standard),
+    border-color var(--motion-standard),
+    transform var(--motion-standard);
+}
+
+.owner-gap-row:hover,
+.owner-mapping-row:hover,
+.coverage-row:hover,
+.detail-coverage-row:hover,
+.detail-history li:hover {
+  background: var(--field);
+  border-color: var(--line-strong);
 }
 
 .owner-gap-row:last-child,
@@ -1224,6 +1534,16 @@ td span {
   white-space: nowrap;
 }
 
+.inventory-table tbody > tr:not(.inventory-detail-row) {
+  transition:
+    background-color var(--motion-standard),
+    color var(--motion-standard);
+}
+
+.inventory-table tbody > tr:not(.inventory-detail-row):hover {
+  background: var(--field);
+}
+
 .inventory-table td > strong,
 .inventory-table td > span:not(.risk):not(.rotation-mode):not(.days-out):not(.confidence):not(.renewal-pill),
 .inventory-table .owner-summary strong,
@@ -1270,6 +1590,7 @@ tr.selected-row {
 }
 
 .inventory-detail-row > td {
+  animation: detail-cell-open var(--motion-rollout) both;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
   overflow: visible;
@@ -1387,6 +1708,7 @@ tr.selected-row {
 }
 
 .detail-drawer {
+  animation: ui-rise 360ms var(--motion-ease) both;
   bottom: 24px;
   max-width: calc(100vw - 48px);
   overflow: auto;
@@ -1398,9 +1720,39 @@ tr.selected-row {
 }
 
 .detail-inline {
+  animation: detail-panel-rollout var(--motion-rollout) both;
   border: 0;
   border-left: 4px solid var(--teal);
   grid-template-columns: repeat(3, minmax(220px, 1fr));
+  overflow: hidden;
+}
+
+.detail-inline > * {
+  animation: detail-content-rise 520ms var(--motion-ease) both;
+}
+
+.detail-inline > *:nth-child(1) {
+  animation-delay: 110ms;
+}
+
+.detail-inline > *:nth-child(2) {
+  animation-delay: 170ms;
+}
+
+.detail-inline > *:nth-child(3) {
+  animation-delay: 220ms;
+}
+
+.detail-inline > *:nth-child(4) {
+  animation-delay: 260ms;
+}
+
+.detail-inline > *:nth-child(5) {
+  animation-delay: 300ms;
+}
+
+.detail-inline > *:nth-child(n + 6) {
+  animation-delay: 340ms;
 }
 
 .detail-inline .detail-header,
@@ -1430,6 +1782,48 @@ tr.selected-row {
 .detail-actions {
   flex-wrap: wrap;
   justify-content: flex-start;
+}
+
+.detail-action-link {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--text);
+  display: inline-flex;
+  gap: 8px;
+  justify-content: center;
+  min-height: 40px;
+  padding: 11px 16px;
+  text-decoration: none;
+  transition:
+    background-color var(--motion-fast),
+    border-color var(--motion-fast),
+    color var(--motion-fast),
+    transform var(--motion-fast);
+}
+
+.detail-action-link:hover {
+  background: var(--field);
+  border-color: var(--line-strong);
+  transform: translateY(-1px);
+}
+
+.detail-action-link:focus-visible,
+.resource-admin-link:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: -2px;
+}
+
+.resource-admin-link {
+  align-items: center;
+  color: var(--teal);
+  display: inline-flex;
+  gap: 6px;
+  text-decoration: none;
+}
+
+.resource-admin-link:hover {
+  text-decoration: underline;
 }
 
 .detail-section {
@@ -1623,6 +2017,27 @@ tr.selected-row {
   gap: 0;
   margin: 0;
   padding: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
+
+  button:hover,
+  .metric:hover,
+  .detail-action-link:hover {
+    transform: none;
+  }
+
+  .detail-inline {
+    clip-path: none;
+  }
 }
 
 @media (max-width: 1280px) {
