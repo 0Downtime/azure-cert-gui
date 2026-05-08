@@ -621,14 +621,12 @@ export function Dashboard({
               <tr>
                 <th aria-label="Select rows" />
                 <th>Risk</th>
-                <th>Source</th>
                 <th>App / vault</th>
                 <th>Credential</th>
                 <th>Rotation</th>
                 <th>Expires</th>
                 <th>Owner</th>
                 <th>Status</th>
-                <th>Updated</th>
                 <th aria-label="Credential details" />
               </tr>
             </thead>
@@ -646,8 +644,7 @@ export function Dashboard({
                   <td>
                     <RiskBadge item={item} />
                   </td>
-                  <td title={SOURCE_LABELS[item.source]}>{SOURCE_LABELS[item.source]}</td>
-                  <td title={`${item.parentName}\n${item.naturalKey}`}>
+                  <td title={`${SOURCE_LABELS[item.source]}\n${item.parentName}\n${item.naturalKey}`}>
                     <strong>{item.parentName}</strong>
                   </td>
                   <td title={`${item.credentialName}\n${item.credentialType}\n${item.credentialId}`}>
@@ -668,9 +665,6 @@ export function Dashboard({
                   </td>
                   <td>
                     <StatusSummary item={item} />
-                  </td>
-                  <td title={item.removedAt ? `Removed from source ${formatDateTime(item.removedAt)}` : formatDate(item.lastSeenAt)}>
-                    <span>{formatDate(item.lastSeenAt)}</span>
                   </td>
                   <td>
                     <button
