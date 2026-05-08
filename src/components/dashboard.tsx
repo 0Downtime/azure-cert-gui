@@ -663,9 +663,7 @@ export function Dashboard({
                   </td>
                   <td>
                     <strong>{formatDate(item.expiresAt)}</strong>
-                    <span className="muted">
-                      {item.daysUntilExpiry === null ? "No expiry metadata" : `${item.daysUntilExpiry} days`}
-                    </span>
+                    <DaysOut days={item.daysUntilExpiry} />
                   </td>
                   <td>
                     <OwnerSummary item={item} />
@@ -761,10 +759,8 @@ export function Dashboard({
                     </td>
                     <td>
                       <RiskBadge item={item} />
-                      <span className="muted">
-                        {formatDate(item.expiresAt)}
-                        {item.daysUntilExpiry === null ? "" : ` / ${item.daysUntilExpiry} days`}
-                      </span>
+                      <span className="muted">{formatDate(item.expiresAt)}</span>
+                      <DaysOut days={item.daysUntilExpiry} />
                     </td>
                     <td>
                       <strong>{renewalCase?.replacementCredentialId ?? "Not created"}</strong>
@@ -1348,10 +1344,7 @@ function CredentialDetailDrawer({
         <dl className="detail-list">
           <DetailRow label="Risk" value={<RiskBadge item={item} />} />
           <DetailRow label="Expires" value={formatDate(item.expiresAt)} />
-          <DetailRow
-            label="Days remaining"
-            value={item.daysUntilExpiry === null ? "No expiry metadata" : String(item.daysUntilExpiry)}
-          />
+          <DetailRow label="Days remaining" value={<DaysOut days={item.daysUntilExpiry} />} />
           <DetailRow label="Status" value={STATUS_LABELS[item.status]} />
           <DetailRow label="Rotation" value={<RotationBadge item={item} />} />
           <DetailRow label="Rotation reason" value={item.rotationModeReason} />
@@ -1986,6 +1979,29 @@ function RiskBadge({ item }: { item: DashboardItem }) {
   );
 }
 
+function DaysOut({ days }: { days: number | null }) {
+  return <span className={`days-out ${daysOutTone(days)}`}>{daysOutLabel(days)}</span>;
+}
+
+function daysOutTone(days: number | null): "unknown" | "danger" | "warning" | "attention" | "steady" {
+  if (days === null) return "unknown";
+  if (days < 7) return "danger";
+  if (days < 14) return "warning";
+  if (days < 30) return "attention";
+  return "steady";
+}
+
+function daysOutLabel(days: number | null): string {
+  if (days === null) return "No expiry metadata";
+  if (days < 0) return `${Math.abs(days)} ${pluralizeDay(Math.abs(days))} overdue`;
+  if (days === 0) return "Expires today";
+  return `${days} ${pluralizeDay(days)} out`;
+}
+
+function pluralizeDay(days: number): string {
+  return days === 1 ? "day" : "days";
+}
+
 function RotationBadge({ item }: { item: DashboardItem }) {
   const actionable = isRenewalActionable(item.rotationMode);
   return (
@@ -2054,9 +2070,7 @@ function OwnerGapList({ items, onOpen }: { items: DashboardItem[]; onOpen: (id: 
               </div>
               <div>
                 <strong>{formatDate(item.expiresAt)}</strong>
-                <span className="muted">
-                  {item.daysUntilExpiry === null ? "No expiry metadata" : `${item.daysUntilExpiry} days`}
-                </span>
+                <DaysOut days={item.daysUntilExpiry} />
               </div>
               <button type="button" onClick={() => onOpen(item.id)}>
                 Assign owner

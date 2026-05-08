@@ -1020,7 +1020,8 @@ tr.selected-row {
 
 .risk,
 .rotation-mode,
-.confidence {
+.confidence,
+.days-out {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1051,6 +1052,31 @@ tr.selected-row {
 .risk.bucket-no-expiry {
   color: var(--teal);
   background: var(--teal-soft);
+}
+
+.days-out.danger {
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.days-out.warning {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+
+.days-out.attention {
+  color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.days-out.steady {
+  color: var(--teal);
+  background: var(--teal-soft);
+}
+
+.days-out.unknown {
+  color: var(--muted);
+  background: var(--code-bg);
 }
 
 .rotation-mode.actionable {
