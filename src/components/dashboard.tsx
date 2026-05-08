@@ -58,6 +58,7 @@ import { isRenewalActionable } from "@/lib/rotation";
 type WorkflowMode = "all" | "urgent" | "due60" | "unknown" | "contacted_pending";
 type RotationScope = "actionable" | "all" | RotationMode;
 type DashboardTab = "inventory" | "renewals" | "owners" | "coverage";
+type SourceFilter = InventorySource | "all" | "key_vault";
 
 const SOURCE_LABELS: Record<InventorySource, string> = {
   entra_application: "Entra app",
@@ -66,6 +67,8 @@ const SOURCE_LABELS: Record<InventorySource, string> = {
   key_vault_certificate: "Key Vault cert",
   key_vault_key: "Key Vault key"
 };
+
+const KEY_VAULT_SOURCES = new Set<InventorySource>(["key_vault_secret", "key_vault_certificate", "key_vault_key"]);
 
 const STATUS_LABELS: Record<WorkflowStatus, string> = {
   not_started: "Not started",
@@ -174,7 +177,7 @@ export function Dashboard({
   const authTitle =
     auth.username && auth.username !== signedInName ? `${signedInName} (${auth.username})` : signedInName;
   const [query, setQuery] = useState("");
-  const [source, setSource] = useState<InventorySource | "all">("all");
+  const [source, setSource] = useState<SourceFilter>("all");
   const [bucket, setBucket] = useState<RiskBucket | "all">("all");
   const [status, setStatus] = useState<WorkflowStatus | "all">("all");
   const [ownerMode, setOwnerMode] = useState<"all" | "unknown" | "low">("all");
@@ -332,10 +335,22 @@ export function Dashboard({
     }
   }
 
+  function showAllSyncedItems(nextSource: SourceFilter = "all") {
+    setQuery("");
+    setSource(nextSource);
+    setBucket("all");
+    setStatus("all");
+    setOwnerMode("all");
+    setRotationScope("all");
+    setWorkflowMode("all");
+    setSelectedIds([]);
+    setSelectedDetailId(null);
+  }
+
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return items.filter((item) => {
-      if (source !== "all" && item.source !== source) return false;
+      if (!matchesSourceFilter(item, source)) return false;
       if (bucket !== "all" && item.riskBucket !== bucket) return false;
       if (status !== "all" && item.status !== status) return false;
       if (!matchesRotationScope(item, rotationScope)) return false;
@@ -361,6 +376,16 @@ export function Dashboard({
       ) as Record<WorkflowMode, number>,
     [items]
   );
+  const broadInventoryFiltersActive =
+    bucket === "all" &&
+    status === "all" &&
+    ownerMode === "all" &&
+    rotationScope === "all" &&
+    workflowMode === "all" &&
+    query.trim() === "";
+  const allSyncedViewActive = broadInventoryFiltersActive && source === "all";
+  const vaultItemsViewActive = broadInventoryFiltersActive && source === "key_vault";
+  const vaultItemCount = useMemo(() => items.filter((item) => KEY_VAULT_SOURCES.has(item.source)).length, [items]);
 
   const selectedItems = useMemo(
     () => items.filter((item) => selectedIds.includes(item.id)),
@@ -965,11 +990,27 @@ export function Dashboard({
         hidden={activeTab !== "inventory"}
       >
         <section className="queuebar" aria-label="Quick queues">
+          <button
+            type="button"
+            className={allSyncedViewActive ? "active" : ""}
+            onClick={() => showAllSyncedItems("all")}
+          >
+            <span>All synced</span>
+            <strong>{items.length}</strong>
+          </button>
+          <button
+            type="button"
+            className={vaultItemsViewActive ? "active" : ""}
+            onClick={() => showAllSyncedItems("key_vault")}
+          >
+            <span>Vault items</span>
+            <strong>{vaultItemCount}</strong>
+          </button>
           {(Object.keys(QUEUE_LABELS) as WorkflowMode[]).map((mode) => (
             <button
               key={mode}
               type="button"
-              className={workflowMode === mode ? "active" : ""}
+              className={workflowMode === mode && !(mode === "all" && broadInventoryFiltersActive) ? "active" : ""}
               onClick={() => setWorkflowMode(mode)}
             >
               <span>{QUEUE_LABELS[mode]}</span>
@@ -983,8 +1024,9 @@ export function Dashboard({
             <Search size={16} />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search app, vault, owner, credential" />
           </label>
-          <Select label="Source" value={source} onChange={(value) => setSource(value as InventorySource | "all")}>
+          <Select label="Source" value={source} onChange={(value) => setSource(value as SourceFilter)}>
             <option value="all">All sources</option>
+            <option value="key_vault">Key Vault certs, secrets, keys</option>
             {Object.entries(SOURCE_LABELS).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
@@ -2250,6 +2292,12 @@ function matchesWorkflowMode(
   }
   if (workflowMode === "unknown") return !item.ownerName;
   return item.status === "owner_contacted";
+}
+
+function matchesSourceFilter(item: DashboardItem, source: SourceFilter): boolean {
+  if (source === "all") return true;
+  if (source === "key_vault") return KEY_VAULT_SOURCES.has(item.source);
+  return item.source === source;
 }
 
 function matchesRotationScope(item: DashboardItem, rotationScope: RotationScope): boolean {
