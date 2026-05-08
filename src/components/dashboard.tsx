@@ -72,6 +72,7 @@ type RotationScope = "actionable" | "all" | RotationMode;
 type DashboardTab = "inventory" | "renewals" | "owners" | "coverage";
 type SourceFilter = InventorySource | "all" | "key_vault";
 type OwnerSuggestionFilter = "all" | "users" | "groups";
+type InventorySort = "expires_soonest" | "recently_expired";
 
 const SOURCE_LABELS: Record<InventorySource, string> = {
   entra_application: "Entra app",
@@ -153,6 +154,11 @@ const TAB_LABELS: Record<DashboardTab, string> = {
   coverage: "Coverage & Audit"
 };
 
+const INVENTORY_SORT_LABELS: Record<InventorySort, string> = {
+  expires_soonest: "Nearest expiration",
+  recently_expired: "Recently expired"
+};
+
 const REFRESH_INTERVAL_OPTIONS = [
   { value: "5", label: "5m" },
   { value: "15", label: "15m" },
@@ -195,6 +201,7 @@ export function Dashboard({
   const [status, setStatus] = useState<WorkflowStatus | "all">("all");
   const [ownerMode, setOwnerMode] = useState<"all" | "unknown" | "low">("all");
   const [rotationScope, setRotationScope] = useState<RotationScope>("actionable");
+  const [inventorySort, setInventorySort] = useState<InventorySort>("expires_soonest");
   const [workflowMode, setWorkflowMode] = useState<WorkflowMode>(() => (summary.unknownOwners > 0 ? "unknown" : "all"));
   const [activeTab, setActiveTab] = useState<DashboardTab>("inventory");
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -362,7 +369,7 @@ export function Dashboard({
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return items.filter((item) => {
+    const matching = items.filter((item) => {
       if (!matchesSourceFilter(item, source)) return false;
       if (bucket !== "all" && item.riskBucket !== bucket) return false;
       if (status !== "all" && item.status !== status) return false;
@@ -377,7 +384,8 @@ export function Dashboard({
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(needle));
     });
-  }, [bucket, items, ownerMode, query, rotationScope, source, status, workflowMode]);
+    return sortInventoryItems(matching, inventorySort);
+  }, [bucket, inventorySort, items, ownerMode, query, rotationScope, source, status, workflowMode]);
 
   const queueCounts = useMemo(
     () =>
@@ -1104,6 +1112,13 @@ export function Dashboard({
             {Object.entries(ROTATION_LABELS).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
+              </option>
+            ))}
+          </Select>
+          <Select label="Sort" value={inventorySort} onChange={(value) => setInventorySort(value as InventorySort)}>
+            {(Object.keys(INVENTORY_SORT_LABELS) as InventorySort[]).map((value) => (
+              <option key={value} value={value}>
+                {INVENTORY_SORT_LABELS[value]}
               </option>
             ))}
           </Select>
@@ -2648,6 +2663,78 @@ function withExclusionNote(text: string, excludedCount: number): string {
 
 function riskRank(bucket: RiskBucket): number {
   return ["expired", "0-30", "31-60", "61-90", "90+", "no-expiry"].indexOf(bucket);
+}
+
+function sortInventoryItems(items: DashboardItem[], sortMode: InventorySort): DashboardItem[] {
+  return [...items].sort((a, b) => {
+    if (sortMode === "recently_expired") {
+      const expiredCompare = compareRecentlyExpired(a, b);
+      if (expiredCompare !== 0) return expiredCompare;
+    }
+
+    const expiryCompare = compareNearestExpiration(a, b);
+    if (expiryCompare !== 0) return expiryCompare;
+    return compareInventoryFallback(a, b);
+  });
+}
+
+function compareNearestExpiration(a: DashboardItem, b: DashboardItem): number {
+  const aDays = expiryDistance(a);
+  const bDays = expiryDistance(b);
+  if (aDays === null && bDays === null) return 0;
+  if (aDays === null) return 1;
+  if (bDays === null) return -1;
+
+  const absoluteCompare = Math.abs(aDays) - Math.abs(bDays);
+  if (absoluteCompare !== 0) return absoluteCompare;
+  return aDays - bDays;
+}
+
+function compareRecentlyExpired(a: DashboardItem, b: DashboardItem): number {
+  const aExpired = isExpiredItem(a);
+  const bExpired = isExpiredItem(b);
+  if (aExpired && !bExpired) return -1;
+  if (!aExpired && bExpired) return 1;
+  if (!aExpired && !bExpired) return 0;
+
+  const aTime = expiryTime(a);
+  const bTime = expiryTime(b);
+  if (aTime === null && bTime === null) return 0;
+  if (aTime === null) return 1;
+  if (bTime === null) return -1;
+  return bTime - aTime;
+}
+
+function compareInventoryFallback(a: DashboardItem, b: DashboardItem): number {
+  const riskCompare = riskRank(a.riskBucket) - riskRank(b.riskBucket);
+  if (riskCompare !== 0) return riskCompare;
+  const parentCompare = a.parentName.localeCompare(b.parentName);
+  if (parentCompare !== 0) return parentCompare;
+  return a.credentialName.localeCompare(b.credentialName);
+}
+
+function expiryDistance(item: DashboardItem): number | null {
+  if (typeof item.daysUntilExpiry === "number") return item.daysUntilExpiry;
+  const time = expiryTime(item);
+  if (time === null) return null;
+  const now = new Date();
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((time - today) / 86_400_000);
+}
+
+function expiryTime(item: DashboardItem): number | null {
+  if (!item.expiresAt) return null;
+  const dateOnly = dateOnlyParts(item.expiresAt);
+  const time = dateOnly
+    ? Date.UTC(dateOnly.year, dateOnly.month - 1, dateOnly.day)
+    : new Date(item.expiresAt).getTime();
+  return Number.isNaN(time) ? null : time;
+}
+
+function isExpiredItem(item: DashboardItem): boolean {
+  if (item.riskBucket === "expired") return true;
+  const distance = expiryDistance(item);
+  return typeof distance === "number" && distance < 0;
 }
 
 function formatMetadataValue(value: string | number | boolean | null): string {
