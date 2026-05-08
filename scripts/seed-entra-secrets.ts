@@ -453,7 +453,6 @@ async function replaceSeedPasswords(
       JSON.stringify({
         passwordCredential: {
           displayName: `${SEED_SECRET_PREFIX} ${secret.displayName}`,
-          startDateTime: dateFromNow(-30),
           endDateTime: dateFromNow(secret.daysFromNow)
         }
       })
@@ -472,7 +471,6 @@ async function replaceSeedKeyCredentials(
   const keyCredentials = certificates.map((certificate): GraphKeyCredential => ({
     keyId: randomUuid(),
     displayName: `${SEED_CERT_PREFIX} ${certificate.displayName}`,
-    startDateTime: dateFromNow(-30),
     endDateTime: dateFromNow(certificate.daysFromNow),
     type: "AsymmetricX509Cert",
     usage: "Verify",
@@ -664,8 +662,15 @@ async function showKeyVault(vaultName: string): Promise<AzureVault> {
 
 async function resolveSeedKeyVault(): Promise<void> {
   if (!args.keyVaultName || seededKeyVaultResourceId) return;
-  const vault = (await showKeyVaultOrNull(args.keyVaultName)) ?? (await createSeedKeyVault(args.keyVaultName));
+  const vault =
+    (await showKeyVaultOrNull(args.keyVaultName)) ??
+    (await findExistingSeedKeyVault()) ??
+    (await createSeedKeyVault(args.keyVaultName));
   seededKeyVaultResourceId = vault.id ?? null;
+  if (vault.name && vault.name !== args.keyVaultName) {
+    console.log(`Using existing seed Key Vault ${vault.name} for requested name ${args.keyVaultName}.`);
+    args.keyVaultName = vault.name;
+  }
   if (!seededKeyVaultResourceId) {
     throw new Error(`KeyVaultResourceIdMissing:${args.keyVaultName}`);
   }
@@ -684,6 +689,47 @@ async function createSeedKeyVault(vaultName: string): Promise<AzureVault> {
     `Key Vault ${vaultName} was not found in ${keyVaultSubscriptionLabel()}; creating it in ${args.keyVaultResourceGroup} (${args.keyVaultLocation}).`
   );
   await ensureResourceGroup();
+  try {
+    return await createKeyVaultWithName(vaultName);
+  } catch (error) {
+    if (!isVaultNameUnavailable(error)) throw error;
+    const fallbackName = fallbackKeyVaultName(vaultName);
+    console.warn(`Key Vault name ${vaultName} is unavailable globally; creating ${fallbackName} instead.`);
+    args.keyVaultName = fallbackName;
+    return createKeyVaultWithName(fallbackName);
+  }
+}
+
+async function findExistingSeedKeyVault(): Promise<AzureVault | null> {
+  try {
+    const vaults = await azureJson<AzureVault[]>([
+      "keyvault",
+      "list",
+      "--resource-group",
+      args.keyVaultResourceGroup,
+      ...subscriptionArgs()
+    ]);
+    return vaults.find((vault) => vault.name?.startsWith(`${requiredKeyVaultName()}-`)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function ensureResourceGroup(): Promise<void> {
+  await azureJson<unknown>([
+    "group",
+    "create",
+    "--name",
+    args.keyVaultResourceGroup,
+    "--location",
+    args.keyVaultLocation,
+    "--tags",
+    "azcg-seed=true",
+    ...subscriptionArgs()
+  ]);
+}
+
+async function createKeyVaultWithName(vaultName: string): Promise<AzureVault> {
   return azureJson<AzureVault>([
     "keyvault",
     "create",
@@ -698,23 +744,24 @@ async function createSeedKeyVault(vaultName: string): Promise<AzureVault> {
     "--enable-rbac-authorization",
     "false",
     "--tags",
-    "azure-cert-gui-seed=true",
+    "azcg-seed=true",
     ...subscriptionArgs()
   ]);
 }
 
-async function ensureResourceGroup(): Promise<void> {
-  await azureJson<unknown>([
-    "group",
-    "create",
-    "--name",
-    args.keyVaultResourceGroup,
-    "--location",
-    args.keyVaultLocation,
-    "--tags",
-    "azure-cert-gui-seed=true",
-    ...subscriptionArgs()
-  ]);
+function isVaultNameUnavailable(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("VaultAlreadyExists") || message.includes("already in use");
+}
+
+function fallbackKeyVaultName(requestedName: string): string {
+  const safeBase = requestedName
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 14)
+    .replace(/-+$/g, "");
+  return `${safeBase || "azcg"}-${randomUuid().replace(/-/g, "").slice(0, 9)}`.slice(0, 24).replace(/-+$/g, "");
 }
 
 async function upsertKeyVaultSecret(secret: KeyVaultSeedSecret): Promise<void> {
@@ -805,6 +852,7 @@ async function keyVaultKeyExists(name: string): Promise<boolean> {
 async function ensureKeyVaultCertificate(certificate: KeyVaultSeedCertificate): Promise<void> {
   const exists = await keyVaultCertificateExists(certificate.name);
   const tags = keyVaultTags(certificate.ownerName, certificate.ownerEmail, "certificate");
+  const policy = await defaultCertificatePolicy(certificate);
   if (exists) {
     await azureJson<unknown>([
       "keyvault",
@@ -814,15 +862,16 @@ async function ensureKeyVaultCertificate(certificate: KeyVaultSeedCertificate): 
       requiredKeyVaultName(),
       "--name",
       certificate.name,
+      "--policy",
+      JSON.stringify(policy),
       "--tags",
       ...tags,
       ...subscriptionArgs()
     ]);
-    console.log(`keyVaultCertificate: ${certificate.name}: exists; refreshed tags`);
+    console.log(`keyVaultCertificate: ${certificate.name}: exists; refreshed policy and tags`);
     return;
   }
 
-  const policy = await defaultCertificatePolicy(certificate);
   await azureJson<unknown>([
     "keyvault",
     "certificate",
@@ -862,6 +911,7 @@ async function keyVaultCertificateExists(name: string): Promise<boolean> {
 
 async function defaultCertificatePolicy(certificate: KeyVaultSeedCertificate): Promise<KeyVaultPolicy> {
   const policy = await azureJson<KeyVaultPolicy>(["keyvault", "certificate", "get-default-policy"]);
+  const daysBeforeExpiry = Math.min(30, Math.max(1, certificate.validityMonths * 7));
   return {
     ...policy,
     issuerParameters: {
@@ -890,7 +940,7 @@ async function defaultCertificatePolicy(certificate: KeyVaultSeedCertificate): P
           actionType: "EmailContacts"
         },
         trigger: {
-          daysBeforeExpiry: 30
+          daysBeforeExpiry
         }
       }
     ]
@@ -899,7 +949,7 @@ async function defaultCertificatePolicy(certificate: KeyVaultSeedCertificate): P
 
 function keyVaultTags(ownerName: string, ownerEmail: string, credentialType: "secret" | "key" | "certificate"): string[] {
   return [
-    "azure-cert-gui-seed=true",
+    "azcg-seed=true",
     `seedCredentialType=${credentialType}`,
     `owner=${ownerName}`,
     `ownerEmail=${ownerEmail}`

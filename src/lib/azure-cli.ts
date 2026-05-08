@@ -307,9 +307,7 @@ export async function collectKeyVaultSecrets(
     "--vault-name",
     context.vaultName,
     "--subscription",
-    context.subscriptionId,
-    "--maxresults",
-    "100"
+    context.subscriptionId
   ]);
 
   const rows = config.includeKeyVaultVersions
@@ -325,9 +323,7 @@ export async function collectKeyVaultSecrets(
               "--name",
               required(secret.name, "secret.name"),
               "--subscription",
-              context.subscriptionId,
-              "--maxresults",
-              "100"
+              context.subscriptionId
             ])
           )
         )
@@ -349,9 +345,7 @@ export async function collectKeyVaultCertificates(
     "--vault-name",
     context.vaultName,
     "--subscription",
-    context.subscriptionId,
-    "--maxresults",
-    "100"
+    context.subscriptionId
   ]);
 
   const detailsByName = new Map(
@@ -376,9 +370,7 @@ export async function collectKeyVaultCertificates(
               "--name",
               required(certificate.name, "certificate.name"),
               "--subscription",
-              context.subscriptionId,
-              "--maxresults",
-              "100"
+              context.subscriptionId
             ])
           )
         )
@@ -413,9 +405,7 @@ export async function collectKeyVaultKeys(
     "--vault-name",
     context.vaultName,
     "--subscription",
-    context.subscriptionId,
-    "--maxresults",
-    "100"
+    context.subscriptionId
   ]);
 
   const rows = config.includeKeyVaultVersions
@@ -431,9 +421,7 @@ export async function collectKeyVaultKeys(
               "--name",
               required(key.name, "key.name"),
               "--subscription",
-              context.subscriptionId,
-              "--maxresults",
-              "100"
+              context.subscriptionId
             ])
           )
         )
