@@ -1,63 +1,76 @@
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&display=swap");
-
 :root {
   color-scheme: light;
-  --bg: #ffffff;
+  --bg: #f8f9fa;
   --panel: #ffffff;
-  --field: #f4f4f4;
-  --text: #161616;
-  --muted: #525252;
-  --subtle: #8d8d8d;
-  --line: #e0e0e0;
-  --line-strong: #161616;
-  --table-heading: #f4f4f4;
-  --selected-row: #edf5ff;
-  --code-bg: #f4f4f4;
-  --drawer-shadow: none;
-  --coverage-warning-border: #f1c21b;
-  --coverage-failed-border: #da1e28;
-  --teal: #0f62fe;
-  --teal-soft: #edf5ff;
-  --amber: #8e6a00;
-  --amber-soft: #fcf4d6;
-  --red: #da1e28;
-  --red-soft: #fff1f1;
-  --green: #24a148;
-  --green-soft: #defbe6;
-  --blue: #0f62fe;
-  --blue-soft: #edf5ff;
-  --motion-ease: cubic-bezier(0.2, 0, 0.38, 0.9);
-  --motion-exit: cubic-bezier(0.4, 0.14, 1, 1);
-  --motion-fast: 160ms var(--motion-ease);
-  --motion-standard: 240ms var(--motion-ease);
-  --motion-rollout: 640ms var(--motion-ease);
+  --panel-raised: #ffffff;
+  --field: #f3f2f1;
+  --field-strong: #edebe9;
+  --chrome: #ffffff;
+  --text: #201f1e;
+  --muted: #605e5c;
+  --subtle: #8a8886;
+  --line: #d2d0ce;
+  --line-strong: #8a8886;
+  --table-heading: #f3f2f1;
+  --selected-row: #e5f1fb;
+  --selected-row-strong: #c7e0f4;
+  --code-bg: #f3f2f1;
+  --drawer-shadow: 0 18px 42px rgb(0 0 0 / 18%);
+  --coverage-warning-border: #8a6a00;
+  --coverage-failed-border: #a4262c;
+  --teal: #0078d4;
+  --teal-hover: #106ebe;
+  --teal-active: #005a9e;
+  --teal-soft: #eff6fc;
+  --amber: #8a6a00;
+  --amber-soft: #fff8dc;
+  --red: #a4262c;
+  --red-soft: #fde7e9;
+  --green: #107c10;
+  --green-soft: #f1faf1;
+  --blue: #0078d4;
+  --blue-soft: #eff6fc;
+  --focus-ring: #2899f5;
+  --motion-ease: cubic-bezier(0.1, 0.9, 0.2, 1);
+  --motion-exit: cubic-bezier(0.7, 0, 1, 0.5);
+  --motion-fast: 120ms var(--motion-ease);
+  --motion-standard: 180ms var(--motion-ease);
+  --motion-rollout: 360ms var(--motion-ease);
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #161616;
-  --panel: #262626;
-  --field: #393939;
-  --text: #f4f4f4;
-  --muted: #c6c6c6;
-  --subtle: #8d8d8d;
-  --line: #525252;
-  --line-strong: #f4f4f4;
-  --table-heading: #393939;
-  --selected-row: #001d6c;
-  --code-bg: #393939;
-  --coverage-warning-border: #f1c21b;
-  --coverage-failed-border: #fa4d56;
-  --teal: #78a9ff;
-  --teal-soft: #002d9c;
-  --amber: #f1c21b;
-  --amber-soft: #3d3400;
-  --red: #fa4d56;
-  --red-soft: #520408;
-  --green: #42be65;
-  --green-soft: #044317;
-  --blue: #78a9ff;
-  --blue-soft: #002d9c;
+  --bg: #1b1a19;
+  --panel: #201f1e;
+  --panel-raised: #252423;
+  --field: #2b2a29;
+  --field-strong: #323130;
+  --chrome: #1b1a19;
+  --text: #f3f2f1;
+  --muted: #c8c6c4;
+  --subtle: #a19f9d;
+  --line: #3b3a39;
+  --line-strong: #605e5c;
+  --table-heading: #323130;
+  --selected-row: #062a4f;
+  --selected-row-strong: #0f3a66;
+  --code-bg: #2b2a29;
+  --drawer-shadow: 0 18px 42px rgb(0 0 0 / 42%);
+  --coverage-warning-border: #fce100;
+  --coverage-failed-border: #f1707b;
+  --teal: #2899f5;
+  --teal-hover: #3aa0f3;
+  --teal-active: #0078d4;
+  --teal-soft: #002b5c;
+  --amber: #fce100;
+  --amber-soft: #4a3b00;
+  --red: #f1707b;
+  --red-soft: #4a2024;
+  --green: #6bb700;
+  --green-soft: #163b16;
+  --blue: #2899f5;
+  --blue-soft: #002b5c;
+  --focus-ring: #3aa0f3;
 }
 
 * {
@@ -71,10 +84,10 @@ html {
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
-  font-size: 16px;
-  letter-spacing: 0.16px;
-  line-height: 1.5;
+  font-family: "Segoe UI", SegoeUI, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  letter-spacing: 0;
+  line-height: 1.43;
   margin: 0;
 }
 
@@ -89,19 +102,19 @@ button {
   align-items: center;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 0;
+  border-radius: 2px;
   color: var(--text);
   cursor: pointer;
   display: inline-flex;
   gap: 8px;
   justify-content: center;
-  min-height: 40px;
-  padding: 11px 16px;
+  min-height: 32px;
+  padding: 6px 10px;
   transition:
     background-color var(--motion-fast),
     border-color var(--motion-fast),
     color var(--motion-fast),
-    transform var(--motion-fast);
+    box-shadow var(--motion-fast);
 }
 
 a {
@@ -114,18 +127,17 @@ a {
 button:hover {
   background: var(--field);
   border-color: var(--line-strong);
-  transform: translateY(-1px);
 }
 
 button:active {
-  transform: translateY(0);
+  background: var(--field-strong);
 }
 
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid var(--teal);
+  outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
 }
 
@@ -151,7 +163,7 @@ textarea {
 .shell {
   margin: 0 auto;
   max-width: 1584px;
-  padding: 0 24px 32px;
+  padding: 0 24px 24px;
 }
 
 .topbar,
@@ -189,15 +201,15 @@ textarea {
 
 .topbar {
   align-items: center;
-  background: var(--panel);
+  background: var(--chrome);
   border-bottom: 1px solid var(--line);
   display: flex;
-  gap: 16px;
+  gap: 12px;
   justify-content: space-between;
   margin: 0 -24px;
-  min-height: 64px;
+  min-height: 52px;
   overflow: visible;
-  padding: 10px 24px;
+  padding: 8px 24px;
   position: relative;
   z-index: 70;
 }
@@ -205,7 +217,7 @@ textarea {
 .brand-lockup {
   align-items: center;
   display: flex;
-  gap: 12px;
+  gap: 10px;
   min-width: 260px;
 }
 
@@ -217,7 +229,7 @@ textarea {
 
 .brand-lockup > div:last-child > span {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.3;
 }
 
@@ -225,17 +237,17 @@ textarea {
   align-items: center;
   display: grid;
   flex: 0 0 auto;
-  height: 40px;
+  height: 34px;
   justify-items: center;
-  width: 40px;
+  width: 34px;
 }
 
 .azure-cert-logo img {
   display: block;
   grid-area: 1 / 1;
-  height: 34px;
+  height: 30px;
   object-fit: contain;
-  width: 34px;
+  width: 30px;
 }
 
 .azure-cert-logo .logo-dark {
@@ -262,7 +274,7 @@ textarea {
 .topbar-actions > button,
 .topbar-actions > form,
 .topbar-actions > .auth-pill {
-  min-height: 40px;
+  min-height: 34px;
 }
 
 .refresh-button {
@@ -272,8 +284,8 @@ textarea {
 }
 
 .refresh-button:hover {
-  background: #0050e6;
-  border-color: #0050e6;
+  background: var(--teal-hover);
+  border-color: var(--teal-hover);
 }
 
 .theme-toggle[aria-pressed="true"] {
@@ -286,10 +298,10 @@ textarea {
   border: 1px solid var(--line);
   color: var(--muted);
   display: inline-flex;
-  font-size: 14px;
+  font-size: 13px;
   gap: 8px;
-  min-height: 40px;
-  padding: 8px 12px;
+  min-height: 34px;
+  padding: 6px 10px;
 }
 
 .auth-name {
@@ -329,10 +341,10 @@ textarea {
 }
 
 h1 {
-  font-size: 26px;
-  font-weight: 400;
+  font-size: 22px;
+  font-weight: 600;
   letter-spacing: 0;
-  line-height: 1.2;
+  line-height: 1.25;
   margin: 0;
 }
 
@@ -354,7 +366,7 @@ h1 {
 .scheduler-note,
 .sync-pill {
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .sync-pill {
@@ -363,9 +375,9 @@ h1 {
   border: 1px solid var(--line);
   display: inline-flex;
   gap: 8px;
-  min-height: 32px;
+  min-height: 28px;
   overflow: hidden;
-  padding: 6px 10px;
+  padding: 4px 10px;
   position: relative;
 }
 
@@ -400,12 +412,10 @@ h1 {
 @keyframes ui-rise {
   from {
     opacity: 0;
-    transform: translateY(12px);
   }
 
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -422,12 +432,10 @@ h1 {
 @keyframes detail-cell-open {
   from {
     opacity: 0;
-    transform: translateY(-8px);
   }
 
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -462,7 +470,7 @@ h1 {
   display: flex;
   flex-wrap: wrap;
   gap: 0;
-  min-height: 40px;
+  min-height: 34px;
   overflow: visible;
 }
 
@@ -474,7 +482,7 @@ h1 {
   align-items: center;
   display: flex;
   gap: 8px;
-  min-height: 40px;
+  min-height: 34px;
 }
 
 .scheduler-form .ui-select {
@@ -492,10 +500,10 @@ h1 {
   background: var(--field);
   border: 0;
   border-bottom: 1px solid var(--line-strong);
-  border-radius: 0;
+  border-radius: 2px 2px 0 0;
   color: var(--text);
-  min-height: 40px;
-  padding: 8px 16px;
+  min-height: 34px;
+  padding: 6px 12px;
 }
 
 select option {
@@ -534,7 +542,7 @@ select option {
   border: 0;
   border-right: 1px solid var(--line);
   color: var(--muted);
-  min-height: 32px;
+  min-height: 30px;
   padding: 6px 12px;
 }
 
@@ -588,7 +596,7 @@ select option {
   gap: 8px;
   justify-content: space-between;
   min-width: 0;
-  padding-right: 44px;
+  padding-right: 34px;
   position: relative;
   text-align: left;
   width: 100%;
@@ -616,13 +624,13 @@ select option {
 }
 
 .ui-select-caret {
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-top: 8px solid var(--text);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--text);
   height: 0;
   pointer-events: none;
   position: absolute;
-  right: 16px;
+  right: 12px;
   top: 50%;
   transform: translateY(-40%);
   transition: transform var(--motion-standard);
@@ -634,13 +642,13 @@ select option {
 }
 
 .owner-autocomplete-caret {
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-top: 8px solid var(--text);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--text);
   height: 0;
   pointer-events: none;
   position: absolute;
-  right: 16px;
+  right: 12px;
   top: 50%;
   transform: translateY(-40%);
   transition: transform var(--motion-standard);
@@ -654,10 +662,10 @@ select option {
 .ui-select-list,
 .owner-autocomplete-list {
   animation: ui-rise 180ms var(--motion-ease) both;
-  background: var(--panel);
+  background: var(--panel-raised);
   background-clip: padding-box;
   border: 1px solid var(--line-strong);
-  box-shadow: 0 18px 32px rgb(0 0 0 / 28%);
+  box-shadow: var(--drawer-shadow);
   display: grid;
   left: 0;
   max-height: 280px;
@@ -670,7 +678,7 @@ select option {
 
 .ui-select-list button,
 .owner-autocomplete-list button {
-  background: var(--panel);
+  background: var(--panel-raised);
   border: 0;
   border-bottom: 1px solid var(--line);
   color: var(--text);
@@ -679,8 +687,8 @@ select option {
   grid-template-columns: auto minmax(0, 1fr);
   justify-content: stretch;
   justify-items: start;
-  min-height: 64px;
-  padding: 12px 16px;
+  min-height: 54px;
+  padding: 10px 12px;
   text-align: left;
 }
 
@@ -691,7 +699,7 @@ select option {
 
 .ui-select-list button.simple {
   grid-template-columns: minmax(0, 1fr);
-  min-height: 44px;
+  min-height: 36px;
 }
 
 .ui-select-list button.simple strong {
@@ -732,6 +740,7 @@ select option {
 .owner-autocomplete-list .owner-autocomplete-kind {
   align-self: start;
   background: var(--field);
+  border: 1px solid var(--line);
   color: var(--muted);
   font-size: 11px;
   font-weight: 600;
@@ -757,7 +766,7 @@ select option {
 
 .ui-select-list strong,
 .owner-autocomplete-list strong {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   grid-column: 2;
 }
@@ -765,7 +774,7 @@ select option {
 .ui-select-list span,
 .owner-autocomplete-list span {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
   grid-column: 2;
 }
 
@@ -784,13 +793,13 @@ select option {
   border-bottom: 0;
   border-right: 0;
   border-top: 0;
-  min-height: 40px;
+  min-height: 34px;
   padding-left: 12px;
   padding-right: 12px;
 }
 
 .icon-button {
-  min-width: 40px;
+  min-width: 34px;
   padding: 0;
 }
 
@@ -818,7 +827,7 @@ select option {
 }
 
 .detail-toggle::after {
-  background: linear-gradient(90deg, transparent, rgb(15 98 254 / 20%), transparent);
+  background: linear-gradient(90deg, transparent, rgb(0 120 212 / 18%), transparent);
   opacity: 0;
   transform: translateX(-130%);
 }
@@ -865,7 +874,7 @@ select option {
   border: 1px solid var(--line);
   border-top: 0;
   margin: 0 -24px;
-  padding: 8px 24px;
+  padding: 6px 24px;
 }
 
 .scheduler-note.failed {
@@ -878,11 +887,11 @@ select option {
   border: 1px solid var(--line);
   display: grid;
   gap: 0;
-  margin: 16px 0;
+  margin: 12px 0;
 }
 
 .refresh-panel:not(details) {
-  padding: 16px;
+  padding: 12px;
 }
 
 .refresh-panel.succeeded {
@@ -900,7 +909,7 @@ select option {
   gap: 16px;
   justify-content: space-between;
   list-style: none;
-  padding: 16px;
+  padding: 12px;
 }
 
 .refresh-panel summary::-webkit-details-marker {
@@ -911,7 +920,7 @@ select option {
   border-top: 1px solid var(--line);
   display: grid;
   gap: 10px;
-  padding: 16px;
+  padding: 12px;
 }
 
 .refresh-panel summary span,
@@ -957,10 +966,10 @@ select option {
   background: var(--panel);
   border-bottom: 1px solid var(--line);
   display: grid;
-  gap: 24px;
+  gap: 20px;
   grid-template-columns: minmax(0, 1fr) auto;
   margin: 0 -24px;
-  padding: 48px 24px;
+  padding: 30px 24px;
 }
 
 .summary-band > div {
@@ -970,16 +979,16 @@ select option {
 }
 
 .summary-band h2 {
-  font-size: clamp(34px, 5vw, 60px);
-  font-weight: 300;
+  font-size: clamp(28px, 4vw, 42px);
+  font-weight: 600;
   letter-spacing: 0;
-  line-height: 1.17;
+  line-height: 1.22;
   margin: 0;
 }
 
 .summary-band span {
   color: var(--muted);
-  font-size: 18px;
+  font-size: 15px;
   max-width: 760px;
 }
 
@@ -1000,14 +1009,14 @@ select option {
 .status-detail-form button[type="submit"]:hover,
 .renewal-form button[type="submit"]:hover,
 .modal-actions button:first-child:hover {
-  background: #0050e6;
-  border-color: #0050e6;
+  background: var(--teal-hover);
+  border-color: var(--teal-hover);
 }
 
 .metrics {
   display: grid;
   grid-template-columns: repeat(8, minmax(120px, 1fr));
-  margin: 24px 0 0;
+  margin: 16px 0 0;
 }
 
 .metric {
@@ -1015,9 +1024,9 @@ select option {
   border: 1px solid var(--line);
   border-left: 0;
   display: grid;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
-  padding: 16px;
+  padding: 12px;
   transition:
     background-color var(--motion-standard),
     border-color var(--motion-standard),
@@ -1033,8 +1042,8 @@ select option {
 }
 
 .metric strong {
-  font-size: 32px;
-  font-weight: 300;
+  font-size: 28px;
+  font-weight: 400;
   line-height: 1;
 }
 
@@ -1046,7 +1055,6 @@ select option {
 .metric:hover {
   background: var(--field);
   border-color: var(--line-strong);
-  transform: translateY(-2px);
 }
 
 .metric.warning {
@@ -1072,7 +1080,7 @@ select option {
   border-bottom: 1px solid var(--line);
   display: flex;
   flex-wrap: wrap;
-  margin: 24px 0 0;
+  margin: 16px 0 0;
 }
 
 .tabs button {
@@ -1081,8 +1089,8 @@ select option {
   border-bottom: 2px solid transparent;
   color: var(--muted);
   flex: 0 1 auto;
-  min-height: 48px;
-  padding: 14px 20px;
+  min-height: 40px;
+  padding: 10px 18px;
 }
 
 .tabs button:hover {
@@ -1118,8 +1126,8 @@ select option {
 }
 
 .tab-counts strong {
-  font-size: 42px;
-  font-weight: 300;
+  font-size: 32px;
+  font-weight: 400;
   line-height: 1;
 }
 
@@ -1137,10 +1145,10 @@ select option {
 .queuebar button {
   border-left: 0;
   display: grid;
-  gap: 8px;
+  gap: 5px;
   justify-content: stretch;
   justify-items: start;
-  min-height: 76px;
+  min-height: 64px;
   position: relative;
 }
 
@@ -1178,8 +1186,8 @@ select option {
 }
 
 .queuebar strong {
-  font-size: 24px;
-  font-weight: 300;
+  font-size: 22px;
+  font-weight: 400;
 }
 
 .toolbar,
@@ -1193,9 +1201,9 @@ select option {
   border: 1px solid var(--line);
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 10px;
   margin: 0;
-  padding: 16px;
+  padding: 12px 16px;
   transition:
     background-color var(--motion-standard),
     border-color var(--motion-standard);
@@ -1250,8 +1258,9 @@ select option {
 }
 
 .export-menu-panel {
-  background: var(--panel);
+  background: var(--panel-raised);
   border: 1px solid var(--line-strong);
+  box-shadow: var(--drawer-shadow);
   display: grid;
   gap: 0;
   min-width: 240px;
@@ -1292,7 +1301,7 @@ select option {
   background: var(--field);
   border: 0;
   border-bottom: 1px solid var(--line-strong);
-  border-radius: 0;
+  border-radius: 2px 2px 0 0;
   color: var(--text);
   font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   min-height: 160px;
@@ -1309,7 +1318,7 @@ select option {
 .owner-gap-panel,
 .owner-directory {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
 .section-heading {
@@ -1320,8 +1329,8 @@ select option {
 }
 
 .section-heading h2 {
-  font-size: 24px;
-  font-weight: 400;
+  font-size: 18px;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -1378,7 +1387,7 @@ select option {
   border-bottom: 0;
   display: grid;
   gap: 12px;
-  padding: 16px;
+  padding: 12px;
   transition:
     background-color var(--motion-standard),
     border-color var(--motion-standard),
@@ -1434,7 +1443,7 @@ select option {
   font-size: 12px;
   font-weight: 600;
   gap: 5px;
-  padding: 3px 8px;
+  padding: 3px 7px;
   width: fit-content;
 }
 
@@ -1458,7 +1467,7 @@ select option {
   display: block;
   font-size: 12px;
   overflow-wrap: anywhere;
-  padding: 8px;
+  padding: 6px 8px;
 }
 
 .coverage-row {
@@ -1523,8 +1532,8 @@ select option {
   display: flex;
   flex: 1 1 320px;
   gap: 8px;
-  min-height: 48px;
-  padding: 0 16px;
+  min-height: 38px;
+  padding: 0 12px;
 }
 
 .search input {
@@ -1609,8 +1618,8 @@ table {
 th,
 td {
   border-bottom: 1px solid var(--line);
-  font-size: 14px;
-  padding: 12px 16px;
+  font-size: 13px;
+  padding: 9px 12px;
   text-align: left;
   vertical-align: top;
 }
@@ -1619,7 +1628,7 @@ th {
   background: var(--table-heading);
   color: var(--muted);
   font-size: 12px;
-  font-weight: 400;
+  font-weight: 600;
 }
 
 td strong,
@@ -1630,7 +1639,7 @@ td span {
 .inventory-table th,
 .inventory-table td {
   overflow: hidden;
-  padding: 9px 12px;
+  padding: 8px 10px;
   text-overflow: ellipsis;
   vertical-align: middle;
   white-space: nowrap;
@@ -1685,9 +1694,9 @@ td span {
 }
 
 .inventory-table td:nth-child(9) .icon-button {
-  height: 40px;
-  min-width: 40px;
-  width: 40px;
+  height: 32px;
+  min-width: 32px;
+  width: 32px;
 }
 
 tr.removed {
@@ -1797,24 +1806,24 @@ tr.selected-row {
 
 .empty {
   color: var(--muted);
-  padding: 48px;
+  padding: 36px;
   text-align: center;
 }
 
 .empty h2 {
   color: var(--text);
-  font-size: 24px;
-  font-weight: 400;
+  font-size: 18px;
+  font-weight: 600;
   margin: 12px 0 6px;
 }
 
 .detail-drawer,
 .detail-inline {
-  background: var(--panel);
+  background: var(--panel-raised);
   border: 1px solid var(--line-strong);
   display: grid;
-  gap: 16px;
-  padding: 16px;
+  gap: 14px;
+  padding: 14px;
 }
 
 .detail-drawer {
@@ -1827,6 +1836,7 @@ tr.selected-row {
   top: 160px;
   width: 500px;
   z-index: 20;
+  box-shadow: var(--drawer-shadow);
 }
 
 .detail-inline {
@@ -1883,8 +1893,8 @@ tr.selected-row {
 }
 
 .detail-header h2 {
-  font-size: 24px;
-  font-weight: 400;
+  font-size: 22px;
+  font-weight: 600;
   line-height: 1.2;
   margin: 0;
 }
@@ -1902,8 +1912,8 @@ tr.selected-row {
   display: inline-flex;
   gap: 8px;
   justify-content: center;
-  min-height: 40px;
-  padding: 11px 16px;
+  min-height: 32px;
+  padding: 6px 10px;
   text-decoration: none;
   transition:
     background-color var(--motion-fast),
@@ -1915,12 +1925,11 @@ tr.selected-row {
 .detail-action-link:hover {
   background: var(--field);
   border-color: var(--line-strong);
-  transform: translateY(-1px);
 }
 
 .detail-action-link:focus-visible,
 .resource-admin-link:focus-visible {
-  outline: 2px solid var(--teal);
+  outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
 }
 
@@ -1939,8 +1948,8 @@ tr.selected-row {
 .detail-section {
   border-top: 1px solid var(--line);
   display: grid;
-  gap: 12px;
-  padding-top: 16px;
+  gap: 10px;
+  padding-top: 12px;
   position: relative;
   z-index: 0;
 }
@@ -1952,8 +1961,8 @@ tr.selected-row {
 
 .detail-section h3 {
   color: var(--muted);
-  font-size: 14px;
-  font-weight: 400;
+  font-size: 13px;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -1974,7 +1983,7 @@ tr.selected-row {
 }
 
 .detail-list dd {
-  font-size: 14px;
+  font-size: 13px;
   margin: 0;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -1995,7 +2004,7 @@ tr.selected-row {
 .owner-detail-form,
 .status-detail-form {
   border: 1px solid var(--line);
-  padding: 12px;
+  padding: 10px;
 }
 
 .checkbox-row {
@@ -2019,9 +2028,9 @@ tr.selected-row {
   border: 1px solid var(--line);
   border-bottom: 0;
   display: grid;
-  gap: 10px;
+  gap: 8px;
   grid-template-columns: auto 1fr;
-  padding: 12px;
+  padding: 10px;
 }
 
 .renewal-checklist li:last-child {
@@ -2055,7 +2064,7 @@ tr.selected-row {
   color: var(--text);
   display: flex;
   gap: 8px;
-  padding: 12px;
+  padding: 10px;
 }
 
 .renewal-safety-note.blocked {
@@ -2071,7 +2080,7 @@ tr.selected-row {
 
 .renewal-result {
   border: 1px solid var(--line);
-  padding: 12px;
+  padding: 10px;
 }
 
 .renewal-result.ok {
@@ -2088,7 +2097,7 @@ tr.selected-row {
 
 .modal-backdrop {
   align-items: center;
-  background: rgb(22 22 22 / 62%);
+  background: rgb(0 0 0 / 58%);
   display: flex;
   inset: 0;
   justify-content: center;
@@ -2098,12 +2107,13 @@ tr.selected-row {
 }
 
 .modal {
-  background: var(--panel);
+  background: var(--panel-raised);
   border: 1px solid var(--line-strong);
+  box-shadow: var(--drawer-shadow);
   display: grid;
-  gap: 16px;
+  gap: 14px;
   max-width: 560px;
-  padding: 24px;
+  padding: 20px;
   width: min(100%, 560px);
 }
 
@@ -2113,8 +2123,8 @@ tr.selected-row {
 }
 
 .modal h2 {
-  font-size: 32px;
-  font-weight: 300;
+  font-size: 22px;
+  font-weight: 600;
 }
 
 .modal textarea {
