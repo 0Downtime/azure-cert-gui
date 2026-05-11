@@ -11,6 +11,7 @@
     "ui": "node scripts/build-and-start.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:ci": "vitest run --coverage --reporter=default --reporter=junit --outputFile.junit=test-results/vitest-junit.xml",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:reset": "tsx scripts/reset-db.ts",
     "fixtures:sync": "tsx scripts/sync-fixtures.ts",
@@ -25,7 +26,7 @@
   "dependencies": {
     "jose": "^6.2.3",
     "lucide-react": "^0.468.0",
-    "next": "^15.1.0",
+    "next": "^15.5.18",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -33,6 +34,7 @@
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
+    "@vitest/coverage-v8": "^4.1.5",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^4.1.5"

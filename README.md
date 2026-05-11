@@ -140,6 +140,25 @@ npm test
 npm run build
 ```
 
+Run the CI test target when you need Azure DevOps / SonarQube-compatible outputs:
+
+```bash
+npm run test:ci
+```
+
+`test:ci` writes JUnit results to `test-results/vitest-junit.xml` and LCOV coverage to `coverage/lcov.info`.
+
+## Azure DevOps SonarQube CI
+
+`azure-pipelines.yml` runs the SonarQube Enterprise-style CI path for Azure DevOps. It triggers on pushes to `main` and pull requests targeting `main`, then installs Node.js 22, runs typecheck, Vitest with coverage, Next.js build, production dependency audit, SonarQube analysis, and quality-gate publishing.
+
+Before enabling the pipeline in Azure DevOps:
+
+- Install the SonarQube Server Azure DevOps extension in the organization.
+- Create or authorize a SonarQube Server service connection named `SonarQube`, or update the `SonarQube` task input in `azure-pipelines.yml`.
+- Create or confirm the SonarQube project key `0Downtime_azure-cert-gui`, or update the `sonarProjectKey` variable.
+- Make sure the build agent has Java 17 available as `JAVA_HOME_17_X64`. Microsoft-hosted Ubuntu agents already expose it; self-hosted agents must install it and trust the SonarQube server certificate chain.
+
 If you run `npm run build` while `npm run dev` is already running, restart the dev server before testing forms again. Next dev and Next build both write to `.next`, so a live dev server can serve stale asset paths after a production build.
 
 ## Server Bootstrap
