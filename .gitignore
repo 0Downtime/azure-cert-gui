@@ -3,6 +3,7 @@ node_modules/
 .next/
 out/
 coverage/
+test-results/
 *.tsbuildinfo
 .playwright-cli/
 /output/playwright/
@@ -13,3 +14,7 @@ coverage/
 .runtime/
 /data/*.sqlite
 /data/*.sqlite-*
+
+# Local design references
+/DESIGN.md
+/ibm/
