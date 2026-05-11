@@ -1,0 +1,81 @@
+name: azure-cert-gui-sonarqube-$(Date:yyyyMMdd).$(Rev:r)
+
+trigger:
+  branches:
+    include:
+      - main
+
+pr:
+  branches:
+    include:
+      - main
+
+variables:
+  nodeVersion: "22.x"
+  sonarProjectKey: "0Downtime_azure-cert-gui"
+  sonarProjectName: "Azure Cert GUI"
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: self
+    fetchDepth: 0
+
+  - task: NodeTool@0
+    displayName: Use Node.js $(nodeVersion)
+    inputs:
+      versionSpec: $(nodeVersion)
+
+  - script: npm ci --ignore-scripts
+    displayName: Install dependencies
+
+  - task: SonarQubePrepare@8
+    displayName: Prepare SonarQube analysis
+    inputs:
+      SonarQube: SonarQube
+      scannerMode: cli
+      configMode: manual
+      cliProjectKey: $(sonarProjectKey)
+      cliProjectName: $(sonarProjectName)
+      cliSources: .
+      extraProperties: |
+        sonar.sourceEncoding=UTF-8
+        sonar.sources=src,scripts
+        sonar.tests=src
+        sonar.test.inclusions=src/**/*.test.ts
+        sonar.exclusions=src/**/*.test.ts,node_modules/**,.next/**,coverage/**,test-results/**,data/**,.runtime/**,fixtures/**
+        sonar.javascript.lcov.reportPaths=coverage/lcov.info
+        sonar.typescript.tsconfigPath=tsconfig.json
+
+  - script: npm run typecheck
+    displayName: Typecheck
+
+  - script: |
+      mkdir -p test-results
+      npm run test:ci
+    displayName: Test with coverage
+
+  - task: PublishTestResults@2
+    displayName: Publish test results
+    condition: succeededOrFailed()
+    inputs:
+      testResultsFormat: JUnit
+      testResultsFiles: test-results/vitest-junit.xml
+      failTaskOnFailedTests: true
+
+  - script: npm run build
+    displayName: Build
+
+  - script: npm audit --omit=dev
+    displayName: Audit production dependencies
+
+  - task: SonarQubeAnalyze@8
+    displayName: Run SonarQube analysis
+    inputs:
+      jdkversion: JAVA_HOME_17_X64
+
+  - task: SonarQubePublish@8
+    displayName: Publish SonarQube quality gate
+    inputs:
+      pollingTimeoutSec: "300"
