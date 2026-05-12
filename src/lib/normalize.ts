@@ -150,6 +150,7 @@ function normalizeGraphCredential(
         "type"
       ]),
       ...pickMetadata(parent as unknown as Record<string, unknown>, [
+        "appId",
         "servicePrincipalType",
         "appOwnerOrganizationId"
       ]),

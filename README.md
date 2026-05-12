@@ -1,8 +1,8 @@
 <h1 align="center">[Alpha] Azure Cert GUI</h1>
 
 <p align="center">
-  <img src="src/app/azure-cert-logo-light.png#gh-light-mode-only" alt="Azure Cert GUI" width="220" />
-  <img src="src/app/azure-cert-logo-dark.png#gh-dark-mode-only" alt="Azure Cert GUI" width="220" />
+  <img src="public/azure-cert-logo-light.png#gh-light-mode-only" alt="Azure Cert GUI" width="180" />
+  <img src="public/azure-cert-logo-dark.png#gh-dark-mode-only" alt="Azure Cert GUI" width="180" />
 </p>
 
 <p align="center">
@@ -102,13 +102,13 @@ Install dependencies once:
 npm install
 ```
 
-Build only when the app has changed, then start the UI in loopback-only break-glass local mode:
+Build only when the app has changed, then start the UI on trusted loopback:
 
 ```bash
-AZURE_CERT_GUI__AUTH__ALLOWLOCALINPRODUCTION=true npm run ui
+npm run ui
 ```
 
-The command prints a clickable local URL such as `http://127.0.0.1:3000`. Set `PORT=3001` if you prefer a different starting port; if that port is busy, the script uses the next open one. Do not set `UI_HOST` to a non-loopback address when using local auth.
+The command prints a clickable local URL such as `http://127.0.0.1:3000`. It automatically enables the production local-auth break-glass flag only when bound to a loopback host. Set `PORT=3001` if you prefer a different starting port; if that port is busy, the script uses the next open one. Do not set `UI_HOST` to a non-loopback address when using local auth.
 
 Start against your current Azure CLI tenant/subscription:
 

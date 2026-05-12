@@ -27,6 +27,7 @@ loadRuntimeEnvFile();
 const nextCliPath = path.join(root, "node_modules", "next", "dist", "bin", "next");
 const host = process.env.UI_HOST ?? "127.0.0.1";
 const requestedPort = parsePort(process.env.PORT ?? "3000");
+enableLoopbackLocalAuthBreakGlass(host);
 
 async function main() {
   await ensureDependencies();
@@ -68,6 +69,21 @@ function parsePort(value) {
     throw new Error(`Invalid PORT value: ${value}`);
   }
   return port;
+}
+
+function enableLoopbackLocalAuthBreakGlass(listenHost) {
+  const authMode = process.env.AZURE_CERT_GUI__AUTH__MODE ?? "local";
+  const allowLocalInProduction = process.env.AZURE_CERT_GUI__AUTH__ALLOWLOCALINPRODUCTION;
+  if (allowLocalInProduction !== undefined || authMode === "oidc" || !isLoopbackHost(listenHost)) {
+    return;
+  }
+
+  process.env.AZURE_CERT_GUI__AUTH__ALLOWLOCALINPRODUCTION = "true";
+  console.log("[ui] Enabled local auth for trusted loopback production UI run.");
+}
+
+function isLoopbackHost(value) {
+  return value === "localhost" || value === "127.0.0.1" || value === "::1" || value === "[::1]";
 }
 
 function loadRuntimeEnvFile() {
