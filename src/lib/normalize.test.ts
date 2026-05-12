@@ -36,6 +36,7 @@ describe("normalization", () => {
     expect(rows).toHaveLength(2);
     expect(rows[0].naturalKey).toBe("tenant:application:app-object:secret-key");
     expect(rows[0].ownerConfidence).toBe("high");
+    expect(rows[0].metadata).toMatchObject({ appId: "app-id" });
     expect(rows[0].metadata).not.toHaveProperty("secretText");
     expect(rows[0].metadata).not.toHaveProperty("value");
   });
@@ -75,6 +76,7 @@ describe("normalization", () => {
     ]);
 
     expect(row.metadata).toMatchObject({
+      appId: "app-id",
       servicePrincipalType: "ManagedIdentity",
       appOwnerOrganizationId: "first-party-tenant"
     });
