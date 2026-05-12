@@ -148,6 +148,16 @@ npm run test:ci
 
 `test:ci` writes JUnit results to `test-results/vitest-junit.xml` and LCOV coverage to `coverage/lcov.info`.
 
+## GitHub Actions SonarQube CI
+
+`.github/workflows/ci.yml` runs the standard GitHub Actions checks for pushes to `main` and pull requests. The workflow includes `Build and test`, `Secret scan`, and `SonarQube Quality Gate` jobs. The SonarQube job installs Node.js 22, runs typecheck, Vitest with coverage, Next.js build, production dependency audit, and SonarQube analysis using `sonar-project.properties`.
+
+The SonarQube job skips with a notice until both GitHub Actions configuration values exist:
+
+- Create a repository secret named `SONAR_TOKEN` with a SonarQube analysis token.
+- Create a repository or organization variable named `SONAR_HOST_URL` with the SonarQube Server URL.
+- Create or confirm the SonarQube project key `0Downtime_azure-cert-gui`, or update `sonar-project.properties`.
+
 ## Azure DevOps SonarQube CI
 
 `azure-pipelines.yml` runs the SonarQube Enterprise-style CI path for Azure DevOps. It triggers on pushes to `main` and pull requests targeting `main`, then installs Node.js 22, runs typecheck, Vitest with coverage, Next.js build, production dependency audit, SonarQube analysis, and quality-gate publishing.
