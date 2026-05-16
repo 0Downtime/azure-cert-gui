@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coerceTagMap, normalizeDate, parseAzureResourceId } from "./azure-cli";
+import { azureSyncConfigFromEnv, coerceTagMap, normalizeDate, parseAzureResourceId } from "./azure-cli";
 
 describe("azure cli helpers", () => {
   it("parses Azure resource IDs", () => {
@@ -33,4 +33,15 @@ describe("azure cli helpers", () => {
     expect(normalizeDate("2026-05-01T12:30:00Z")).toBe("2026-05-01T12:30:00.000Z");
     expect(normalizeDate(undefined)).toBeNull();
   });
+
+  it("bounds Azure sync concurrency from the environment", () => {
+    expect(azureSyncConfigFromEnv(testEnv({ AZURE_SYNC_CONCURRENCY: "0" })).concurrency).toBe(1);
+    expect(azureSyncConfigFromEnv(testEnv({ AZURE_SYNC_CONCURRENCY: "8" })).concurrency).toBe(8);
+    expect(azureSyncConfigFromEnv(testEnv({ AZURE_SYNC_CONCURRENCY: "200" })).concurrency).toBe(16);
+    expect(azureSyncConfigFromEnv(testEnv()).concurrency).toBe(4);
+  });
 });
+
+function testEnv(values: Record<string, string> = {}): NodeJS.ProcessEnv {
+  return { NODE_ENV: "test", ...values };
+}

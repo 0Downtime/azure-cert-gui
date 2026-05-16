@@ -9,6 +9,8 @@ import type {
 
 const GRAPH_ROOT = "https://graph.microsoft.com/v1.0";
 const JSON_BUFFER_BYTES = 1024 * 1024 * 100;
+const DEFAULT_AZURE_SYNC_CONCURRENCY = 4;
+const MAX_AZURE_SYNC_CONCURRENCY = 16;
 
 export interface AzureSyncConfig {
   tenantId: string | null;
@@ -17,6 +19,7 @@ export interface AzureSyncConfig {
   includeGraphOwners: boolean;
   includeGraphOwnerDirectory: boolean;
   includeKeyVaultVersions: boolean;
+  concurrency: number;
 }
 
 interface GraphListResponse<T> {
@@ -119,7 +122,8 @@ export function azureSyncConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Az
     keyVaultResourceIds: csv(env.AZURE_KEYVAULT_RESOURCE_IDS),
     includeGraphOwners: env.AZURE_GRAPH_INCLUDE_OWNERS !== "false",
     includeGraphOwnerDirectory: env.AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY !== "false",
-    includeKeyVaultVersions: env.AZURE_KEYVAULT_INCLUDE_VERSIONS === "true"
+    includeKeyVaultVersions: env.AZURE_KEYVAULT_INCLUDE_VERSIONS === "true",
+    concurrency: concurrencyFromEnv(env.AZURE_SYNC_CONCURRENCY)
   };
 }
 
@@ -128,6 +132,34 @@ function csv(value: string | undefined): string[] {
     .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+function concurrencyFromEnv(value: string | undefined): number {
+  const parsed = Number.parseInt(value ?? "", 10);
+  if (!Number.isFinite(parsed)) return DEFAULT_AZURE_SYNC_CONCURRENCY;
+  return Math.min(MAX_AZURE_SYNC_CONCURRENCY, Math.max(1, parsed));
+}
+
+async function mapWithConcurrency<T, U>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<U>
+): Promise<U[]> {
+  const results = new Array<U>(items.length);
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+  let nextIndex = 0;
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        results[index] = await mapper(items[index], index);
+      }
+    })
+  );
+
+  return results;
 }
 
 async function azJson<T>(args: string[]): Promise<T> {
@@ -176,18 +208,19 @@ export async function collectGraphApplications(
     "/applications?$select=id,appId,displayName,passwordCredentials,keyCredentials,tags&$top=999"
   );
 
-  return Promise.all(
-    apps.map(async (app) => ({
-      tenantId: tenantId ?? "unknown-tenant",
-      id: required(app.id, "application.id"),
-      appId: app.appId ?? "",
-      displayName: app.displayName ?? app.appId ?? app.id ?? "Unnamed application",
-      tags: coerceTagMap(app.tags),
-      owners: config.includeGraphOwners ? await graphOwners("applications", required(app.id, "application.id")) : [],
-      passwordCredentials: coerceGraphCredentials(app.passwordCredentials),
-      keyCredentials: coerceGraphCredentials(app.keyCredentials)
-    }))
-  );
+  return mapWithConcurrency(apps, config.concurrency, async (app) => ({
+    tenantId: tenantId ?? "unknown-tenant",
+    id: required(app.id, "application.id"),
+    appId: app.appId ?? "",
+    displayName: app.displayName ?? app.appId ?? app.id ?? "Unnamed application",
+    tags: coerceTagMap(app.tags),
+    owners:
+      config.includeGraphOwners && hasGraphCredentials(app)
+        ? await graphOwners("applications", required(app.id, "application.id"))
+        : [],
+    passwordCredentials: coerceGraphCredentials(app.passwordCredentials),
+    keyCredentials: coerceGraphCredentials(app.keyCredentials)
+  }));
 }
 
 export async function collectServicePrincipals(
@@ -198,22 +231,21 @@ export async function collectServicePrincipals(
     "/servicePrincipals?$select=id,appId,displayName,servicePrincipalType,appOwnerOrganizationId,passwordCredentials,keyCredentials,tags&$top=999"
   );
 
-  return Promise.all(
-    principals.map(async (principal) => ({
-      tenantId: tenantId ?? "unknown-tenant",
-      id: required(principal.id, "servicePrincipal.id"),
-      appId: principal.appId ?? "",
-      displayName: principal.displayName ?? principal.appId ?? principal.id ?? "Unnamed service principal",
-      appOwnerOrganizationId: principal.appOwnerOrganizationId ?? null,
-      servicePrincipalType: principal.servicePrincipalType ?? undefined,
-      tags: coerceTagMap(principal.tags),
-      owners: config.includeGraphOwners
+  return mapWithConcurrency(principals, config.concurrency, async (principal) => ({
+    tenantId: tenantId ?? "unknown-tenant",
+    id: required(principal.id, "servicePrincipal.id"),
+    appId: principal.appId ?? "",
+    displayName: principal.displayName ?? principal.appId ?? principal.id ?? "Unnamed service principal",
+    appOwnerOrganizationId: principal.appOwnerOrganizationId ?? null,
+    servicePrincipalType: principal.servicePrincipalType ?? undefined,
+    tags: coerceTagMap(principal.tags),
+    owners:
+      config.includeGraphOwners && hasGraphCredentials(principal)
         ? await graphOwners("servicePrincipals", required(principal.id, "servicePrincipal.id"))
         : [],
-      passwordCredentials: coerceGraphCredentials(principal.passwordCredentials),
-      keyCredentials: coerceGraphCredentials(principal.keyCredentials)
-    }))
-  );
+    passwordCredentials: coerceGraphCredentials(principal.passwordCredentials),
+    keyCredentials: coerceGraphCredentials(principal.keyCredentials)
+  }));
 }
 
 export async function collectGraphOwnerDirectory(): Promise<GraphOwnerDirectoryEntry[]> {
@@ -267,30 +299,30 @@ function coerceGraphCredentials(credentials: GraphCredentialRaw[] | undefined): 
     }));
 }
 
+function hasGraphCredentials(resource: GraphApplicationRaw): boolean {
+  return Boolean(resource.passwordCredentials?.length || resource.keyCredentials?.length);
+}
+
 export async function listKeyVaults(config: AzureSyncConfig): Promise<AzureVault[]> {
   if (config.keyVaultResourceIds.length > 0) {
-    return Promise.all(
-      config.keyVaultResourceIds.map(async (resourceId) => {
-        const parsed = parseAzureResourceId(resourceId);
-        return azJson<AzureVault>([
-          "keyvault",
-          "show",
-          "--name",
-          parsed.name,
-          "--resource-group",
-          parsed.resourceGroup,
-          "--subscription",
-          parsed.subscriptionId
-        ]);
-      })
-    );
+    return mapWithConcurrency(config.keyVaultResourceIds, config.concurrency, async (resourceId) => {
+      const parsed = parseAzureResourceId(resourceId);
+      return azJson<AzureVault>([
+        "keyvault",
+        "show",
+        "--name",
+        parsed.name,
+        "--resource-group",
+        parsed.resourceGroup,
+        "--subscription",
+        parsed.subscriptionId
+      ]);
+    });
   }
 
   const subscriptions = await subscriptionIds(config);
-  const vaultSets = await Promise.all(
-    subscriptions.map((subscriptionId) =>
-      azJson<AzureVault[]>(["keyvault", "list", "--subscription", subscriptionId, "--resource-type", "vault"])
-    )
+  const vaultSets = await mapWithConcurrency(subscriptions, config.concurrency, (subscriptionId) =>
+    azJson<AzureVault[]>(["keyvault", "list", "--subscription", subscriptionId, "--resource-type", "vault"])
   );
   return vaultSets.flat();
 }
@@ -312,20 +344,18 @@ export async function collectKeyVaultSecrets(
 
   const rows = config.includeKeyVaultVersions
     ? (
-        await Promise.all(
-          currentSecrets.map((secret) =>
-            azJson<KeyVaultRawItem[]>([
-              "keyvault",
-              "secret",
-              "list-versions",
-              "--vault-name",
-              context.vaultName,
-              "--name",
-              required(secret.name, "secret.name"),
-              "--subscription",
-              context.subscriptionId
-            ])
-          )
+        await mapWithConcurrency(currentSecrets, config.concurrency, (secret) =>
+          azJson<KeyVaultRawItem[]>([
+            "keyvault",
+            "secret",
+            "list-versions",
+            "--vault-name",
+            context.vaultName,
+            "--name",
+            required(secret.name, "secret.name"),
+            "--subscription",
+            context.subscriptionId
+          ])
         )
       ).flat()
     : currentSecrets;
@@ -349,30 +379,26 @@ export async function collectKeyVaultCertificates(
   ]);
 
   const detailsByName = new Map(
-    await Promise.all(
-      currentCertificates.map(async (certificate) => {
-        const name = required(certificate.name, "certificate.name");
-        return [name, await keyVaultCertificateDetail(context.vaultName, context.subscriptionId, name)] as const;
-      })
-    )
+    await mapWithConcurrency(currentCertificates, config.concurrency, async (certificate) => {
+      const name = required(certificate.name, "certificate.name");
+      return [name, await keyVaultCertificateDetail(context.vaultName, context.subscriptionId, name)] as const;
+    })
   );
 
   const rows = config.includeKeyVaultVersions
     ? (
-        await Promise.all(
-          currentCertificates.map((certificate) =>
-            azJson<KeyVaultRawItem[]>([
-              "keyvault",
-              "certificate",
-              "list-versions",
-              "--vault-name",
-              context.vaultName,
-              "--name",
-              required(certificate.name, "certificate.name"),
-              "--subscription",
-              context.subscriptionId
-            ])
-          )
+        await mapWithConcurrency(currentCertificates, config.concurrency, (certificate) =>
+          azJson<KeyVaultRawItem[]>([
+            "keyvault",
+            "certificate",
+            "list-versions",
+            "--vault-name",
+            context.vaultName,
+            "--name",
+            required(certificate.name, "certificate.name"),
+            "--subscription",
+            context.subscriptionId
+          ])
         )
       ).flat()
     : currentCertificates;
@@ -410,31 +436,27 @@ export async function collectKeyVaultKeys(
 
   const rows = config.includeKeyVaultVersions
     ? (
-        await Promise.all(
-          currentKeys.map((key) =>
-            azJson<KeyVaultRawItem[]>([
-              "keyvault",
-              "key",
-              "list-versions",
-              "--vault-name",
-              context.vaultName,
-              "--name",
-              required(key.name, "key.name"),
-              "--subscription",
-              context.subscriptionId
-            ])
-          )
+        await mapWithConcurrency(currentKeys, config.concurrency, (key) =>
+          azJson<KeyVaultRawItem[]>([
+            "keyvault",
+            "key",
+            "list-versions",
+            "--vault-name",
+            context.vaultName,
+            "--name",
+            required(key.name, "key.name"),
+            "--subscription",
+            context.subscriptionId
+          ])
         )
       ).flat()
     : currentKeys;
 
   const rotationPoliciesByName = new Map(
-    await Promise.all(
-      currentKeys.map(async (key) => {
-        const name = required(key.name, "key.name");
-        return [name, await keyVaultKeyRotationPolicy(context.vaultName, context.subscriptionId, name)] as const;
-      })
-    )
+    await mapWithConcurrency(currentKeys, config.concurrency, async (key) => {
+      const name = required(key.name, "key.name");
+      return [name, await keyVaultKeyRotationPolicy(context.vaultName, context.subscriptionId, name)] as const;
+    })
   );
 
   return rows.map((key) =>

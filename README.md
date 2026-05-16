@@ -198,7 +198,7 @@ az login
 ./scripts/deploy-container-app.sh
 ```
 
-The script builds the image in Azure Container Registry, creates a Container Apps environment, creates or reuses an Entra ID OIDC app registration, creates Viewer / Operator / Admin security groups, adds the signed-in user to the Admin group when possible, deploys the app with OIDC-only auth, assigns the Container App managed identity Azure RBAC and Microsoft Graph application permissions, and updates the OIDC redirect URI after Container Apps assigns the public hostname.
+The script builds the image in Azure Container Registry, creates a Container Apps environment, creates or reuses an Entra ID OIDC app registration, creates Viewer / Operator / Admin security groups, adds the signed-in user to the Admin group when possible, deploys the app with OIDC-only auth, assigns the Container App managed identity Azure RBAC, adds Key Vault access policies for access-policy vaults in the subscription, assigns Microsoft Graph application permissions, and updates the OIDC redirect URI after Container Apps assigns the public hostname.
 
 The Azure CLI identity running the script needs rights to create resource groups/resources in the target subscription, create or update Entra app registrations and groups, assign Microsoft Graph application roles, and create subscription-level role assignments for the Container App managed identity.
 
@@ -214,6 +214,10 @@ IMAGE_TAG=$(git rev-parse --short HEAD) \
 ```
 
 The Container Apps script intentionally uses one replica and `AZURE_CERT_GUI_DB_PATH=/tmp/azure-cert-gui.sqlite`. This makes the hosted app usable for live Azure metadata sync, but the SQLite data is ephemeral across restarts and new revisions. Do not mount the live SQLite database on Azure Files: testing showed immediate SQLite `database is locked` failures even for a brand-new database on the mounted share. For durable hosted workflow state, move the repository layer to Azure SQL/PostgreSQL or run the container on a single host with block-backed storage such as an Azure VM or AKS Azure Disk volume.
+
+The default Container Apps resource shape is `CPU=1.0` and `MEMORY=2Gi`. The web UI can spawn a second Node process for Azure metadata refresh, so smaller shapes such as `0.5 CPU / 1Gi` can be killed by the platform with exit code `137` during refresh.
+
+Azure metadata refresh also shells out to the Azure CLI for Graph and Key Vault reads. `AZURE_SYNC_CONCURRENCY` defaults to `4` to avoid launching too many `az` subprocesses inside a small container. Entra owner reads are only requested for applications and service principals that have credentials to import. Raise the concurrency for larger containers, or lower it if Container Apps system logs show exit code `137` during refresh.
 
 ## Daily Use
 
@@ -385,6 +389,7 @@ Supported environment values:
 
 - `AZURE_CERT_GUI_DB_PATH`: SQLite path. Defaults to `./data/azure-cert-gui.sqlite`.
 - `AZURE_CERT_GUI_SQLITE_JOURNAL_MODE`: SQLite journal mode. Defaults to `WAL`; use `DELETE` only for environments where WAL is not supported.
+- `AZURE_SYNC_CONCURRENCY`: Azure CLI subprocess concurrency for metadata sync. Defaults to `4`.
 - `AZURE_CLI_PATH`: optional absolute Azure CLI path for daemon contexts that cannot find `az` on `PATH`, such as `/usr/bin/az` or `/opt/homebrew/bin/az`.
 - `AZURE_TENANT_ID`: optional tenant override. When blank, the Azure CLI current account tenant is used.
 - `AZURE_SUBSCRIPTION_IDS`: optional comma-separated subscription IDs. When blank, enabled Azure CLI subscriptions are scanned.

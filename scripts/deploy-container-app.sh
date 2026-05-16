@@ -15,8 +15,9 @@ ADMIN_GROUP_NAME="${ADMIN_GROUP_NAME:-Azure Cert GUI Container Admins}"
 AZURE_CERT_GUI_DB_PATH="${AZURE_CERT_GUI_DB_PATH:-/tmp/azure-cert-gui.sqlite}"
 AZURE_CERT_GUI_SQLITE_JOURNAL_MODE="${AZURE_CERT_GUI_SQLITE_JOURNAL_MODE:-WAL}"
 AZURE_CERT_GUI__ROTATION__LIVEENABLED="${AZURE_CERT_GUI__ROTATION__LIVEENABLED:-false}"
-CPU="${CPU:-0.5}"
-MEMORY="${MEMORY:-1Gi}"
+AZURE_SYNC_CONCURRENCY="${AZURE_SYNC_CONCURRENCY:-4}"
+CPU="${CPU:-1.0}"
+MEMORY="${MEMORY:-2Gi}"
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -142,6 +143,49 @@ deactivate_zero_traffic_revisions() {
   for revision in $(run_az containerapp revision list -g "$RESOURCE_GROUP" -n "$APP_NAME" --query '[?trafficWeight==`0`].name' -o tsv); do
     run_az containerapp revision deactivate -g "$RESOURCE_GROUP" -n "$APP_NAME" --revision "$revision" -o none || true
   done
+}
+
+assign_keyvault_access_policies() {
+  local principal_id="$1"
+  local vaults_json
+  vaults_json="$(run_az keyvault list --subscription "$SUBSCRIPTION_ID" --resource-type vault --query '[?properties.enableRbacAuthorization==`false`].[name,resourceGroup]' -o json)"
+  python3 - "$principal_id" "$SUBSCRIPTION_ID" "$vaults_json" <<'PY'
+import json
+import subprocess
+import sys
+
+principal_id = sys.argv[1]
+subscription_id = sys.argv[2]
+vaults = json.loads(sys.argv[3])
+for name, resource_group in vaults:
+    subprocess.check_call(
+        [
+            "az",
+            "keyvault",
+            "set-policy",
+            "--name",
+            name,
+            "--resource-group",
+            resource_group,
+            "--subscription",
+            subscription_id,
+            "--object-id",
+            principal_id,
+            "--secret-permissions",
+            "get",
+            "list",
+            "--certificate-permissions",
+            "get",
+            "list",
+            "--key-permissions",
+            "get",
+            "list",
+            "--only-show-errors",
+            "-o",
+            "none",
+        ]
+    )
+PY
 }
 
 require_command az
@@ -273,6 +317,8 @@ properties:
             value: "$TENANT_ID"
           - name: AZURE_SUBSCRIPTION_IDS
             value: "$SUBSCRIPTION_ID"
+          - name: AZURE_SYNC_CONCURRENCY
+            value: "$AZURE_SYNC_CONCURRENCY"
           - name: AZURE_CERT_GUI_DB_PATH
             value: "$AZURE_CERT_GUI_DB_PATH"
           - name: AZURE_CERT_GUI_SQLITE_JOURNAL_MODE
@@ -336,6 +382,7 @@ for role in Reader "Key Vault Reader" "Key Vault Secrets User" "Key Vault Certif
     --scope "/subscriptions/$SUBSCRIPTION_ID" \
     -o none >/dev/null 2>&1 || true
 done
+assign_keyvault_access_policies "$principal_id"
 assign_graph_app_roles "$principal_id"
 deactivate_zero_traffic_revisions
 
