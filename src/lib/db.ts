@@ -11,12 +11,15 @@ export function dbPath(): string {
 export function openDatabase(): DatabaseSync {
   const path = dbPath();
   mkdirSync(dirname(path), { recursive: true });
-  return new DatabaseSync(path);
+  const db = new DatabaseSync(path);
+  db.exec("PRAGMA busy_timeout = 10000;");
+  return db;
 }
 
 export function migrate(db = openDatabase()): void {
+  const journalMode = sqliteJournalMode();
   db.exec(`
-    PRAGMA journal_mode = WAL;
+    PRAGMA journal_mode = ${journalMode};
     PRAGMA foreign_keys = ON;
 
     CREATE TABLE IF NOT EXISTS credential_items (
@@ -190,6 +193,10 @@ export function migrate(db = openDatabase()): void {
   ensureColumn(db, "renewal_cases", "last_contacted_at", "TEXT");
   ensureColumn(db, "renewal_cases", "escalation_owner", "TEXT");
   ensureColumn(db, "renewal_cases", "handoff_status", "TEXT NOT NULL DEFAULT 'not_contacted'");
+}
+
+function sqliteJournalMode(): "WAL" | "DELETE" {
+  return process.env.AZURE_CERT_GUI_SQLITE_JOURNAL_MODE?.toUpperCase() === "DELETE" ? "DELETE" : "WAL";
 }
 
 function ensureColumn(db: DatabaseSync, table: string, column: string, definition: string): void {

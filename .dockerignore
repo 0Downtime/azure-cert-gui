@@ -1,0 +1,13 @@
+.git
+.github
+.next
+.runtime
+coverage
+data
+node_modules
+out
+.env
+.env.local
+*.tsbuildinfo
+.playwright-cli
+/output/playwright

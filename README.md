@@ -189,6 +189,32 @@ Use `-AuthMode hybrid` only when you want local loopback break-glass auth left a
 
 The previous Windows-specific entry point, `scripts\install-windows-server.ps1`, remains available for compatibility and now uses the same cross-platform bootstrap implementation.
 
+## Azure Container Apps
+
+Deploy a single-replica Azure Container Apps instance from an Azure CLI session:
+
+```bash
+az login
+./scripts/deploy-container-app.sh
+```
+
+The script builds the image in Azure Container Registry, creates a Container Apps environment, creates or reuses an Entra ID OIDC app registration, creates Viewer / Operator / Admin security groups, adds the signed-in user to the Admin group when possible, deploys the app with OIDC-only auth, assigns the Container App managed identity Azure RBAC and Microsoft Graph application permissions, and updates the OIDC redirect URI after Container Apps assigns the public hostname.
+
+The Azure CLI identity running the script needs rights to create resource groups/resources in the target subscription, create or update Entra app registrations and groups, assign Microsoft Graph application roles, and create subscription-level role assignments for the Container App managed identity.
+
+Common overrides:
+
+```bash
+RESOURCE_GROUP=rg-azure-cert-gui-prod \
+LOCATION=eastus \
+APP_NAME=azure-cert-gui \
+ACR_NAME=<globally-unique-acr-name> \
+IMAGE_TAG=$(git rev-parse --short HEAD) \
+./scripts/deploy-container-app.sh
+```
+
+The Container Apps script intentionally uses one replica and `AZURE_CERT_GUI_DB_PATH=/tmp/azure-cert-gui.sqlite`. This makes the hosted app usable for live Azure metadata sync, but the SQLite data is ephemeral across restarts and new revisions. Do not mount the live SQLite database on Azure Files: testing showed immediate SQLite `database is locked` failures even for a brand-new database on the mounted share. For durable hosted workflow state, move the repository layer to Azure SQL/PostgreSQL or run the container on a single host with block-backed storage such as an Azure VM or AKS Azure Disk volume.
+
 ## Daily Use
 
 Refresh live Azure metadata and start the dashboard:
@@ -358,6 +384,7 @@ For a focused rollout, set `AZURE_SUBSCRIPTION_IDS` and/or `AZURE_KEYVAULT_RESOU
 Supported environment values:
 
 - `AZURE_CERT_GUI_DB_PATH`: SQLite path. Defaults to `./data/azure-cert-gui.sqlite`.
+- `AZURE_CERT_GUI_SQLITE_JOURNAL_MODE`: SQLite journal mode. Defaults to `WAL`; use `DELETE` only for environments where WAL is not supported.
 - `AZURE_CLI_PATH`: optional absolute Azure CLI path for daemon contexts that cannot find `az` on `PATH`, such as `/usr/bin/az` or `/opt/homebrew/bin/az`.
 - `AZURE_TENANT_ID`: optional tenant override. When blank, the Azure CLI current account tenant is used.
 - `AZURE_SUBSCRIPTION_IDS`: optional comma-separated subscription IDs. When blank, enabled Azure CLI subscriptions are scanned.
@@ -369,6 +396,7 @@ Supported environment values:
 - `AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY`: OIDC authority, such as an Entra tenant `/v2.0` URL.
 - `AZURE_CERT_GUI__AUTH__OIDC__CLIENTID`: app registration client ID.
 - `AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET`: app registration client secret. Use a secure store in real deployments.
+- `AZURE_CERT_GUI__AUTH__OIDC__PUBLICORIGIN`: externally reachable origin used for OIDC callback URLs when the app is behind container ingress or a reverse proxy.
 - `AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS__0`, `OPERATORGROUPS__0`, `ADMINGROUPS__0`: Entra group object IDs mapped to app roles.
 - `AZURE_CERT_GUI__AUTH__ALLOWLOCALINPRODUCTION`: defaults to `false`. Set `true` only for trusted loopback break-glass runs when `NODE_ENV=production` and auth mode is `local` or `hybrid`.
 - `AZURE_CERT_GUI__ROTATION__LIVEENABLED`: defaults to `false`. Set `true` only when Operators should be allowed to perform non-dry-run Azure mutations.

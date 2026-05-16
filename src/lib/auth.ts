@@ -34,6 +34,7 @@ export interface AuthOptions {
     clientId: string | null;
     clientSecret: string | null;
     callbackPath: string;
+    publicOrigin: string | null;
     rolesClaimType: string;
     displayNameClaimType: string;
     usernameClaimType: string;
@@ -93,6 +94,7 @@ export function authOptionsFromEnv(env: Record<string, string | undefined> = pro
       clientId: readEnv(env, "OIDC__CLIENTID"),
       clientSecret: readEnv(env, "OIDC__CLIENTSECRET"),
       callbackPath: readEnv(env, "OIDC__CALLBACKPATH") ?? "/api/auth/callback",
+      publicOrigin: readEnv(env, "OIDC__PUBLICORIGIN"),
       rolesClaimType: readEnv(env, "OIDC__ROLESCLAIMTYPE") ?? "groups",
       displayNameClaimType: readEnv(env, "OIDC__DISPLAYNAMECLAIMTYPE") ?? "name",
       usernameClaimType: readEnv(env, "OIDC__USERNAMECLAIMTYPE") ?? "preferred_username",
@@ -449,7 +451,7 @@ async function exchangeCodeForTokens(
 }
 
 function callbackUrl(request: NextRequest, options: AuthOptions): string {
-  return new URL(options.oidc.callbackPath, request.nextUrl.origin).toString();
+  return new URL(options.oidc.callbackPath, options.oidc.publicOrigin ?? request.nextUrl.origin).toString();
 }
 
 function sanitizeReturnTo(value: string | null): string {

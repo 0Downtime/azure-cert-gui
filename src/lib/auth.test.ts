@@ -29,6 +29,19 @@ describe("auth configuration", () => {
     expect(options.oidc.adminGroups).toEqual(["admin-group"]);
   });
 
+  it("parses an explicit OIDC public origin for proxied container deployments", () => {
+    const options = authOptionsFromEnv({
+      AZURE_CERT_GUI__AUTH__MODE: "oidc",
+      AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY: "https://login.microsoftonline.com/tenant/v2.0",
+      AZURE_CERT_GUI__AUTH__OIDC__CLIENTID: "client-id",
+      AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET: "client-secret",
+      AZURE_CERT_GUI__AUTH__OIDC__PUBLICORIGIN: "https://azure-cert-gui.example.com",
+      AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS__0: "viewer-group"
+    });
+
+    expect(options.oidc.publicOrigin).toBe("https://azure-cert-gui.example.com");
+  });
+
   it("resolves OIDC roles from configured groups without defaulting unmatched users to Viewer", () => {
     const options = authOptionsFromEnv({
       AZURE_CERT_GUI__AUTH__MODE: "oidc",
