@@ -2354,6 +2354,10 @@ function CredentialDetailPanel({
   const resourceLink = resourceAdminLink(item);
   const inAppRotationSupported = supportsInAppRotation(item);
   const checklist = item.renewalCase ? renewalChecklist(item) : [];
+  const rotationLabels = rotationActionLabels(item);
+  const replacementCreated = Boolean(item.renewalCase?.replacementCredentialId);
+  const replacementValidated = item.renewalCase?.status === "validated" || item.renewalCase?.status === "closed";
+  const caseClosed = item.renewalCase?.status === "closed";
   const [rotationResult, setRotationResult] = useState<{
     ok: boolean;
     message: string;
@@ -2499,6 +2503,30 @@ function CredentialDetailPanel({
               ))}
             </ol>
 
+            <div className="rotation-workflow" aria-label="Rotation workflow">
+              <div className={`rotation-step ${replacementCreated ? "complete" : "active"}`}>
+                <span className="rotation-step-index">{replacementCreated ? <CheckCircle2 size={15} /> : "1"}</span>
+                <div>
+                  <strong>{rotationLabels.createButton}</strong>
+                  <span>{rotationLabels.createHelp}</span>
+                </div>
+              </div>
+              <div className={`rotation-step ${replacementValidated ? "complete" : replacementCreated ? "active" : ""}`}>
+                <span className="rotation-step-index">{replacementValidated ? <CheckCircle2 size={15} /> : "2"}</span>
+                <div>
+                  <strong>Update application and test</strong>
+                  <span>Put the new {rotationLabels.materialName} where the workload reads it, deploy or reload the workload, then confirm it works.</span>
+                </div>
+              </div>
+              <div className={`rotation-step ${caseClosed ? "complete" : replacementValidated ? "active" : ""}`}>
+                <span className="rotation-step-index">{caseClosed ? <CheckCircle2 size={15} /> : "3"}</span>
+                <div>
+                  <strong>{rotationLabels.cleanupButton}</strong>
+                  <span>{rotationLabels.cleanupHelp}</span>
+                </div>
+              </div>
+            </div>
+
             <form action={updateRenewalCase} className="renewal-form">
               <input type="hidden" name="caseId" value={item.renewalCase.id} />
               <label>
@@ -2544,57 +2572,61 @@ function CredentialDetailPanel({
             </form>
 
             {inAppRotationSupported ? (
-            <form onSubmit={prepareRotation} className="renewal-form">
-              <input type="hidden" name="caseId" value={item.renewalCase.id} />
-              <div className="renewal-safety-note">
-                <ShieldAlert size={15} />
-                <span>Replacement is created first. Old credential stays active in v1.</span>
-              </div>
-              <label className="checkbox-row">
-                <input type="checkbox" name="dryRun" />
-                <span>Dry run only</span>
-              </label>
-              <label>
-                <span>Type credential name</span>
-                <input name="confirmation" placeholder={item.credentialName} autoComplete="off" />
-              </label>
-              <label>
-                <span>New display name</span>
-                <input name="newCredentialDisplayName" placeholder={`${item.credentialName} renewal`} />
-              </label>
-              <label>
-                <span>New expiry</span>
-                <input type="datetime-local" name="replacementExpiresAt" />
-              </label>
-              {item.source === "key_vault_secret" ? (
-                <>
-                  <DropdownSelect label="Secret mode" name="secretMode" defaultValue="generated" options={SECRET_MODE_OPTIONS} />
-                  <label>
-                    <span>Provided value</span>
-                    <input type="password" name="providedSecretValue" autoComplete="new-password" />
-                  </label>
-                </>
-              ) : null}
-              {(item.source === "entra_application" || item.source === "service_principal") && item.credentialType === "client_secret" ? (
-                <>
-                  <label>
-                    <span>Copy vault</span>
-                    <input name="keyVaultCopyVaultName" defaultValue={item.renewalCase.keyVaultCopyVaultName ?? ""} />
-                  </label>
-                  <label>
-                    <span>Copy secret</span>
-                    <input name="keyVaultCopySecretName" defaultValue={item.renewalCase.keyVaultCopySecretName ?? ""} />
-                  </label>
-                </>
-              ) : null}
-              <button type="submit" disabled={isRotating || !canOperate}>
-                {isRotating ? "Rotating" : "Run confirmed rotation"}
-              </button>
-            </form>
+              <form onSubmit={prepareRotation} className="renewal-form rotation-create-form">
+                <div className="renewal-form-heading">
+                  <strong>Step 1: {rotationLabels.createButton}</strong>
+                  <span>Type-confirmed Azure action. The current credential remains active so the app can be moved safely.</span>
+                </div>
+                <input type="hidden" name="caseId" value={item.renewalCase.id} />
+                <div className="renewal-safety-note">
+                  <ShieldAlert size={15} />
+                  <span>{rotationLabels.safetyNote}</span>
+                </div>
+                <label className="checkbox-row">
+                  <input type="checkbox" name="dryRun" />
+                  <span>Dry run only: preview the Azure action without creating anything.</span>
+                </label>
+                <label>
+                  <span>Type credential name to confirm</span>
+                  <input name="confirmation" placeholder={item.credentialName} autoComplete="off" />
+                </label>
+                <label>
+                  <span>New display name</span>
+                  <input name="newCredentialDisplayName" placeholder={`${item.credentialName} renewal`} />
+                </label>
+                <label>
+                  <span>New expiry</span>
+                  <input type="datetime-local" name="replacementExpiresAt" />
+                </label>
+                {item.source === "key_vault_secret" ? (
+                  <>
+                    <DropdownSelect label="Secret mode" name="secretMode" defaultValue="generated" options={SECRET_MODE_OPTIONS} />
+                    <label>
+                      <span>Provided value</span>
+                      <input type="password" name="providedSecretValue" autoComplete="new-password" />
+                    </label>
+                  </>
+                ) : null}
+                {(item.source === "entra_application" || item.source === "service_principal") && item.credentialType === "client_secret" ? (
+                  <>
+                    <label>
+                      <span>Copy new secret to Key Vault</span>
+                      <input name="keyVaultCopyVaultName" defaultValue={item.renewalCase.keyVaultCopyVaultName ?? ""} placeholder="Vault name" />
+                    </label>
+                    <label>
+                      <span>Key Vault secret name</span>
+                      <input name="keyVaultCopySecretName" defaultValue={item.renewalCase.keyVaultCopySecretName ?? ""} />
+                    </label>
+                  </>
+                ) : null}
+                <button type="submit" disabled={isRotating || !canOperate}>
+                  {isRotating ? "Creating replacement" : rotationLabels.createButton}
+                </button>
+              </form>
             ) : (
               <div className="renewal-safety-note blocked">
                 <Ban size={15} />
-                <span>Workflow-only case. This credential is excluded from in-app rotation.</span>
+                <span>Workflow-only case. Create the replacement outside this UI, then record validation here.</span>
               </div>
             )}
 
@@ -2614,8 +2646,11 @@ function CredentialDetailPanel({
             <div className="renewal-actions">
               <form action={markRenewalValidated}>
                 <input type="hidden" name="caseId" value={item.renewalCase.id} />
-                <button type="submit">Mark validated</button>
+                <button type="submit">Mark app updated and tested</button>
               </form>
+              <button type="button" disabled title="Old credential deletion is not automated in this version. Remove it in Azure after validation.">
+                {rotationLabels.cleanupButton}
+              </button>
               <form action={closeRenewalCase}>
                 <input type="hidden" name="caseId" value={item.renewalCase.id} />
                 <button type="submit">Close case</button>
@@ -2742,16 +2777,16 @@ function CredentialDetailPanel({
     {pendingRotation ? (
       <div className="modal-backdrop" role="presentation">
         <div className="modal" role="dialog" aria-modal="true" aria-labelledby="rotation-confirm-title">
-          <h2 id="rotation-confirm-title">Confirm rotation</h2>
+          <h2 id="rotation-confirm-title">{pendingRotation.get("dryRun") === "on" ? rotationLabels.previewButton : rotationLabels.createButton}</h2>
           <p>
             Type-confirmed action for <strong>{item.credentialName}</strong>.{" "}
             {pendingRotation.get("dryRun") === "on"
               ? "This is a dry run and will not change Azure or update the renewal case."
-              : "This will create replacement material in Azure and leave the old credential active."}
+              : `This will create a new ${rotationLabels.materialName} in Azure and leave the old credential active.`}
           </p>
           <div className="modal-actions">
             <button type="button" onClick={() => runRotation(pendingRotation)} disabled={isRotating}>
-              {pendingRotation.get("dryRun") === "on" ? "Run dry run" : "Create replacement"}
+              {pendingRotation.get("dryRun") === "on" ? rotationLabels.previewButton : rotationLabels.createButton}
             </button>
             <button type="button" onClick={() => setPendingRotation(null)} disabled={isRotating}>
               Cancel
@@ -3477,6 +3512,74 @@ function supportsInAppRotation(item: DashboardItem): boolean {
   const lifetimeAction = String(item.metadata.certificateLifetimeAction ?? "").toLowerCase();
   const issuerName = String(item.metadata.certificateIssuerName ?? "").toLowerCase();
   return lifetimeAction === "autorenew" || Boolean(issuerName && issuerName !== "self");
+}
+
+function rotationActionLabels(item: DashboardItem): {
+  materialName: string;
+  createButton: string;
+  previewButton: string;
+  cleanupButton: string;
+  createHelp: string;
+  cleanupHelp: string;
+  safetyNote: string;
+} {
+  if ((item.source === "entra_application" || item.source === "service_principal") && item.credentialType === "client_secret") {
+    return {
+      materialName: "client secret",
+      createButton: "Create new client secret",
+      previewButton: "Preview new client secret",
+      cleanupButton: "Delete old client secret",
+      createHelp: "Creates a replacement Entra secret and shows the value once, or copies it to Key Vault if configured.",
+      cleanupHelp: "After the app is using the new secret, remove the old client secret in Entra, then close this case.",
+      safetyNote: "A new client secret is created first. The old secret stays active until the application is updated and tested."
+    };
+  }
+
+  if (item.source === "key_vault_secret") {
+    return {
+      materialName: "secret version",
+      createButton: "Create new secret version",
+      previewButton: "Preview new secret version",
+      cleanupButton: "Disable old secret version",
+      createHelp: "Creates a new Key Vault secret version without deleting the current version.",
+      cleanupHelp: "After consumers read the new version, disable or remove the old version in Key Vault, then close this case.",
+      safetyNote: "A new Key Vault secret version is created first. Consumers must be updated or restarted before old material is removed."
+    };
+  }
+
+  if (item.source === "key_vault_key") {
+    return {
+      materialName: "key version",
+      createButton: "Rotate Key Vault key",
+      previewButton: "Preview key rotation",
+      cleanupButton: "Disable old key version",
+      createHelp: "Asks Key Vault to rotate the key and create a replacement key version.",
+      cleanupHelp: "After dependent services use the new key version, disable old key material in Key Vault, then close this case.",
+      safetyNote: "A new key version is created first. Old key material stays available until validation is complete."
+    };
+  }
+
+  if (item.source === "key_vault_certificate") {
+    return {
+      materialName: "certificate version",
+      createButton: "Renew certificate",
+      previewButton: "Preview certificate renewal",
+      cleanupButton: "Delete old certificate",
+      createHelp: "Starts Key Vault certificate renewal for certificates managed by an issuer or auto-renew policy.",
+      cleanupHelp: "After the app presents or trusts the renewed certificate, remove old certificate material in Key Vault if policy allows.",
+      safetyNote: "A renewed certificate is created first. The old certificate remains available while clients are updated and tested."
+    };
+  }
+
+  return {
+    materialName: "credential",
+    createButton: "Create replacement credential",
+    previewButton: "Preview replacement credential",
+    cleanupButton: "Delete old credential",
+    createHelp: "Create replacement material before changing the application.",
+    cleanupHelp: "After the app is updated and tested, remove the old credential in Azure, then close this case.",
+    safetyNote: "Replacement material is created first. The old credential stays active until validation is complete."
+  };
 }
 
 function renewalChecklist(item: DashboardItem): { label: string; detail: string; complete: boolean }[] {
