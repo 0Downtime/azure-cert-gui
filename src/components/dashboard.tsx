@@ -192,7 +192,7 @@ export function Dashboard({
   const [refreshStatus, setRefreshStatus] = useState<RefreshRunStatus | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [scheduleStatus, setScheduleStatus] = useState<RefreshScheduleStatus | null>(null);
-  const [scheduleInterval, setScheduleInterval] = useState("60");
+  const [scheduleInterval, setScheduleInterval] = useState("1440");
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const refreshStatusRef = useRef<string | null>(null);
   const refreshStartedFromUi = useRef(false);
