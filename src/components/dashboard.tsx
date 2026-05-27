@@ -11,10 +11,12 @@ import {
   Download,
   ExternalLink,
   Filter,
+  HelpCircle,
   KeyRound,
   Moon,
   RefreshCw,
   Search,
+  Settings,
   ShieldAlert,
   Sun,
   UserRound,
@@ -79,6 +81,20 @@ type DropdownOption = {
   label: string;
   description?: string;
   kind?: string;
+};
+type TutorialTarget = "topbar" | "sync" | "metrics" | "tabs" | "queues" | "filters" | "actions" | "table";
+type TutorialStep = {
+  target: TutorialTarget;
+  title: string;
+  body: string;
+};
+type TutorialSpotlight = {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+  popoverTop: number;
+  popoverLeft: number;
 };
 
 const SOURCE_LABELS: Record<InventorySource, string> = {
@@ -239,6 +255,50 @@ const REFRESH_INTERVAL_OPTIONS = [
   { value: "1440", label: "24h" }
 ];
 
+const TUTORIAL_STORAGE_KEY = "azure-cert-gui-tutorial-complete";
+const TUTORIAL_STEPS: TutorialStep[] = [
+  {
+    target: "topbar",
+    title: "Refresh and workspace controls",
+    body: "Refresh Azure metadata, set automatic refresh cadence, switch theme, and open settings from the top bar."
+  },
+  {
+    target: "sync",
+    title: "Sync health",
+    body: "This strip shows the most recent successful sync and the next scheduled automatic refresh."
+  },
+  {
+    target: "metrics",
+    title: "Risk summary",
+    body: "Use these metrics to spot expired credentials, near-term renewals, owner gaps, and source coverage gaps at a glance."
+  },
+  {
+    target: "tabs",
+    title: "Dashboard views",
+    body: "Move between inventory, renewal cases, owner mapping, and audit coverage without losing the main workflow context."
+  },
+  {
+    target: "queues",
+    title: "Quick queues",
+    body: "Jump into the most common triage slices, including urgent expirations, missing owners, and contacted owners."
+  },
+  {
+    target: "filters",
+    title: "Focused filtering",
+    body: "Search and combine source, risk, status, owner, and rotation filters to narrow the credential list."
+  },
+  {
+    target: "actions",
+    title: "Bulk work and exports",
+    body: "Selected rows unlock owner assignment and status updates. Copy and export menus create owner-ready worklists."
+  },
+  {
+    target: "table",
+    title: "Credential inventory",
+    body: "Review each credential row, select items for bulk work, and open the right-side detail drawer for renewal history and edits."
+  }
+];
+
 function authDisplayName(auth: DashboardAuthState): string {
   const displayName = auth.displayName?.trim();
   if (displayName) return displayName;
@@ -283,6 +343,9 @@ export function Dashboard({
   const [selectedDetailId, setSelectedDetailId] = useState<number | null>(null);
   const [copyPanel, setCopyPanel] = useState<{ title: string; text: string; copied: boolean } | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
+  const [tutorialStepIndex, setTutorialStepIndex] = useState<number | null>(null);
+  const [tutorialSpotlight, setTutorialSpotlight] = useState<TutorialSpotlight | null>(null);
   const [refreshStatus, setRefreshStatus] = useState<RefreshRunStatus | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [scheduleStatus, setScheduleStatus] = useState<RefreshScheduleStatus | null>(null);
@@ -291,6 +354,7 @@ export function Dashboard({
   const refreshStatusRef = useRef<string | null>(null);
   const refreshStartedFromUi = useRef(false);
   const [isPending, startTransition] = useTransition();
+  const currentTutorialStep = tutorialStepIndex === null ? null : TUTORIAL_STEPS[tutorialStepIndex] ?? null;
 
   useEffect(() => {
     const stored = window.localStorage.getItem("azure-cert-gui-theme");
@@ -303,6 +367,12 @@ export function Dashboard({
   useEffect(() => {
     void loadRefreshStatus(false);
     void loadScheduleStatus(true);
+  }, []);
+
+  useEffect(() => {
+    if (window.localStorage.getItem(TUTORIAL_STORAGE_KEY) === "complete") return;
+    const timer = window.setTimeout(() => startTutorial(), 350);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -322,6 +392,62 @@ export function Dashboard({
     return () => window.clearInterval(timer);
   }, [scheduleStatus?.enabled]);
 
+  useEffect(() => {
+    if (!currentTutorialStep) {
+      setTutorialSpotlight(null);
+      return;
+    }
+
+    const target = document.querySelector<HTMLElement>(`[data-tour-key="${currentTutorialStep.target}"]`);
+    if (!target) {
+      setTutorialSpotlight(null);
+      return;
+    }
+    const tourTarget = target;
+
+    let frame = 0;
+    const cardWidth = 360;
+    const cardHeight = 236;
+    const gap = 14;
+    const edge = 16;
+
+    function syncSpotlight() {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const rect = tourTarget.getBoundingClientRect();
+        const belowTop = rect.bottom + gap;
+        const aboveTop = rect.top - cardHeight - gap;
+        const popoverTop =
+          belowTop + cardHeight < window.innerHeight ? belowTop : Math.max(edge, aboveTop);
+        const popoverLeft = Math.min(
+          Math.max(edge, rect.left),
+          Math.max(edge, window.innerWidth - cardWidth - edge)
+        );
+
+        setTutorialSpotlight({
+          top: Math.max(edge, rect.top - 8),
+          left: Math.max(edge, rect.left - 8),
+          width: Math.min(window.innerWidth - edge * 2, rect.width + 16),
+          height: Math.min(window.innerHeight - edge * 2, rect.height + 16),
+          popoverTop,
+          popoverLeft
+        });
+      });
+    }
+
+    tourTarget.scrollIntoView({ block: "center", inline: "nearest" });
+    syncSpotlight();
+    const settledTimer = window.setTimeout(syncSpotlight, 180);
+    window.addEventListener("resize", syncSpotlight);
+    window.addEventListener("scroll", syncSpotlight, true);
+    return () => {
+      window.clearTimeout(settledTimer);
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", syncSpotlight);
+      window.removeEventListener("scroll", syncSpotlight, true);
+    };
+  }, [currentTutorialStep]);
+
   function toggleTheme() {
     setTheme((current) => {
       const next = current === "dark" ? "light" : "dark";
@@ -329,6 +455,35 @@ export function Dashboard({
       window.localStorage.setItem("azure-cert-gui-theme", next);
       return next;
     });
+  }
+
+  function startTutorial() {
+    setActiveTab("inventory");
+    setSelectedDetailId(null);
+    setExportMenuOpen(false);
+    setSettingsMenuOpen(false);
+    setTutorialStepIndex(0);
+  }
+
+  function finishTutorial() {
+    window.localStorage.setItem(TUTORIAL_STORAGE_KEY, "complete");
+    setTutorialStepIndex(null);
+    setTutorialSpotlight(null);
+  }
+
+  function nextTutorialStep() {
+    setTutorialStepIndex((current) => {
+      if (current === null) return 0;
+      if (current >= TUTORIAL_STEPS.length - 1) {
+        window.localStorage.setItem(TUTORIAL_STORAGE_KEY, "complete");
+        return null;
+      }
+      return current + 1;
+    });
+  }
+
+  function previousTutorialStep() {
+    setTutorialStepIndex((current) => (current === null ? 0 : Math.max(0, current - 1)));
   }
 
   async function loadRefreshStatus(refreshWhenFinished: boolean) {
@@ -711,7 +866,7 @@ export function Dashboard({
 
   function credentialTable(rows: DashboardItem[], label: string) {
     return (
-      <section className="table-wrap inventory-table" aria-label={label}>
+      <section className="table-wrap inventory-table" aria-label={label} data-tour-key="table">
         {items.length === 0 ? (
           <EmptyState />
         ) : rows.length === 0 ? (
@@ -942,7 +1097,7 @@ export function Dashboard({
             </span>
           </div>
         </div>
-        <div className="topbar-actions">
+        <div className="topbar-actions" data-tour-key="topbar">
           <button
             type="button"
             className="refresh-button"
@@ -996,6 +1151,27 @@ export function Dashboard({
           >
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
           </button>
+          <div className="settings-menu">
+            <button
+              type="button"
+              className="icon-button settings-toggle"
+              onClick={() => setSettingsMenuOpen((current) => !current)}
+              aria-expanded={settingsMenuOpen}
+              aria-label="Open settings"
+              title="Settings"
+            >
+              <Settings size={16} />
+            </button>
+            {settingsMenuOpen ? (
+              <div className="settings-menu-panel" role="menu" aria-label="Settings">
+                <strong>Settings</strong>
+                <button type="button" role="menuitem" onClick={startTutorial}>
+                  <HelpCircle size={15} />
+                  Replay tutorial
+                </button>
+              </div>
+            ) : null}
+          </div>
           <div className="auth-pill" title={authTitle}>
             <UserRound size={16} />
             <span className="auth-name">{signedInName}</span>
@@ -1004,7 +1180,7 @@ export function Dashboard({
         </div>
       </header>
 
-      <section className="operations-strip" aria-label="Refresh operations">
+      <section className="operations-strip" aria-label="Refresh operations" data-tour-key="sync">
         <div className={`sync-pill ${refreshStatus?.status === "running" ? "running" : refreshStatus?.status ?? ""}`}>
           {refreshStatus?.status === "running" ? (
             <span className="sync-loader" aria-hidden="true" />
@@ -1094,7 +1270,7 @@ export function Dashboard({
         </button>
       </section>
 
-      <section className="metrics" aria-label="Inventory summary">
+      <section className="metrics" aria-label="Inventory summary" data-tour-key="metrics">
         <Metric label="Total" value={summary.total} icon={<Database size={18} />} />
         <Metric label="Expired" value={summary.expired} tone="danger" icon={<XCircle size={18} />} />
         <Metric label="0-30 days" value={summary.next30} tone="warning" icon={<Clock size={18} />} />
@@ -1105,7 +1281,7 @@ export function Dashboard({
         <Metric label="Coverage gaps" value={summary.coverageGaps} tone="danger" icon={<ShieldAlert size={18} />} />
       </section>
 
-      <nav className="tabs" role="tablist" aria-label="Dashboard views">
+      <nav className="tabs" role="tablist" aria-label="Dashboard views" data-tour-key="tabs">
         {(Object.keys(TAB_LABELS) as DashboardTab[]).map((tab) => (
           <button
             key={tab}
@@ -1135,7 +1311,7 @@ export function Dashboard({
         aria-labelledby="tab-inventory"
         hidden={activeTab !== "inventory"}
       >
-        <section className="queuebar" aria-label="Quick queues">
+        <section className="queuebar" aria-label="Quick queues" data-tour-key="queues">
           <button
             type="button"
             className={allSyncedViewActive ? "active" : ""}
@@ -1165,7 +1341,7 @@ export function Dashboard({
           ))}
         </section>
 
-        <section className="toolbar" aria-label="Filters">
+        <section className="toolbar" aria-label="Filters" data-tour-key="filters">
           <label className="search">
             <Search size={16} />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search app, vault, owner, credential" />
@@ -1178,7 +1354,7 @@ export function Dashboard({
           <DropdownSelect label="Sort" value={inventorySort} onChange={(value) => setInventorySort(value as InventorySort)} options={INVENTORY_SORT_OPTIONS} />
         </section>
 
-        <section className="actionbar" aria-label="Bulk actions">
+        <section className="actionbar" aria-label="Bulk actions" data-tour-key="actions">
           <div>
             <Filter size={16} />
             <span>{filtered.length} visible</span>
@@ -1364,6 +1540,18 @@ export function Dashboard({
           onCopy={copyText}
         />
       ) : null}
+
+      {currentTutorialStep ? (
+        <TutorialOverlay
+          step={currentTutorialStep}
+          stepIndex={tutorialStepIndex ?? 0}
+          stepCount={TUTORIAL_STEPS.length}
+          spotlight={tutorialSpotlight}
+          onBack={previousTutorialStep}
+          onNext={nextTutorialStep}
+          onSkip={finishTutorial}
+        />
+      ) : null}
     </main>
   );
 }
@@ -1373,6 +1561,74 @@ function AzureCertLogo() {
     <div className="azure-cert-logo" aria-hidden="true">
       <img className="logo-light" src="/azure-cert-logo-light.png" alt="" width={512} height={512} decoding="async" />
       <img className="logo-dark" src="/azure-cert-logo-dark.png" alt="" width={512} height={512} decoding="async" />
+    </div>
+  );
+}
+
+function TutorialOverlay({
+  step,
+  stepIndex,
+  stepCount,
+  spotlight,
+  onBack,
+  onNext,
+  onSkip
+}: {
+  step: TutorialStep;
+  stepIndex: number;
+  stepCount: number;
+  spotlight: TutorialSpotlight | null;
+  onBack: () => void;
+  onNext: () => void;
+  onSkip: () => void;
+}) {
+  const highlightStyle = spotlight
+    ? {
+        top: `${spotlight.top}px`,
+        left: `${spotlight.left}px`,
+        width: `${spotlight.width}px`,
+        height: `${spotlight.height}px`
+      }
+    : undefined;
+  const popoverStyle = spotlight
+    ? {
+        top: `${spotlight.popoverTop}px`,
+        left: `${spotlight.popoverLeft}px`
+      }
+    : undefined;
+  const isLastStep = stepIndex === stepCount - 1;
+
+  return (
+    <div className="tour-overlay" aria-live="polite">
+      <div className="tour-click-catcher" aria-hidden="true" />
+      {spotlight ? <div className="tour-highlight" style={highlightStyle} aria-hidden="true" /> : null}
+      <section className="tour-popover" style={popoverStyle} role="dialog" aria-modal="true" aria-labelledby="tour-title">
+        <div className="tour-progress" aria-label={`Tutorial step ${stepIndex + 1} of ${stepCount}`}>
+          {TUTORIAL_STEPS.map((tourStep, index) => (
+            <span key={tourStep.target} className={index <= stepIndex ? "active" : ""} />
+          ))}
+        </div>
+        <div className="tour-copy">
+          <span>
+            Step {stepIndex + 1} of {stepCount}
+          </span>
+          <h2 id="tour-title">{step.title}</h2>
+          <p>{step.body}</p>
+        </div>
+        <div className="tour-actions">
+          <button type="button" onClick={onSkip}>
+            Skip
+          </button>
+          <div>
+            <button type="button" onClick={onBack} disabled={stepIndex === 0}>
+              Back
+            </button>
+            <button type="button" className="primary" onClick={onNext}>
+              {isLastStep ? "Finish" : "Next"}
+            </button>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
