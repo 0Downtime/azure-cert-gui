@@ -970,6 +970,39 @@ export function Dashboard({
     [scheduleInterval]
   );
 
+  useEffect(() => {
+    let frame = 0;
+    const syncTitles = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => syncOverflowTitles());
+    };
+
+    syncTitles();
+    window.addEventListener("resize", syncTitles);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", syncTitles);
+    };
+  }, [
+    activeTab,
+    azureSettings,
+    bucket,
+    copyPanel,
+    density,
+    filtered,
+    ownerMode,
+    query,
+    renewalCaseFilter,
+    renewalHandoffFilter,
+    renewalOwnerFilter,
+    renewalRiskFilter,
+    rotationScope,
+    selectedDetailId,
+    source,
+    status,
+    workflowMode
+  ]);
+
   function toggleSelection(id: number) {
     setSelectedIds((current) =>
       current.includes(id) ? current.filter((selected) => selected !== id) : [...current, id]
@@ -3902,6 +3935,58 @@ function matchesRotationScope(item: DashboardItem, rotationScope: RotationScope)
   if (rotationScope === "all") return true;
   if (rotationScope === "actionable") return isRenewalActionable(item.rotationMode);
   return item.rotationMode === rotationScope;
+}
+
+function syncOverflowTitles(): void {
+  const root = document.querySelector<HTMLElement>(".shell");
+  if (!root) return;
+
+  const candidates = root.querySelectorAll<HTMLElement>(
+    [
+      ".auth-name",
+      ".inventory-table td",
+      ".inventory-table td strong",
+      ".inventory-table .credential",
+      ".owner-summary strong",
+      ".status-summary strong",
+      ".mapping-value",
+      ".detail-code",
+      ".resource-admin-link",
+      ".settings-list dd",
+      ".setting-row span",
+      ".guidance-action em",
+      ".queuebar span",
+      ".ui-select-trigger strong",
+      ".ui-select-list strong",
+      ".ui-select-list span:not(.ui-select-kind)",
+      ".owner-autocomplete-list strong",
+      ".owner-autocomplete-list span:not(.owner-autocomplete-kind)",
+      ".coverage-row strong",
+      ".coverage-row .muted",
+      ".owner-gap-row strong",
+      ".owner-mapping-row strong"
+    ].join(",")
+  );
+
+  for (const element of candidates) {
+    if (element.hasAttribute("title") && element.dataset.overflowTitle !== "true") continue;
+
+    const text = visibleText(element);
+    const overflows =
+      element.scrollWidth > element.clientWidth + 1 || element.scrollHeight > element.clientHeight + 1;
+
+    if (overflows && text) {
+      element.title = text;
+      element.dataset.overflowTitle = "true";
+    } else if (element.dataset.overflowTitle === "true") {
+      element.removeAttribute("title");
+      delete element.dataset.overflowTitle;
+    }
+  }
+}
+
+function visibleText(element: HTMLElement): string {
+  return (element.innerText || element.textContent || "").replace(/\s+/g, " ").trim();
 }
 
 function splitSettingLines(value: string): string[] {
