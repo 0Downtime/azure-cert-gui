@@ -3,6 +3,7 @@ node_modules/
 .next/
 out/
 coverage/
+test-results/
 *.tsbuildinfo
 .playwright-cli/
 /output/playwright/

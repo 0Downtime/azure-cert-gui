@@ -38,6 +38,79 @@ jobs:
       - name: Audit production dependencies
         run: npm audit --omit=dev
 
+  sonarqube:
+    name: SonarQube Quality Gate
+    runs-on: ubuntu-latest
+    if: github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    env:
+      SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONARQUBE_CONFIGURED: ${{ vars.SONAR_HOST_URL != '' && secrets.SONAR_TOKEN != '' }}
+    steps:
+      - name: Check SonarQube configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${SONARQUBE_CONFIGURED}" != "true" ]]; then
+            echo "::notice title=SonarQube skipped::Set the SONAR_HOST_URL repository variable and SONAR_TOKEN repository secret to enable the SonarQube quality gate."
+          fi
+
+      - name: Checkout full history
+        if: env.SONARQUBE_CONFIGURED == 'true'
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        if: env.SONARQUBE_CONFIGURED == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Verify SonarQube configuration
+        if: env.SONARQUBE_CONFIGURED == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${SONAR_HOST_URL}" ]]; then
+            echo "SONAR_HOST_URL repository variable is required for the SonarQube quality gate."
+            exit 1
+          fi
+          if [[ -z "${SONAR_TOKEN}" ]]; then
+            echo "SONAR_TOKEN repository secret is required for the SonarQube quality gate."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        if: env.SONARQUBE_CONFIGURED == 'true'
+        run: npm ci --ignore-scripts
+
+      - name: Typecheck
+        if: env.SONARQUBE_CONFIGURED == 'true'
+        run: npm run typecheck
+
+      - name: Test with coverage
+        if: env.SONARQUBE_CONFIGURED == 'true'
+        run: |
+          mkdir -p test-results
+          npm run test:ci
+
+      - name: Build
+        if: env.SONARQUBE_CONFIGURED == 'true'
+        run: npm run build
+
+      - name: Audit production dependencies
+        if: env.SONARQUBE_CONFIGURED == 'true'
+        run: npm audit --omit=dev
+
+      - name: Run SonarQube analysis
+        if: env.SONARQUBE_CONFIGURED == 'true'
+        uses: SonarSource/sonarqube-scan-action@v7
+        env:
+          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest

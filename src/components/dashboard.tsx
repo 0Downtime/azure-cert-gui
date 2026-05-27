@@ -1,21 +1,22 @@
 "use client";
 
-import azureCertLogoDark from "@/app/azure-cert-logo-dark.png";
-import azureCertLogoLight from "@/app/azure-cert-logo-light.png";
 import {
   AlertTriangle,
   Ban,
   CheckCircle2,
+  ChevronRight,
   Clock,
   Copy,
   Database,
   Download,
+  ExternalLink,
   Filter,
+  HelpCircle,
   KeyRound,
   Moon,
-  PanelRightOpen,
   RefreshCw,
   Search,
+  Settings,
   ShieldAlert,
   Sun,
   UserRound,
@@ -23,7 +24,17 @@ import {
   XCircle
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
+import {
+  Fragment,
+  type FormEvent,
+  type KeyboardEvent,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useTransition
+} from "react";
 import type {
   CoverageHealth,
   DashboardAuthState,
@@ -59,6 +70,32 @@ type WorkflowMode = "all" | "urgent" | "due60" | "unknown" | "contacted_pending"
 type RotationScope = "actionable" | "all" | RotationMode;
 type DashboardTab = "inventory" | "renewals" | "owners" | "coverage";
 type SourceFilter = InventorySource | "all" | "key_vault";
+type OwnerSuggestionFilter = "all" | "users" | "groups";
+type InventorySort = "expires_soonest" | "recently_expired";
+type RenewalCaseFilter = RenewalCaseStatus | "all" | "needs_case";
+type RenewalOwnerFilter = "all" | "assigned" | "unassigned";
+type RenewalHandoffFilter = RenewalHandoffStatus | "all" | "none";
+type RenewalSort = "due_soonest" | "expires_soonest" | "recent_activity";
+type DropdownOption = {
+  value: string;
+  label: string;
+  description?: string;
+  kind?: string;
+};
+type TutorialTarget = "topbar" | "sync" | "metrics" | "tabs" | "queues" | "filters" | "actions" | "table";
+type TutorialStep = {
+  target: TutorialTarget;
+  title: string;
+  body: string;
+};
+type TutorialSpotlight = {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+  popoverTop: number;
+  popoverLeft: number;
+};
 
 const SOURCE_LABELS: Record<InventorySource, string> = {
   entra_application: "Entra app",
@@ -140,6 +177,73 @@ const TAB_LABELS: Record<DashboardTab, string> = {
   coverage: "Coverage & Audit"
 };
 
+const INVENTORY_SORT_LABELS: Record<InventorySort, string> = {
+  expires_soonest: "Nearest expiration",
+  recently_expired: "Recently expired"
+};
+
+const SOURCE_FILTER_OPTIONS: DropdownOption[] = [
+  { value: "all", label: "All sources" },
+  { value: "key_vault", label: "All Key Vault" },
+  ...Object.entries(SOURCE_LABELS).map(([value, label]) => ({ value, label }))
+];
+
+const RISK_FILTER_OPTIONS: DropdownOption[] = [
+  { value: "all", label: "All risks" },
+  ...Object.entries(BUCKET_LABELS).map(([value, label]) => ({ value, label }))
+];
+
+const STATUS_FILTER_OPTIONS: DropdownOption[] = [
+  { value: "all", label: "All statuses" },
+  ...Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))
+];
+
+const OWNER_FILTER_OPTIONS: DropdownOption[] = [
+  { value: "all", label: "All owners" },
+  { value: "unknown", label: "Unassigned" },
+  { value: "low", label: "Low confidence" }
+];
+
+const ROTATION_FILTER_OPTIONS: DropdownOption[] = [
+  { value: "actionable", label: "Owner rotates" },
+  { value: "all", label: "All rotation modes" },
+  ...Object.entries(ROTATION_LABELS).map(([value, label]) => ({ value, label }))
+];
+
+const INVENTORY_SORT_OPTIONS: DropdownOption[] = Object.entries(INVENTORY_SORT_LABELS).map(([value, label]) => ({
+  value,
+  label
+}));
+
+const RENEWAL_CASE_FILTER_OPTIONS: DropdownOption[] = [
+  { value: "all", label: "All renewal work" },
+  { value: "needs_case", label: "Needs case" },
+  ...Object.entries(RENEWAL_CASE_LABELS).map(([value, label]) => ({ value, label }))
+];
+
+const RENEWAL_OWNER_FILTER_OPTIONS: DropdownOption[] = [
+  { value: "all", label: "All owners" },
+  { value: "assigned", label: "Assigned" },
+  { value: "unassigned", label: "Unassigned" }
+];
+
+const RENEWAL_HANDOFF_FILTER_OPTIONS: DropdownOption[] = [
+  { value: "all", label: "All handoffs" },
+  { value: "none", label: "No handoff started" },
+  ...Object.entries(HANDOFF_LABELS).map(([value, label]) => ({ value, label }))
+];
+
+const RENEWAL_SORT_OPTIONS: DropdownOption[] = [
+  { value: "due_soonest", label: "Due soonest" },
+  { value: "expires_soonest", label: "Expires soonest" },
+  { value: "recent_activity", label: "Recent activity" }
+];
+
+const SECRET_MODE_OPTIONS: DropdownOption[] = [
+  { value: "generated", label: "Generate value" },
+  { value: "provided", label: "Use provided value" }
+];
+
 const REFRESH_INTERVAL_OPTIONS = [
   { value: "5", label: "5m" },
   { value: "15", label: "15m" },
@@ -149,6 +253,50 @@ const REFRESH_INTERVAL_OPTIONS = [
   { value: "240", label: "4h" },
   { value: "720", label: "12h" },
   { value: "1440", label: "24h" }
+];
+
+const TUTORIAL_STORAGE_KEY = "azure-cert-gui-tutorial-complete";
+const TUTORIAL_STEPS: TutorialStep[] = [
+  {
+    target: "topbar",
+    title: "Refresh and workspace controls",
+    body: "Refresh Azure metadata, set automatic refresh cadence, switch theme, and open settings from the top bar."
+  },
+  {
+    target: "sync",
+    title: "Sync health",
+    body: "This strip shows the most recent successful sync and the next scheduled automatic refresh."
+  },
+  {
+    target: "metrics",
+    title: "Risk summary",
+    body: "Use these metrics to spot expired credentials, near-term renewals, owner gaps, and source coverage gaps at a glance."
+  },
+  {
+    target: "tabs",
+    title: "Dashboard views",
+    body: "Move between inventory, renewal cases, owner mapping, and audit coverage without losing the main workflow context."
+  },
+  {
+    target: "queues",
+    title: "Quick queues",
+    body: "Jump into the most common triage slices, including urgent expirations, missing owners, and contacted owners."
+  },
+  {
+    target: "filters",
+    title: "Focused filtering",
+    body: "Search and combine source, risk, status, owner, and rotation filters to narrow the credential list."
+  },
+  {
+    target: "actions",
+    title: "Bulk work and exports",
+    body: "Selected rows unlock owner assignment and status updates. Copy and export menus create owner-ready worklists."
+  },
+  {
+    target: "table",
+    title: "Credential inventory",
+    body: "Review each credential row, select items for bulk work, and open the right-side detail drawer for renewal history and edits."
+  }
 ];
 
 function authDisplayName(auth: DashboardAuthState): string {
@@ -182,6 +330,12 @@ export function Dashboard({
   const [status, setStatus] = useState<WorkflowStatus | "all">("all");
   const [ownerMode, setOwnerMode] = useState<"all" | "unknown" | "low">("all");
   const [rotationScope, setRotationScope] = useState<RotationScope>("actionable");
+  const [inventorySort, setInventorySort] = useState<InventorySort>("expires_soonest");
+  const [renewalCaseFilter, setRenewalCaseFilter] = useState<RenewalCaseFilter>("all");
+  const [renewalRiskFilter, setRenewalRiskFilter] = useState<RiskBucket | "all">("all");
+  const [renewalOwnerFilter, setRenewalOwnerFilter] = useState<RenewalOwnerFilter>("all");
+  const [renewalHandoffFilter, setRenewalHandoffFilter] = useState<RenewalHandoffFilter>("all");
+  const [renewalSort, setRenewalSort] = useState<RenewalSort>("due_soonest");
   const [workflowMode, setWorkflowMode] = useState<WorkflowMode>(() => (summary.unknownOwners > 0 ? "unknown" : "all"));
   const [activeTab, setActiveTab] = useState<DashboardTab>("inventory");
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -189,6 +343,9 @@ export function Dashboard({
   const [selectedDetailId, setSelectedDetailId] = useState<number | null>(null);
   const [copyPanel, setCopyPanel] = useState<{ title: string; text: string; copied: boolean } | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
+  const [tutorialStepIndex, setTutorialStepIndex] = useState<number | null>(null);
+  const [tutorialSpotlight, setTutorialSpotlight] = useState<TutorialSpotlight | null>(null);
   const [refreshStatus, setRefreshStatus] = useState<RefreshRunStatus | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [scheduleStatus, setScheduleStatus] = useState<RefreshScheduleStatus | null>(null);
@@ -197,6 +354,7 @@ export function Dashboard({
   const refreshStatusRef = useRef<string | null>(null);
   const refreshStartedFromUi = useRef(false);
   const [isPending, startTransition] = useTransition();
+  const currentTutorialStep = tutorialStepIndex === null ? null : TUTORIAL_STEPS[tutorialStepIndex] ?? null;
 
   useEffect(() => {
     const stored = window.localStorage.getItem("azure-cert-gui-theme");
@@ -209,6 +367,12 @@ export function Dashboard({
   useEffect(() => {
     void loadRefreshStatus(false);
     void loadScheduleStatus(true);
+  }, []);
+
+  useEffect(() => {
+    if (window.localStorage.getItem(TUTORIAL_STORAGE_KEY) === "complete") return;
+    const timer = window.setTimeout(() => startTutorial(), 350);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -228,6 +392,62 @@ export function Dashboard({
     return () => window.clearInterval(timer);
   }, [scheduleStatus?.enabled]);
 
+  useEffect(() => {
+    if (!currentTutorialStep) {
+      setTutorialSpotlight(null);
+      return;
+    }
+
+    const target = document.querySelector<HTMLElement>(`[data-tour-key="${currentTutorialStep.target}"]`);
+    if (!target) {
+      setTutorialSpotlight(null);
+      return;
+    }
+    const tourTarget = target;
+
+    let frame = 0;
+    const cardWidth = 360;
+    const cardHeight = 236;
+    const gap = 14;
+    const edge = 16;
+
+    function syncSpotlight() {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const rect = tourTarget.getBoundingClientRect();
+        const belowTop = rect.bottom + gap;
+        const aboveTop = rect.top - cardHeight - gap;
+        const popoverTop =
+          belowTop + cardHeight < window.innerHeight ? belowTop : Math.max(edge, aboveTop);
+        const popoverLeft = Math.min(
+          Math.max(edge, rect.left),
+          Math.max(edge, window.innerWidth - cardWidth - edge)
+        );
+
+        setTutorialSpotlight({
+          top: Math.max(edge, rect.top - 8),
+          left: Math.max(edge, rect.left - 8),
+          width: Math.min(window.innerWidth - edge * 2, rect.width + 16),
+          height: Math.min(window.innerHeight - edge * 2, rect.height + 16),
+          popoverTop,
+          popoverLeft
+        });
+      });
+    }
+
+    tourTarget.scrollIntoView({ block: "center", inline: "nearest" });
+    syncSpotlight();
+    const settledTimer = window.setTimeout(syncSpotlight, 180);
+    window.addEventListener("resize", syncSpotlight);
+    window.addEventListener("scroll", syncSpotlight, true);
+    return () => {
+      window.clearTimeout(settledTimer);
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", syncSpotlight);
+      window.removeEventListener("scroll", syncSpotlight, true);
+    };
+  }, [currentTutorialStep]);
+
   function toggleTheme() {
     setTheme((current) => {
       const next = current === "dark" ? "light" : "dark";
@@ -235,6 +455,35 @@ export function Dashboard({
       window.localStorage.setItem("azure-cert-gui-theme", next);
       return next;
     });
+  }
+
+  function startTutorial() {
+    setActiveTab("inventory");
+    setSelectedDetailId(null);
+    setExportMenuOpen(false);
+    setSettingsMenuOpen(false);
+    setTutorialStepIndex(0);
+  }
+
+  function finishTutorial() {
+    window.localStorage.setItem(TUTORIAL_STORAGE_KEY, "complete");
+    setTutorialStepIndex(null);
+    setTutorialSpotlight(null);
+  }
+
+  function nextTutorialStep() {
+    setTutorialStepIndex((current) => {
+      if (current === null) return 0;
+      if (current >= TUTORIAL_STEPS.length - 1) {
+        window.localStorage.setItem(TUTORIAL_STORAGE_KEY, "complete");
+        return null;
+      }
+      return current + 1;
+    });
+  }
+
+  function previousTutorialStep() {
+    setTutorialStepIndex((current) => (current === null ? 0 : Math.max(0, current - 1)));
   }
 
   async function loadRefreshStatus(refreshWhenFinished: boolean) {
@@ -349,7 +598,7 @@ export function Dashboard({
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return items.filter((item) => {
+    const matching = items.filter((item) => {
       if (!matchesSourceFilter(item, source)) return false;
       if (bucket !== "all" && item.riskBucket !== bucket) return false;
       if (status !== "all" && item.status !== status) return false;
@@ -364,7 +613,8 @@ export function Dashboard({
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(needle));
     });
-  }, [bucket, items, ownerMode, query, rotationScope, source, status, workflowMode]);
+    return sortInventoryItems(matching, inventorySort);
+  }, [bucket, inventorySort, items, ownerMode, query, rotationScope, source, status, workflowMode]);
 
   const queueCounts = useMemo(
     () =>
@@ -410,6 +660,16 @@ export function Dashboard({
               item.riskBucket === "61-90"))
       ),
     [items]
+  );
+  const visibleRenewalWorkItems = useMemo(
+    () =>
+      sortRenewalItems(
+        renewalWorkItems.filter((item) =>
+          matchesRenewalFilters(item, renewalCaseFilter, renewalRiskFilter, renewalOwnerFilter, renewalHandoffFilter)
+        ),
+        renewalSort
+      ),
+    [renewalCaseFilter, renewalHandoffFilter, renewalOwnerFilter, renewalRiskFilter, renewalSort, renewalWorkItems]
   );
   const ownerGapItems = useMemo(() => items.filter((item) => !item.ownerName), [items]);
   const detailCoverage = useMemo(
@@ -606,7 +866,7 @@ export function Dashboard({
 
   function credentialTable(rows: DashboardItem[], label: string) {
     return (
-      <section className="table-wrap inventory-table" aria-label={label}>
+      <section className="table-wrap inventory-table" aria-label={label} data-tour-key="table">
         {items.length === 0 ? (
           <EmptyState />
         ) : rows.length === 0 ? (
@@ -631,54 +891,75 @@ export function Dashboard({
               </tr>
             </thead>
             <tbody>
-              {rows.map((item) => (
-                <tr key={item.id} className={`${item.removedAt ? "removed" : ""} ${selectedDetailId === item.id ? "selected-row" : ""}`}>
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.includes(item.id)}
-                      onChange={() => toggleSelection(item.id)}
-                      aria-label={`Select ${item.credentialName}`}
-                    />
-                  </td>
-                  <td>
-                    <RiskBadge item={item} />
-                  </td>
-                  <td title={`${SOURCE_LABELS[item.source]}\n${item.parentName}\n${item.naturalKey}`}>
-                    <strong>{item.parentName}</strong>
-                  </td>
-                  <td title={`${item.credentialName}\n${item.credentialType}\n${item.credentialId}`}>
-                    <span className="credential">
-                      <KeyRound size={15} />
-                      {item.credentialName}
-                    </span>
-                  </td>
-                  <td>
-                    <RotationBadge item={item} />
-                  </td>
-                  <td>
-                    <strong>{formatDate(item.expiresAt)}</strong>
-                    <DaysOut days={item.daysUntilExpiry} />
-                  </td>
-                  <td>
-                    <OwnerSummary item={item} />
-                  </td>
-                  <td>
-                    <StatusSummary item={item} />
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      className="icon-button"
-                      onClick={() => setSelectedDetailId(item.id)}
-                      aria-label={`Open details for ${item.credentialName}`}
-                      title="Open details"
-                    >
-                      <PanelRightOpen size={15} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {rows.map((item) => {
+                const expanded = selectedDetailId === item.id;
+                return (
+                  <Fragment key={item.id}>
+                    <tr className={`${item.removedAt ? "removed" : ""} ${expanded ? "selected-row" : ""}`}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(item.id)}
+                          onChange={() => toggleSelection(item.id)}
+                          aria-label={`Select ${item.credentialName}`}
+                        />
+                      </td>
+                      <td>
+                        <RiskBadge item={item} />
+                      </td>
+                      <td title={`${SOURCE_LABELS[item.source]}\n${item.parentName}\n${item.naturalKey}`}>
+                        <strong>{item.parentName}</strong>
+                      </td>
+                      <td title={`${item.credentialName}\n${item.credentialType}\n${item.credentialId}`}>
+                        <span className="credential">
+                          <KeyRound size={15} />
+                          {item.credentialName}
+                        </span>
+                      </td>
+                      <td>
+                        <RotationBadge item={item} />
+                      </td>
+                      <td>
+                        <strong>{formatDate(item.expiresAt)}</strong>
+                        <DaysOut days={item.daysUntilExpiry} />
+                      </td>
+                      <td>
+                        <OwnerSummary item={item} />
+                      </td>
+                      <td>
+                        <StatusSummary item={item} />
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="icon-button detail-toggle"
+                          onClick={() => setSelectedDetailId(expanded ? null : item.id)}
+                          aria-expanded={expanded}
+                          aria-label={`${expanded ? "Collapse" : "Open"} details for ${item.credentialName}`}
+                          title={expanded ? "Collapse details" : "Open details"}
+                        >
+                          <ChevronRight size={18} strokeWidth={2.25} />
+                        </button>
+                      </td>
+                    </tr>
+                    {expanded ? (
+                      <tr className="inventory-detail-row">
+                        <td colSpan={9}>
+                          <CredentialDetailPanel
+                            item={item}
+                            coverage={coverage.filter((row) => coverageMatchesItem(row, item))}
+                            ownerSuggestions={ownerSuggestions}
+                            canOperate={auth.canOperate}
+                            onClose={() => setSelectedDetailId(null)}
+                            onCopy={copyText}
+                            inline
+                          />
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -717,64 +998,83 @@ export function Dashboard({
                 const lastEvent = renewalCase?.events[0] ?? null;
                 const ownerName = renewalCase?.ownerName ?? item.ownerName;
                 const ownerEmail = renewalCase?.ownerEmail ?? item.ownerEmail;
+                const expanded = selectedDetailId === item.id;
                 return (
-                  <tr key={item.id} className={selectedDetailId === item.id ? "selected-row" : ""}>
-                    <td>
-                      <span className={`renewal-case-chip ${renewalCase?.status ?? "none"}`}>
-                        {renewalCase ? RENEWAL_CASE_LABELS[renewalCase.status] : "Needs case"}
-                      </span>
-                      <span className="muted">{renewalCase ? `Case #${renewalCase.id}` : "Open detail drawer"}</span>
-                    </td>
-                    <td>
-                      <strong>{item.parentName}</strong>
-                      <span className="credential">
-                        <KeyRound size={15} />
-                        {item.credentialName}
-                      </span>
-                      <span className="muted">
-                        {SOURCE_LABELS[item.source]} / {item.credentialType}
-                      </span>
-                    </td>
-                    <td>
-                      <strong>{ownerName ?? "Unassigned"}</strong>
-                      <span className="muted">{ownerEmail ?? "No email"}</span>
-                      <span className="muted">
-                        {renewalCase ? HANDOFF_LABELS[renewalCase.handoffStatus] : "No handoff started"}
-                      </span>
-                    </td>
-                    <td>
-                      <strong>{renewalCase?.dueAt ? formatDate(renewalCase.dueAt) : formatDate(item.expiresAt)}</strong>
-                      <span className="muted">
-                        {renewalCase?.reminderAt ? `Reminder ${formatDate(renewalCase.reminderAt)}` : "No reminder set"}
-                      </span>
-                    </td>
-                    <td>
-                      <RiskBadge item={item} />
-                      <span className="muted">{formatDate(item.expiresAt)}</span>
-                      <DaysOut days={item.daysUntilExpiry} />
-                    </td>
-                    <td>
-                      <strong>{renewalCase?.replacementCredentialId ?? "Not created"}</strong>
-                      <span className="muted">{formatDate(renewalCase?.replacementExpiresAt ?? null)}</span>
-                    </td>
-                    <td>
-                      <strong>{lastEvent ? lastEvent.eventType.replaceAll("_", " ") : "No case event"}</strong>
-                      <span className="muted">
-                        {lastEvent ? `${lastEvent.createdBy} ${formatDateTime(lastEvent.createdAt)}` : "Open case to start audit history"}
-                      </span>
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="icon-button"
-                        onClick={() => setSelectedDetailId(item.id)}
-                        aria-label={`${renewalCase ? "Review renewal case" : "Open renewal case"} for ${item.credentialName}`}
-                        title={renewalCase ? "Review renewal case" : "Open renewal case"}
-                      >
-                        <PanelRightOpen size={15} />
-                      </button>
-                    </td>
-                  </tr>
+                  <Fragment key={item.id}>
+                    <tr className={expanded ? "selected-row" : ""}>
+                      <td>
+                        <span className={`renewal-case-chip ${renewalCase?.status ?? "none"}`}>
+                          {renewalCase ? RENEWAL_CASE_LABELS[renewalCase.status] : "Needs case"}
+                        </span>
+                        <span className="muted">{renewalCase ? `Case #${renewalCase.id}` : "Open inline details"}</span>
+                      </td>
+                      <td>
+                        <strong>{item.parentName}</strong>
+                        <span className="credential">
+                          <KeyRound size={15} />
+                          {item.credentialName}
+                        </span>
+                        <span className="muted">
+                          {SOURCE_LABELS[item.source]} / {item.credentialType}
+                        </span>
+                      </td>
+                      <td>
+                        <strong>{ownerName ?? "Unassigned"}</strong>
+                        <span className="muted">{ownerEmail ?? "No email"}</span>
+                        <span className="muted">
+                          {renewalCase ? HANDOFF_LABELS[renewalCase.handoffStatus] : "No handoff started"}
+                        </span>
+                      </td>
+                      <td>
+                        <strong>{renewalCase?.dueAt ? formatDate(renewalCase.dueAt) : formatDate(item.expiresAt)}</strong>
+                        <span className="muted">
+                          {renewalCase?.reminderAt ? `Reminder ${formatDate(renewalCase.reminderAt)}` : "No reminder set"}
+                        </span>
+                      </td>
+                      <td>
+                        <RiskBadge item={item} />
+                        <span className="muted">{formatDate(item.expiresAt)}</span>
+                        <DaysOut days={item.daysUntilExpiry} />
+                      </td>
+                      <td>
+                        <strong>{renewalCase?.replacementCredentialId ?? "Not created"}</strong>
+                        <span className="muted">{formatDate(renewalCase?.replacementExpiresAt ?? null)}</span>
+                      </td>
+                      <td>
+                        <strong>{lastEvent ? lastEvent.eventType.replaceAll("_", " ") : "No case event"}</strong>
+                        <span className="muted">
+                          {lastEvent ? `${lastEvent.createdBy} ${formatDateTime(lastEvent.createdAt)}` : "Open case to start audit history"}
+                        </span>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="icon-button detail-toggle"
+                          onClick={() => setSelectedDetailId(expanded ? null : item.id)}
+                          aria-expanded={expanded}
+                          aria-label={`${expanded ? "Collapse" : renewalCase ? "Review renewal case" : "Open renewal case"} for ${item.credentialName}`}
+                          title={expanded ? "Collapse details" : renewalCase ? "Review renewal case" : "Open renewal case"}
+                        >
+                          <ChevronRight size={18} strokeWidth={2.25} />
+                        </button>
+                      </td>
+                    </tr>
+                    {expanded ? (
+                      <tr className="renewal-detail-row">
+                        <td colSpan={8}>
+                          <CredentialDetailPanel
+                            item={item}
+                            coverage={coverage.filter((row) => coverageMatchesItem(row, item))}
+                            ownerSuggestions={ownerSuggestions}
+                            canOperate={auth.canOperate}
+                            onClose={() => setSelectedDetailId(null)}
+                            onCopy={copyText}
+                            inline
+                          />
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -790,12 +1090,14 @@ export function Dashboard({
         <div className="brand-lockup">
           <AzureCertLogo />
           <div>
-            <p className="eyebrow">Azure / Entra Inventory</p>
             <h1>Azure Cert GUI</h1>
-            <span>Credential Expiration Dashboard</span>
+            <span>
+              Credential command center | {summary.total} credentials |{" "}
+              {summary.lastSuccessfulSyncAt ? `Last sync ${formatDateTime(summary.lastSuccessfulSyncAt)}` : "No successful sync"}
+            </span>
           </div>
         </div>
-        <div className="topbar-actions">
+        <div className="topbar-actions" data-tour-key="topbar">
           <button
             type="button"
             className="refresh-button"
@@ -807,37 +1109,26 @@ export function Dashboard({
             title={auth.canOperate ? "Refresh data" : "Operator access required"}
           >
             <RefreshCw size={16} className={refreshStatus?.status === "running" ? "spin" : ""} />
-            <span className="refresh-label-full" aria-hidden="true">
-              {refreshStatus?.status === "running" ? "Refreshing" : "Refresh data"}
-            </span>
-            <span className="refresh-label-short" aria-hidden="true">
-              {refreshStatus?.status === "running" ? "Refreshing" : "Refresh"}
-            </span>
+            <span>{refreshStatus?.status === "running" ? "Refreshing" : "Refresh"}</span>
           </button>
           <form className="scheduler-form" onSubmit={saveRefreshSchedule}>
-            <label>
-              <Clock size={14} aria-hidden="true" />
-              <select
-                name="intervalMinutes"
-                value={scheduleInterval}
-                onChange={(event) => setScheduleInterval(event.currentTarget.value)}
-                disabled={!auth.canOperate}
-                aria-label="Automatic refresh interval"
-              >
-                {refreshIntervalOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <DropdownSelect
+              name="intervalMinutes"
+              value={scheduleInterval}
+              onChange={setScheduleInterval}
+              options={refreshIntervalOptions}
+              disabled={!auth.canOperate}
+              ariaLabel="Automatic refresh interval"
+              leadingIcon={<Clock size={14} aria-hidden="true" />}
+              compact
+            />
             <button
               type="submit"
               disabled={!auth.canOperate}
               title={scheduleStatus?.enabled ? "Update automatic refresh" : "Enable automatic refresh"}
+              aria-label={scheduleStatus?.enabled ? "Update automatic refresh" : "Enable automatic refresh"}
             >
               <RefreshCw size={14} aria-hidden="true" />
-              <span>{scheduleStatus?.enabled ? "Update" : "Auto"}</span>
             </button>
             <button
               type="button"
@@ -850,20 +1141,46 @@ export function Dashboard({
               <X size={14} aria-hidden="true" />
             </button>
           </form>
-          <button type="button" className="theme-toggle" onClick={toggleTheme} aria-pressed={theme === "dark"}>
+          <button
+            type="button"
+            className="icon-button theme-toggle"
+            onClick={toggleTheme}
+            aria-pressed={theme === "dark"}
+            aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+            title={theme === "dark" ? "Light theme" : "Dark theme"}
+          >
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-            <span>{theme === "dark" ? "Light" : "Dark"}</span>
           </button>
+          <div className="settings-menu">
+            <button
+              type="button"
+              className="icon-button settings-toggle"
+              onClick={() => setSettingsMenuOpen((current) => !current)}
+              aria-expanded={settingsMenuOpen}
+              aria-label="Open settings"
+              title="Settings"
+            >
+              <Settings size={16} />
+            </button>
+            {settingsMenuOpen ? (
+              <div className="settings-menu-panel" role="menu" aria-label="Settings">
+                <strong>Settings</strong>
+                <button type="button" role="menuitem" onClick={startTutorial}>
+                  <HelpCircle size={15} />
+                  Replay tutorial
+                </button>
+              </div>
+            ) : null}
+          </div>
           <div className="auth-pill" title={authTitle}>
             <UserRound size={16} />
             <span className="auth-name">{signedInName}</span>
-            <span className="auth-role">{auth.accessLevel}</span>
             {auth.source === "oidc" ? <a href={auth.signOutPath}>Sign out</a> : null}
           </div>
         </div>
       </header>
 
-      <section className="operations-strip" aria-label="Refresh operations">
+      <section className="operations-strip" aria-label="Refresh operations" data-tour-key="sync">
         <div className={`sync-pill ${refreshStatus?.status === "running" ? "running" : refreshStatus?.status ?? ""}`}>
           {refreshStatus?.status === "running" ? (
             <span className="sync-loader" aria-hidden="true" />
@@ -873,10 +1190,15 @@ export function Dashboard({
           <span>
             {refreshStatus?.status === "running"
               ? `Refreshing ${refreshStatus.progress}%`
-              : `Last sync ${summary.lastSuccessfulSyncAt ? formatDateTime(summary.lastSuccessfulSyncAt) : "never"}`}
+              : refreshStatus?.status === "succeeded"
+                ? "Refresh complete"
+                : refreshStatus?.status === "failed"
+                  ? "Refresh failed"
+                  : "Sync idle"}
           </span>
         </div>
-        <span className={`scheduler-state ${scheduleStatus?.enabled ? "enabled" : ""}`}>
+        <span className={`scheduler-state sync-pill ${scheduleStatus?.enabled ? "enabled" : ""}`}>
+          <Clock size={16} aria-hidden="true" />
           {scheduleStatus?.enabled && scheduleStatus.nextRunAt
             ? `Auto ${scheduleStatus.intervalMinutes}m / next ${formatDateTime(scheduleStatus.nextRunAt)}`
             : "Auto refresh off"}
@@ -935,7 +1257,20 @@ export function Dashboard({
         </section>
       ) : null}
 
-      <section className="metrics" aria-label="Inventory summary">
+      <section className="summary-band" aria-label="Operational summary">
+        <div>
+          <p className="eyebrow">Current posture</p>
+          <h2>{summary.expired + summary.next30} urgent credentials need attention</h2>
+          <span>
+            {summary.unknownOwners} owner gaps, {summary.coverageGaps} source coverage gaps, and {summary.excludedFromRenewal} credentials excluded from owner rotation exports.
+          </span>
+        </div>
+        <button type="button" onClick={() => setActiveTab("renewals")}>
+          Review renewals
+        </button>
+      </section>
+
+      <section className="metrics" aria-label="Inventory summary" data-tour-key="metrics">
         <Metric label="Total" value={summary.total} icon={<Database size={18} />} />
         <Metric label="Expired" value={summary.expired} tone="danger" icon={<XCircle size={18} />} />
         <Metric label="0-30 days" value={summary.next30} tone="warning" icon={<Clock size={18} />} />
@@ -946,7 +1281,7 @@ export function Dashboard({
         <Metric label="Coverage gaps" value={summary.coverageGaps} tone="danger" icon={<ShieldAlert size={18} />} />
       </section>
 
-      <nav className="tabs" role="tablist" aria-label="Dashboard views">
+      <nav className="tabs" role="tablist" aria-label="Dashboard views" data-tour-key="tabs">
         {(Object.keys(TAB_LABELS) as DashboardTab[]).map((tab) => (
           <button
             key={tab}
@@ -976,7 +1311,7 @@ export function Dashboard({
         aria-labelledby="tab-inventory"
         hidden={activeTab !== "inventory"}
       >
-        <section className="queuebar" aria-label="Quick queues">
+        <section className="queuebar" aria-label="Quick queues" data-tour-key="queues">
           <button
             type="button"
             className={allSyncedViewActive ? "active" : ""}
@@ -1006,53 +1341,20 @@ export function Dashboard({
           ))}
         </section>
 
-        <section className="toolbar" aria-label="Filters">
+        <section className="toolbar" aria-label="Filters" data-tour-key="filters">
           <label className="search">
             <Search size={16} />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search app, vault, owner, credential" />
           </label>
-          <Select label="Source" value={source} onChange={(value) => setSource(value as SourceFilter)}>
-            <option value="all">All sources</option>
-            <option value="key_vault">Key Vault certs, secrets, keys</option>
-            {Object.entries(SOURCE_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
-          <Select label="Risk" value={bucket} onChange={(value) => setBucket(value as RiskBucket | "all")}>
-            <option value="all">All risk</option>
-            {Object.entries(BUCKET_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
-          <Select label="Status" value={status} onChange={(value) => setStatus(value as WorkflowStatus | "all")}>
-            <option value="all">All status</option>
-            {Object.entries(STATUS_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
-          <Select label="Owner" value={ownerMode} onChange={(value) => setOwnerMode(value as "all" | "unknown" | "low")}>
-            <option value="all">All owners</option>
-            <option value="unknown">Unknown only</option>
-            <option value="low">Low confidence</option>
-          </Select>
-          <Select label="Rotation" value={rotationScope} onChange={(value) => setRotationScope(value as RotationScope)}>
-            <option value="actionable">Actionable only</option>
-            <option value="all">All rotation modes</option>
-            {Object.entries(ROTATION_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
+          <DropdownSelect label="Source" value={source} onChange={(value) => setSource(value as SourceFilter)} options={SOURCE_FILTER_OPTIONS} />
+          <DropdownSelect label="Risk" value={bucket} onChange={(value) => setBucket(value as RiskBucket | "all")} options={RISK_FILTER_OPTIONS} />
+          <DropdownSelect label="Status" value={status} onChange={(value) => setStatus(value as WorkflowStatus | "all")} options={STATUS_FILTER_OPTIONS} />
+          <DropdownSelect label="Owner" value={ownerMode} onChange={(value) => setOwnerMode(value as "all" | "unknown" | "low")} options={OWNER_FILTER_OPTIONS} />
+          <DropdownSelect label="Rotation" value={rotationScope} onChange={(value) => setRotationScope(value as RotationScope)} options={ROTATION_FILTER_OPTIONS} />
+          <DropdownSelect label="Sort" value={inventorySort} onChange={(value) => setInventorySort(value as InventorySort)} options={INVENTORY_SORT_OPTIONS} />
         </section>
 
-        <section className="actionbar" aria-label="Bulk actions">
+        <section className="actionbar" aria-label="Bulk actions" data-tour-key="actions">
           <div>
             <Filter size={16} />
             <span>{filtered.length} visible</span>
@@ -1126,11 +1428,43 @@ export function Dashboard({
             <span>Active cases and actionable credentials due within 90 days</span>
           </div>
           <div className="tab-counts">
-            <strong>{renewalWorkItems.length}</strong>
+            <strong>{visibleRenewalWorkItems.length}</strong>
             <span>items</span>
           </div>
         </section>
-        {renewalTable(renewalWorkItems)}
+        <section className="toolbar renewal-toolbar" aria-label="Renewal filters">
+          <DropdownSelect
+            label="Case"
+            value={renewalCaseFilter}
+            onChange={(value) => setRenewalCaseFilter(value as RenewalCaseFilter)}
+            options={RENEWAL_CASE_FILTER_OPTIONS}
+          />
+          <DropdownSelect
+            label="Risk"
+            value={renewalRiskFilter}
+            onChange={(value) => setRenewalRiskFilter(value as RiskBucket | "all")}
+            options={RISK_FILTER_OPTIONS}
+          />
+          <DropdownSelect
+            label="Owner"
+            value={renewalOwnerFilter}
+            onChange={(value) => setRenewalOwnerFilter(value as RenewalOwnerFilter)}
+            options={RENEWAL_OWNER_FILTER_OPTIONS}
+          />
+          <DropdownSelect
+            label="Handoff"
+            value={renewalHandoffFilter}
+            onChange={(value) => setRenewalHandoffFilter(value as RenewalHandoffFilter)}
+            options={RENEWAL_HANDOFF_FILTER_OPTIONS}
+          />
+          <DropdownSelect
+            label="Sort"
+            value={renewalSort}
+            onChange={(value) => setRenewalSort(value as RenewalSort)}
+            options={RENEWAL_SORT_OPTIONS}
+          />
+        </section>
+        {renewalTable(visibleRenewalWorkItems)}
       </section>
 
       <section
@@ -1196,14 +1530,26 @@ export function Dashboard({
         </section>
       ) : null}
 
-      {selectedDetail && (activeTab === "inventory" || activeTab === "renewals" || activeTab === "owners") ? (
-        <CredentialDetailDrawer
+      {selectedDetail && activeTab === "owners" ? (
+        <CredentialDetailPanel
           item={selectedDetail}
           coverage={detailCoverage}
           ownerSuggestions={ownerSuggestions}
           canOperate={auth.canOperate}
           onClose={() => setSelectedDetailId(null)}
           onCopy={copyText}
+        />
+      ) : null}
+
+      {currentTutorialStep ? (
+        <TutorialOverlay
+          step={currentTutorialStep}
+          stepIndex={tutorialStepIndex ?? 0}
+          stepCount={TUTORIAL_STEPS.length}
+          spotlight={tutorialSpotlight}
+          onBack={previousTutorialStep}
+          onNext={nextTutorialStep}
+          onSkip={finishTutorial}
         />
       ) : null}
     </main>
@@ -1213,19 +1559,88 @@ export function Dashboard({
 function AzureCertLogo() {
   return (
     <div className="azure-cert-logo" aria-hidden="true">
-      <img className="logo-light" src={azureCertLogoLight.src} alt="" width={72} height={72} decoding="async" />
-      <img className="logo-dark" src={azureCertLogoDark.src} alt="" width={72} height={72} decoding="async" />
+      <img className="logo-light" src="/azure-cert-logo-light.png" alt="" width={512} height={512} decoding="async" />
+      <img className="logo-dark" src="/azure-cert-logo-dark.png" alt="" width={512} height={512} decoding="async" />
     </div>
   );
 }
 
-function CredentialDetailDrawer({
+function TutorialOverlay({
+  step,
+  stepIndex,
+  stepCount,
+  spotlight,
+  onBack,
+  onNext,
+  onSkip
+}: {
+  step: TutorialStep;
+  stepIndex: number;
+  stepCount: number;
+  spotlight: TutorialSpotlight | null;
+  onBack: () => void;
+  onNext: () => void;
+  onSkip: () => void;
+}) {
+  const highlightStyle = spotlight
+    ? {
+        top: `${spotlight.top}px`,
+        left: `${spotlight.left}px`,
+        width: `${spotlight.width}px`,
+        height: `${spotlight.height}px`
+      }
+    : undefined;
+  const popoverStyle = spotlight
+    ? {
+        top: `${spotlight.popoverTop}px`,
+        left: `${spotlight.popoverLeft}px`
+      }
+    : undefined;
+  const isLastStep = stepIndex === stepCount - 1;
+
+  return (
+    <div className="tour-overlay" aria-live="polite">
+      <div className="tour-click-catcher" aria-hidden="true" />
+      {spotlight ? <div className="tour-highlight" style={highlightStyle} aria-hidden="true" /> : null}
+      <section className="tour-popover" style={popoverStyle} role="dialog" aria-modal="true" aria-labelledby="tour-title">
+        <div className="tour-progress" aria-label={`Tutorial step ${stepIndex + 1} of ${stepCount}`}>
+          {TUTORIAL_STEPS.map((tourStep, index) => (
+            <span key={tourStep.target} className={index <= stepIndex ? "active" : ""} />
+          ))}
+        </div>
+        <div className="tour-copy">
+          <span>
+            Step {stepIndex + 1} of {stepCount}
+          </span>
+          <h2 id="tour-title">{step.title}</h2>
+          <p>{step.body}</p>
+        </div>
+        <div className="tour-actions">
+          <button type="button" onClick={onSkip}>
+            Skip
+          </button>
+          <div>
+            <button type="button" onClick={onBack} disabled={stepIndex === 0}>
+              Back
+            </button>
+            <button type="button" className="primary" onClick={onNext}>
+              {isLastStep ? "Finish" : "Next"}
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function CredentialDetailPanel({
   item,
   coverage,
   ownerSuggestions,
   canOperate,
   onClose,
-  onCopy
+  onCopy,
+  inline = false
 }: {
   item: DashboardItem;
   coverage: DashboardCoverage[];
@@ -1233,9 +1648,11 @@ function CredentialDetailDrawer({
   canOperate: boolean;
   onClose: () => void;
   onCopy: (title: string, text: string) => Promise<void>;
+  inline?: boolean;
 }) {
   const router = useRouter();
   const metadata = Object.entries(item.metadata);
+  const resourceLink = resourceAdminLink(item);
   const inAppRotationSupported = supportsInAppRotation(item);
   const checklist = item.renewalCase ? renewalChecklist(item) : [];
   const [rotationResult, setRotationResult] = useState<{
@@ -1277,9 +1694,8 @@ function CredentialDetailDrawer({
     });
   }
 
-  return (
-    <>
-    <aside className="detail-drawer" aria-label="Credential detail">
+  const detailPanel = (
+    <div className={inline ? "detail-inline" : "detail-drawer"} aria-label="Credential detail">
       <div className="detail-header">
         <div>
           <p className="eyebrow">{SOURCE_LABELS[item.source]}</p>
@@ -1292,6 +1708,12 @@ function CredentialDetailDrawer({
       </div>
 
       <div className="detail-actions">
+        {resourceLink ? (
+          <a className="detail-action-link" href={resourceLink.href} target="_blank" rel="noreferrer" title={resourceLink.title}>
+            <ExternalLink size={15} />
+            {resourceLink.label}
+          </a>
+        ) : null}
         <button type="button" onClick={() => void onCopy("Credential identifiers", detailCopyText(item))}>
           <Copy size={15} />
           Copy identifiers
@@ -1316,16 +1738,7 @@ function CredentialDetailDrawer({
         </form>
         <form action={updateCredentialStatus} className="status-detail-form">
           <input type="hidden" name="id" value={item.id} />
-          <label>
-            <span>Status</span>
-            <select name="status" defaultValue={item.status} aria-label={`Status for ${item.credentialName}`}>
-              {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <StatusDropdown name="status" defaultValue={item.status} ariaLabel={`Status for ${item.credentialName}`} />
           <button type="submit">Save status</button>
         </form>
       </section>
@@ -1402,16 +1815,12 @@ function CredentialDetailDrawer({
                 <span>Notes</span>
                 <input name="notes" defaultValue={item.renewalCase.notes ?? ""} />
               </label>
-              <label>
-                <span>Handoff</span>
-                <select name="handoffStatus" defaultValue={item.renewalCase.handoffStatus}>
-                  {Object.entries(HANDOFF_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <DropdownSelect
+                label="Handoff"
+                name="handoffStatus"
+                defaultValue={item.renewalCase.handoffStatus}
+                options={Object.entries(HANDOFF_LABELS).map(([value, label]) => ({ value, label }))}
+              />
               <label>
                 <span>Last contacted</span>
                 <input type="date" name="lastContactedAt" defaultValue={dateInputValue(item.renewalCase.lastContactedAt)} />
@@ -1460,13 +1869,7 @@ function CredentialDetailDrawer({
               </label>
               {item.source === "key_vault_secret" ? (
                 <>
-                  <label>
-                    <span>Secret mode</span>
-                    <select name="secretMode" defaultValue="generated">
-                      <option value="generated">Generate value</option>
-                      <option value="provided">Use provided value</option>
-                    </select>
-                  </label>
+                  <DropdownSelect label="Secret mode" name="secretMode" defaultValue="generated" options={SECRET_MODE_OPTIONS} />
                   <label>
                     <span>Provided value</span>
                     <input type="password" name="providedSecretValue" autoComplete="new-password" />
@@ -1555,6 +1958,19 @@ function CredentialDetailDrawer({
       <section className="detail-section">
         <h3>Identifiers</h3>
         <dl className="detail-list">
+          <DetailRow
+            label="Admin link"
+            value={
+              resourceLink ? (
+                <a className="resource-admin-link" href={resourceLink.href} target="_blank" rel="noreferrer" title={resourceLink.title}>
+                  {resourceLink.label}
+                  <ExternalLink size={13} />
+                </a>
+              ) : (
+                "No direct portal link"
+              )
+            }
+          />
           <DetailRow label="Natural key" value={<CodeValue value={item.naturalKey} />} />
           <DetailRow label="Parent ID" value={<CodeValue value={item.parentId} />} />
           <DetailRow label="Credential ID" value={<CodeValue value={item.credentialId} />} />
@@ -1618,7 +2034,12 @@ function CredentialDetailDrawer({
           </dl>
         </section>
       ) : null}
-    </aside>
+    </div>
+  );
+
+  return (
+    <>
+    {detailPanel}
     {pendingRotation ? (
       <div className="modal-backdrop" role="presentation">
         <div className="modal" role="dialog" aria-modal="true" aria-labelledby="rotation-confirm-title">
@@ -1697,6 +2118,168 @@ function OwnerAutocompleteFields({
   );
 }
 
+const STATUS_DESCRIPTIONS: Record<WorkflowStatus, string> = {
+  not_started: "No owner action has been recorded.",
+  owner_contacted: "The rotation owner has been contacted.",
+  rotation_scheduled: "A rotation date or rollout window is planned.",
+  rotated: "Replacement or rotation work is complete.",
+  ignored: "Excluded from active follow-up."
+};
+
+const STATUS_OPTIONS = Object.entries(STATUS_LABELS).map(([value, label]) => ({
+  value: value as WorkflowStatus,
+  label,
+  description: STATUS_DESCRIPTIONS[value as WorkflowStatus]
+}));
+
+function StatusDropdown({
+  name,
+  defaultValue,
+  ariaLabel
+}: {
+  name: string;
+  defaultValue: WorkflowStatus;
+  ariaLabel: string;
+}) {
+  return <DropdownSelect label="Status" name={name} defaultValue={defaultValue} ariaLabel={ariaLabel} options={STATUS_OPTIONS} />;
+}
+
+function DropdownSelect({
+  label,
+  name,
+  value,
+  defaultValue,
+  onChange,
+  options,
+  ariaLabel,
+  disabled = false,
+  leadingIcon,
+  compact = false
+}: {
+  label?: string;
+  name?: string;
+  value?: string;
+  defaultValue?: string;
+  onChange?: (value: string) => void;
+  options: DropdownOption[];
+  ariaLabel?: string;
+  disabled?: boolean;
+  leadingIcon?: React.ReactNode;
+  compact?: boolean;
+}) {
+  const listboxId = `dropdown-options-${useId().replaceAll(":", "")}`;
+  const firstValue = options[0]?.value ?? "";
+  const [internalValue, setInternalValue] = useState(defaultValue ?? value ?? firstValue);
+  const [open, setOpen] = useState(false);
+  const currentValue = value ?? internalValue;
+  const selectedIndex = Math.max(
+    options.findIndex((option) => option.value === currentValue),
+    0
+  );
+  const [activeOptionIndex, setActiveOptionIndex] = useState(selectedIndex);
+  const selectedOption = options[selectedIndex] ?? { value: firstValue, label: firstValue };
+
+  useEffect(() => {
+    if (value === undefined) {
+      setInternalValue(defaultValue ?? firstValue);
+    }
+  }, [defaultValue, firstValue, value]);
+
+  function chooseOption(next: string) {
+    if (value === undefined) {
+      setInternalValue(next);
+    }
+    onChange?.(next);
+    setOpen(false);
+    setActiveOptionIndex(Math.max(options.findIndex((option) => option.value === next), 0));
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (disabled) return;
+
+    if (!open) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Enter" || event.key === " ") {
+        setOpen(true);
+        setActiveOptionIndex(selectedIndex);
+        event.preventDefault();
+      }
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      setActiveOptionIndex((current) => Math.min(current + 1, options.length - 1));
+      event.preventDefault();
+    } else if (event.key === "ArrowUp") {
+      setActiveOptionIndex((current) => Math.max(current - 1, 0));
+      event.preventDefault();
+    } else if (event.key === "Enter" || event.key === " ") {
+      chooseOption(options[activeOptionIndex].value);
+      event.preventDefault();
+    } else if (event.key === "Escape") {
+      setOpen(false);
+      event.preventDefault();
+    }
+  }
+
+  return (
+    <div
+      className={`ui-select-field${compact ? " compact" : ""}`}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setOpen(false);
+        }
+      }}
+    >
+      {label ? <span>{label}</span> : null}
+      {name ? <input type="hidden" name={name} value={currentValue} /> : null}
+      <div className="ui-select">
+        <button
+          type="button"
+          className="ui-select-trigger"
+          aria-label={ariaLabel ?? label}
+          aria-controls={listboxId}
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          disabled={disabled}
+          onClick={() => {
+            setOpen((current) => !current);
+            setActiveOptionIndex(selectedIndex);
+          }}
+          onKeyDown={handleKeyDown}
+        >
+          {leadingIcon ? <span className="ui-select-icon">{leadingIcon}</span> : null}
+          <strong>{selectedOption.label}</strong>
+          <span aria-hidden="true" className="ui-select-caret" />
+        </button>
+        {open ? (
+          <div id={listboxId} className="ui-select-list" role="listbox">
+            {options.map((option, index) => (
+              <button
+                type="button"
+                key={option.value}
+                className={`${option.value === currentValue ? "selected" : ""} ${index === activeOptionIndex ? "active" : ""} ${
+                  option.kind || option.description ? "" : "simple"
+                }`}
+                role="option"
+                aria-selected={option.value === currentValue}
+                onMouseEnter={() => setActiveOptionIndex(index)}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  chooseOption(option.value);
+                }}
+              >
+                {option.kind || option.description ? <span className="ui-select-kind">{option.kind ?? label ?? "Option"}</span> : null}
+                <strong>{option.label}</strong>
+                {option.description ? <span>{option.description}</span> : null}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function OwnerAutocompleteInputs({
   suggestions,
   defaultOwnerName = "",
@@ -1712,67 +2295,188 @@ function OwnerAutocompleteInputs({
   ownerAriaLabel?: string;
   withLabels?: boolean;
 }) {
-  const datalistId = useId().replaceAll(":", "");
+  const listboxId = `owner-identities-${useId().replaceAll(":", "")}`;
   const defaultOwnerValue = defaultOwnerName || defaultOwnerEmail;
   const [ownerLookup, setOwnerLookup] = useState(defaultOwnerValue);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [activeOptionIndex, setActiveOptionIndex] = useState(0);
+  const [ownerSuggestionFilter, setOwnerSuggestionFilter] = useState<OwnerSuggestionFilter>("all");
 
   useEffect(() => {
     setOwnerLookup(defaultOwnerName || defaultOwnerEmail);
   }, [defaultOwnerName, defaultOwnerEmail]);
 
-  const listId = `owner-identities-${datalistId}`;
-  const identityOptions = ownerIdentityOptions(suggestions);
+  const identityOptions = useMemo(() => ownerIdentityOptions(suggestions), [suggestions]);
+  const filteredIdentityOptions = useMemo(() => {
+    const needle = ownerLookup.trim().toLowerCase();
+    const filteredByType = identityOptions.filter((option) => {
+      if (ownerSuggestionFilter === "groups") return option.kind === "group";
+      if (ownerSuggestionFilter === "users") return option.kind === "user";
+      return true;
+    });
+    const matches = needle
+      ? filteredByType.filter((option) => `${option.value} ${option.label}`.toLowerCase().includes(needle))
+      : filteredByType;
+    return matches.slice(0, 8);
+  }, [identityOptions, ownerLookup, ownerSuggestionFilter]);
+  const showSuggestionPanel = suggestionsOpen;
+  const showSuggestions = showSuggestionPanel && filteredIdentityOptions.length > 0;
+
+  function chooseOwner(option: OwnerIdentityOption) {
+    setOwnerLookup(option.value);
+    setSuggestionsOpen(false);
+    setActiveOptionIndex(0);
+  }
+
+  function setFilter(filter: OwnerSuggestionFilter) {
+    setOwnerSuggestionFilter(filter);
+    setSuggestionsOpen(true);
+    setActiveOptionIndex(0);
+  }
+
+  function handleOwnerKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (!showSuggestions) {
+      if (event.key === "ArrowDown" && filteredIdentityOptions.length > 0) {
+        setSuggestionsOpen(true);
+        event.preventDefault();
+      }
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      setActiveOptionIndex((current) => Math.min(current + 1, filteredIdentityOptions.length - 1));
+      event.preventDefault();
+    } else if (event.key === "ArrowUp") {
+      setActiveOptionIndex((current) => Math.max(current - 1, 0));
+      event.preventDefault();
+    } else if (event.key === "Enter") {
+      chooseOwner(filteredIdentityOptions[activeOptionIndex]);
+      event.preventDefault();
+    } else if (event.key === "Escape") {
+      setSuggestionsOpen(false);
+      event.preventDefault();
+    }
+  }
 
   const ownerInput = (
-    <input
-        name="ownerLookup"
-        value={ownerLookup}
-        onChange={(event) => setOwnerLookup(event.target.value)}
-        list={listId}
-        placeholder={ownerPlaceholder}
-        aria-label={ownerAriaLabel}
-        autoComplete="off"
-      />
-  );
-  const lists = (
-    <datalist id={listId}>
-        {identityOptions.map((option) => (
-          <option
-            key={`${option.value}:${option.label}`}
-            value={option.value}
-            label={option.label}
-          />
-        ))}
-      </datalist>
+    <div
+      className="owner-autocomplete"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setSuggestionsOpen(false);
+        }
+      }}
+    >
+      <div className="owner-autocomplete-filter" role="group" aria-label="Owner suggestion type">
+        <button
+          type="button"
+          className={ownerSuggestionFilter === "all" ? "active" : ""}
+          aria-pressed={ownerSuggestionFilter === "all"}
+          onClick={() => setFilter("all")}
+        >
+          All
+        </button>
+        <button
+          type="button"
+          className={ownerSuggestionFilter === "users" ? "active" : ""}
+          aria-pressed={ownerSuggestionFilter === "users"}
+          onClick={() => setFilter("users")}
+        >
+          Users
+        </button>
+        <button
+          type="button"
+          className={ownerSuggestionFilter === "groups" ? "active" : ""}
+          aria-pressed={ownerSuggestionFilter === "groups"}
+          onClick={() => setFilter("groups")}
+        >
+          Groups
+        </button>
+      </div>
+      <div className="owner-autocomplete-control">
+        <input
+          name="ownerLookup"
+          value={ownerLookup}
+          onChange={(event) => {
+            setOwnerLookup(event.target.value);
+            setSuggestionsOpen(true);
+            setActiveOptionIndex(0);
+          }}
+          onFocus={() => setSuggestionsOpen(true)}
+          onKeyDown={handleOwnerKeyDown}
+          placeholder={ownerPlaceholder}
+          aria-label={ownerAriaLabel}
+          aria-autocomplete="list"
+          aria-controls={listboxId}
+          aria-expanded={showSuggestionPanel}
+          autoComplete="off"
+        />
+        <span aria-hidden="true" className="owner-autocomplete-caret" />
+      </div>
+      {showSuggestionPanel ? (
+        <div id={listboxId} className="owner-autocomplete-list" role="listbox">
+          {filteredIdentityOptions.length ? (
+            filteredIdentityOptions.map((option, index) => (
+              <button
+                type="button"
+                key={`${option.value}:${option.label}`}
+                className={`${option.value === ownerLookup ? "selected" : ""} ${index === activeOptionIndex ? "active" : ""}`}
+                role="option"
+                aria-selected={option.value === ownerLookup}
+                onMouseEnter={() => setActiveOptionIndex(index)}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  chooseOwner(option);
+                }}
+              >
+                <span className={`owner-autocomplete-kind ${option.kind}`}>{option.kindLabel}</span>
+                <strong>{option.value}</strong>
+                <span>{option.label}</span>
+              </button>
+            ))
+          ) : (
+            <div className="owner-autocomplete-empty" role="status">
+              No matching {ownerSuggestionFilter === "groups" ? "groups" : ownerSuggestionFilter === "users" ? "users" : "owners"}
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
   );
 
   if (withLabels) {
     return (
-      <>
-        <label>
-          <span>Owner</span>
-          {ownerInput}
-        </label>
-        {lists}
-      </>
+      <div className="owner-autocomplete-field">
+        <span>Owner</span>
+        {ownerInput}
+      </div>
     );
   }
 
   return (
     <>
       {ownerInput}
-      {lists}
     </>
   );
 }
 
-function ownerIdentityOptions(suggestions: DashboardOwnerSuggestion[]): Array<{ value: string; label: string }> {
+interface OwnerIdentityOption {
+  value: string;
+  label: string;
+  kind: "user" | "group" | "other";
+  kindLabel: string;
+}
+
+function ownerIdentityOptions(suggestions: DashboardOwnerSuggestion[]): OwnerIdentityOption[] {
   const seen = new Set<string>();
-  const options: Array<{ value: string; label: string }> = [];
+  const options: OwnerIdentityOption[] = [];
   for (const suggestion of suggestions) {
+    const kind = ownerSuggestionKind(suggestion.source);
     const entries = [
-      { value: suggestion.ownerName, label: suggestion.ownerEmail ?? suggestion.source },
-      ...(suggestion.ownerEmail ? [{ value: suggestion.ownerEmail, label: suggestion.ownerName }] : [])
+      { value: suggestion.ownerName, label: suggestion.ownerEmail ?? suggestion.source, kind, kindLabel: ownerSuggestionKindLabel(kind) },
+      ...(suggestion.ownerEmail
+        ? [{ value: suggestion.ownerEmail, label: suggestion.ownerName, kind, kindLabel: ownerSuggestionKindLabel(kind) }]
+        : [])
     ];
     for (const entry of entries) {
       const key = entry.value.toLowerCase();
@@ -1782,6 +2486,18 @@ function ownerIdentityOptions(suggestions: DashboardOwnerSuggestion[]): Array<{ 
     }
   }
   return options;
+}
+
+function ownerSuggestionKind(source: string): OwnerIdentityOption["kind"] {
+  if (source === "entra_group") return "group";
+  if (source === "entra_user") return "user";
+  return "other";
+}
+
+function ownerSuggestionKindLabel(kind: OwnerIdentityOption["kind"]): string {
+  if (kind === "group") return "Group";
+  if (kind === "user") return "User";
+  return "Other";
 }
 
 function OwnerDirectory({
@@ -1801,16 +2517,13 @@ function OwnerDirectory({
       </div>
 
       <form action={saveOwnerOverride} className="mapping-form">
-        <label>
-          <span>Match</span>
-          <select name="matchType" defaultValue="parent_id" aria-label="Owner mapping match type">
-            {Object.entries(MATCH_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <DropdownSelect
+          label="Match"
+          name="matchType"
+          defaultValue="parent_id"
+          ariaLabel="Owner mapping match type"
+          options={Object.entries(MATCH_LABELS).map(([value, label]) => ({ value, label }))}
+        />
         <label>
           <span>Value</span>
           <input name="matchValue" placeholder="Application ID, credential ID, app name, or vault name" />
@@ -1935,27 +2648,6 @@ function Metric({
       <strong>{value}</strong>
       <span>{label}</span>
     </div>
-  );
-}
-
-function Select({
-  label,
-  value,
-  onChange,
-  children
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="select">
-      <span>{label}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)}>
-        {children}
-      </select>
-    </label>
   );
 }
 
@@ -2188,6 +2880,59 @@ function coverageMatchesItem(row: DashboardCoverage, item: DashboardItem): boole
   return row.resourceId === item.parentId || row.resourceName === item.parentName;
 }
 
+type ResourceAdminLink = {
+  href: string;
+  label: string;
+  title: string;
+};
+
+function resourceAdminLink(item: DashboardItem): ResourceAdminLink | null {
+  const appId = stringMetadata(item.metadata.appId);
+
+  if (item.source === "entra_application" && appId) {
+    return {
+      href: `https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/Credentials/appId/${encodeURIComponent(
+        appId
+      )}/isMSAApp~/false`,
+      label: "Open app registration",
+      title: "Open this application registration in Entra"
+    };
+  }
+
+  if (item.source === "service_principal" && appId) {
+    return {
+      href: `https://entra.microsoft.com/#view/Microsoft_AAD_IAM/ManagedAppMenuBlade/~/Overview/objectId/${encodeURIComponent(
+        item.parentId
+      )}/appId/${encodeURIComponent(appId)}`,
+      label: "Open enterprise app",
+      title: "Open this enterprise application in Entra"
+    };
+  }
+
+  if (KEY_VAULT_SOURCES.has(item.source) && isAzureResourceId(item.parentId)) {
+    return {
+      href: azurePortalResourceUrl(item),
+      label: "Open vault",
+      title: "Open this Key Vault resource in Azure Portal"
+    };
+  }
+
+  return null;
+}
+
+function stringMetadata(value: DashboardItem["metadata"][string]): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function isAzureResourceId(value: string): boolean {
+  return /^\/subscriptions\/[^/]+\/resourceGroups\/[^/]+\/providers\/[^/]+\/[^/]+\/[^/]+/i.test(value);
+}
+
+function azurePortalResourceUrl(item: DashboardItem): string {
+  const tenant = item.sourceTenantId ? `@${encodeURIComponent(item.sourceTenantId)}/` : "";
+  return `https://portal.azure.com/#${tenant}resource${encodeURI(item.parentId)}/overview`;
+}
+
 function detailCopyText(item: DashboardItem): string {
   return [
     `Source: ${SOURCE_LABELS[item.source]}`,
@@ -2275,6 +3020,132 @@ function riskRank(bucket: RiskBucket): number {
   return ["expired", "0-30", "31-60", "61-90", "90+", "no-expiry"].indexOf(bucket);
 }
 
+function sortInventoryItems(items: DashboardItem[], sortMode: InventorySort): DashboardItem[] {
+  return [...items].sort((a, b) => {
+    if (sortMode === "recently_expired") {
+      const expiredCompare = compareRecentlyExpired(a, b);
+      if (expiredCompare !== 0) return expiredCompare;
+    }
+
+    const expiryCompare = compareNearestExpiration(a, b);
+    if (expiryCompare !== 0) return expiryCompare;
+    return compareInventoryFallback(a, b);
+  });
+}
+
+function sortRenewalItems(items: DashboardItem[], sortMode: RenewalSort): DashboardItem[] {
+  return [...items].sort((a, b) => {
+    if (sortMode === "recent_activity") {
+      const recentCompare = compareRenewalRecentActivity(a, b);
+      if (recentCompare !== 0) return recentCompare;
+    } else if (sortMode === "expires_soonest") {
+      const expiryCompare = compareNearestExpiration(a, b);
+      if (expiryCompare !== 0) return expiryCompare;
+    } else {
+      const dueCompare = compareRenewalDue(a, b);
+      if (dueCompare !== 0) return dueCompare;
+    }
+
+    const riskCompare = riskRank(a.riskBucket) - riskRank(b.riskBucket);
+    if (riskCompare !== 0) return riskCompare;
+    return compareInventoryFallback(a, b);
+  });
+}
+
+function compareRenewalDue(a: DashboardItem, b: DashboardItem): number {
+  const aTime = renewalDueTime(a);
+  const bTime = renewalDueTime(b);
+  if (aTime === null && bTime === null) return 0;
+  if (aTime === null) return 1;
+  if (bTime === null) return -1;
+  return aTime - bTime;
+}
+
+function compareRenewalRecentActivity(a: DashboardItem, b: DashboardItem): number {
+  const aTime = renewalRecentActivityTime(a);
+  const bTime = renewalRecentActivityTime(b);
+  if (aTime === null && bTime === null) return 0;
+  if (aTime === null) return 1;
+  if (bTime === null) return -1;
+  return bTime - aTime;
+}
+
+function compareNearestExpiration(a: DashboardItem, b: DashboardItem): number {
+  const aDays = expiryDistance(a);
+  const bDays = expiryDistance(b);
+  if (aDays === null && bDays === null) return 0;
+  if (aDays === null) return 1;
+  if (bDays === null) return -1;
+
+  const absoluteCompare = Math.abs(aDays) - Math.abs(bDays);
+  if (absoluteCompare !== 0) return absoluteCompare;
+  return aDays - bDays;
+}
+
+function compareRecentlyExpired(a: DashboardItem, b: DashboardItem): number {
+  const aExpired = isExpiredItem(a);
+  const bExpired = isExpiredItem(b);
+  if (aExpired && !bExpired) return -1;
+  if (!aExpired && bExpired) return 1;
+  if (!aExpired && !bExpired) return 0;
+
+  const aTime = expiryTime(a);
+  const bTime = expiryTime(b);
+  if (aTime === null && bTime === null) return 0;
+  if (aTime === null) return 1;
+  if (bTime === null) return -1;
+  return bTime - aTime;
+}
+
+function compareInventoryFallback(a: DashboardItem, b: DashboardItem): number {
+  const riskCompare = riskRank(a.riskBucket) - riskRank(b.riskBucket);
+  if (riskCompare !== 0) return riskCompare;
+  const parentCompare = a.parentName.localeCompare(b.parentName);
+  if (parentCompare !== 0) return parentCompare;
+  return a.credentialName.localeCompare(b.credentialName);
+}
+
+function expiryDistance(item: DashboardItem): number | null {
+  if (typeof item.daysUntilExpiry === "number") return item.daysUntilExpiry;
+  const time = expiryTime(item);
+  if (time === null) return null;
+  const now = new Date();
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((time - today) / 86_400_000);
+}
+
+function expiryTime(item: DashboardItem): number | null {
+  if (!item.expiresAt) return null;
+  const dateOnly = dateOnlyParts(item.expiresAt);
+  const time = dateOnly
+    ? Date.UTC(dateOnly.year, dateOnly.month - 1, dateOnly.day)
+    : new Date(item.expiresAt).getTime();
+  return Number.isNaN(time) ? null : time;
+}
+
+function renewalDueTime(item: DashboardItem): number | null {
+  return dateValueTime(item.renewalCase?.dueAt ?? item.expiresAt);
+}
+
+function renewalRecentActivityTime(item: DashboardItem): number | null {
+  return dateValueTime(item.renewalCase?.events[0]?.createdAt ?? null);
+}
+
+function dateValueTime(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const dateOnly = dateOnlyParts(value);
+  const time = dateOnly
+    ? Date.UTC(dateOnly.year, dateOnly.month - 1, dateOnly.day)
+    : new Date(value).getTime();
+  return Number.isNaN(time) ? null : time;
+}
+
+function isExpiredItem(item: DashboardItem): boolean {
+  if (item.riskBucket === "expired") return true;
+  const distance = expiryDistance(item);
+  return typeof distance === "number" && distance < 0;
+}
+
 function formatMetadataValue(value: string | number | boolean | null): string {
   if (value === null) return "null";
   if (typeof value === "boolean") return value ? "true" : "false";
@@ -2299,6 +3170,28 @@ function matchesSourceFilter(item: DashboardItem, source: SourceFilter): boolean
   if (source === "all") return true;
   if (source === "key_vault") return KEY_VAULT_SOURCES.has(item.source);
   return item.source === source;
+}
+
+function matchesRenewalFilters(
+  item: DashboardItem,
+  caseFilter: RenewalCaseFilter,
+  riskFilter: RiskBucket | "all",
+  ownerFilter: RenewalOwnerFilter,
+  handoffFilter: RenewalHandoffFilter
+): boolean {
+  const renewalCase = item.renewalCase;
+  if (caseFilter === "needs_case" && renewalCase) return false;
+  if (caseFilter !== "all" && caseFilter !== "needs_case" && renewalCase?.status !== caseFilter) return false;
+  if (riskFilter !== "all" && item.riskBucket !== riskFilter) return false;
+
+  const ownerName = renewalCase?.ownerName ?? item.ownerName;
+  if (ownerFilter === "assigned" && !ownerName) return false;
+  if (ownerFilter === "unassigned" && ownerName) return false;
+
+  if (handoffFilter === "none" && renewalCase) return false;
+  if (handoffFilter !== "all" && handoffFilter !== "none" && renewalCase?.handoffStatus !== handoffFilter) return false;
+
+  return true;
 }
 
 function matchesRotationScope(item: DashboardItem, rotationScope: RotationScope): boolean {

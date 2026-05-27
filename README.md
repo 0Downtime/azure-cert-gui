@@ -1,8 +1,8 @@
 <h1 align="center">[Alpha] Azure Cert GUI</h1>
 
 <p align="center">
-  <img src="src/app/azure-cert-logo-light.png#gh-light-mode-only" alt="Azure Cert GUI" width="220" />
-  <img src="src/app/azure-cert-logo-dark.png#gh-dark-mode-only" alt="Azure Cert GUI" width="220" />
+  <img src="public/azure-cert-logo-light.png#gh-light-mode-only" alt="Azure Cert GUI" width="180" />
+  <img src="public/azure-cert-logo-dark.png#gh-dark-mode-only" alt="Azure Cert GUI" width="180" />
 </p>
 
 <p align="center">
@@ -102,13 +102,13 @@ Install dependencies once:
 npm install
 ```
 
-Build only when the app has changed, then start the UI in loopback-only break-glass local mode:
+Build only when the app has changed, then start the UI on trusted loopback:
 
 ```bash
-AZURE_CERT_GUI__AUTH__ALLOWLOCALINPRODUCTION=true npm run ui
+npm run ui
 ```
 
-The command prints a clickable local URL such as `http://127.0.0.1:3000`. Set `PORT=3001` if you prefer a different starting port; if that port is busy, the script uses the next open one. Do not set `UI_HOST` to a non-loopback address when using local auth.
+The command prints a clickable local URL such as `http://127.0.0.1:3000`. It automatically enables the production local-auth break-glass flag only when bound to a loopback host. Set `PORT=3001` if you prefer a different starting port; if that port is busy, the script uses the next open one. Do not set `UI_HOST` to a non-loopback address when using local auth.
 
 Start against your current Azure CLI tenant/subscription:
 
@@ -139,6 +139,35 @@ npm run typecheck
 npm test
 npm run build
 ```
+
+Run the CI test target when you need Azure DevOps / SonarQube-compatible outputs:
+
+```bash
+npm run test:ci
+```
+
+`test:ci` writes JUnit results to `test-results/vitest-junit.xml` and LCOV coverage to `coverage/lcov.info`.
+
+## GitHub Actions SonarQube CI
+
+`.github/workflows/ci.yml` runs the standard GitHub Actions checks for pushes to `main` and pull requests. The workflow includes `Build and test`, `Secret scan`, and `SonarQube Quality Gate` jobs. The SonarQube job installs Node.js 22, runs typecheck, Vitest with coverage, Next.js build, production dependency audit, and SonarQube analysis using `sonar-project.properties`.
+
+The SonarQube job skips with a notice until both GitHub Actions configuration values exist:
+
+- Create a repository secret named `SONAR_TOKEN` with a SonarQube analysis token.
+- Create a repository or organization variable named `SONAR_HOST_URL` with the SonarQube Server URL.
+- Create or confirm the SonarQube project key `0Downtime_azure-cert-gui`, or update `sonar-project.properties`.
+
+## Azure DevOps SonarQube CI
+
+`azure-pipelines.yml` runs the SonarQube Enterprise-style CI path for Azure DevOps. It triggers on pushes to `main` and pull requests targeting `main`, then installs Node.js 22, runs typecheck, Vitest with coverage, Next.js build, production dependency audit, SonarQube analysis, and quality-gate publishing.
+
+Before enabling the pipeline in Azure DevOps:
+
+- Install the SonarQube Server Azure DevOps extension in the organization.
+- Create or authorize a SonarQube Server service connection named `SonarQube`, or update the `SonarQube` task input in `azure-pipelines.yml`.
+- Create or confirm the SonarQube project key `0Downtime_azure-cert-gui`, or update the `sonarProjectKey` variable.
+- Make sure the build agent has Java 17 available as `JAVA_HOME_17_X64`. Microsoft-hosted Ubuntu agents already expose it; self-hosted agents must install it and trust the SonarQube server certificate chain.
 
 If you run `npm run build` while `npm run dev` is already running, restart the dev server before testing forms again. Next dev and Next build both write to `.next`, so a live dev server can serve stale asset paths after a production build.
 
