@@ -21,7 +21,7 @@ type RefreshGlobal = typeof globalThis & {
 const MAX_LOG_LINES = 80;
 export const MIN_REFRESH_INTERVAL_MINUTES = 5;
 export const MAX_REFRESH_INTERVAL_MINUTES = 24 * 60;
-const DEFAULT_REFRESH_INTERVAL_MINUTES = 60;
+const DEFAULT_REFRESH_INTERVAL_MINUTES = 24 * 60;
 
 function initialState(): RefreshState {
   return {

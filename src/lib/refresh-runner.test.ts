@@ -17,8 +17,12 @@ describe("refresh schedule", () => {
   });
 
   afterEach(() => {
-    configureRefreshSchedule({ enabled: false, intervalMinutes: 60, updatedBy: "test" });
+    configureRefreshSchedule({ enabled: false, intervalMinutes: 24 * 60, updatedBy: "test" });
     resetRefreshScheduleForTests();
+  });
+
+  it("defaults the schedule interval to every 24 hours", () => {
+    expect(getRefreshScheduleStatus().intervalMinutes).toBe(24 * 60);
   });
 
   it("clamps intervals and records schedule metadata", () => {
