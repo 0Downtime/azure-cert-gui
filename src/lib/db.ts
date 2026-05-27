@@ -173,6 +173,33 @@ export function migrate(db = openDatabase()): void {
       created_by TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS azure_environment_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      tenant_id TEXT,
+      subscription_ids_json TEXT NOT NULL DEFAULT '[]',
+      key_vault_resource_ids_json TEXT NOT NULL DEFAULT '[]',
+      cloud_name TEXT,
+      include_graph_owners INTEGER NOT NULL DEFAULT 1,
+      include_graph_owner_directory INTEGER NOT NULL DEFAULT 1,
+      include_key_vault_versions INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT,
+      updated_by TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS azure_environment_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_type TEXT NOT NULL,
+      tenant_id TEXT,
+      subscription_ids_json TEXT NOT NULL DEFAULT '[]',
+      key_vault_resource_ids_json TEXT NOT NULL DEFAULT '[]',
+      cloud_name TEXT,
+      include_graph_owners INTEGER NOT NULL DEFAULT 1,
+      include_graph_owner_directory INTEGER NOT NULL DEFAULT 1,
+      include_key_vault_versions INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      created_by TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_credential_items_expires_at ON credential_items(expires_at);
     CREATE INDEX IF NOT EXISTS idx_credential_items_source ON credential_items(source);
     CREATE INDEX IF NOT EXISTS idx_credential_items_status ON credential_items(status);
@@ -185,11 +212,16 @@ export function migrate(db = openDatabase()): void {
       WHERE closed_at IS NULL;
     CREATE INDEX IF NOT EXISTS idx_renewal_events_case ON renewal_events(renewal_case_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_refresh_schedule_events_created ON refresh_schedule_events(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_azure_environment_events_created ON azure_environment_events(created_at DESC);
   `);
   ensureColumn(db, "renewal_cases", "reminder_at", "TEXT");
   ensureColumn(db, "renewal_cases", "last_contacted_at", "TEXT");
   ensureColumn(db, "renewal_cases", "escalation_owner", "TEXT");
   ensureColumn(db, "renewal_cases", "handoff_status", "TEXT NOT NULL DEFAULT 'not_contacted'");
+  ensureColumn(db, "azure_environment_settings", "cloud_name", "TEXT");
+  ensureColumn(db, "azure_environment_settings", "include_graph_owners", "INTEGER NOT NULL DEFAULT 1");
+  ensureColumn(db, "azure_environment_settings", "include_graph_owner_directory", "INTEGER NOT NULL DEFAULT 1");
+  ensureColumn(db, "azure_environment_settings", "include_key_vault_versions", "INTEGER NOT NULL DEFAULT 0");
 }
 
 function ensureColumn(db: DatabaseSync, table: string, column: string, definition: string): void {

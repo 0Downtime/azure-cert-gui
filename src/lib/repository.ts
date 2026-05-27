@@ -4,6 +4,7 @@ import { daysUntilExpiry, riskBucket } from "./risk";
 import { classifyRotation, isRenewalActionable } from "./rotation";
 import type {
   AuthActor,
+  AzureEnvironmentSettings,
   DashboardCoverage,
   DashboardItem,
   DashboardOwnerOverride,
@@ -22,6 +23,17 @@ import type {
 import { assertNoSecretValueFields } from "./secret-guard";
 
 const DEFAULT_ACTOR = "operator";
+const DEFAULT_AZURE_SETTINGS: AzureEnvironmentSettings = {
+  tenantId: null,
+  subscriptionIds: [],
+  keyVaultResourceIds: [],
+  cloudName: null,
+  includeGraphOwners: true,
+  includeGraphOwnerDirectory: true,
+  includeKeyVaultVersions: false,
+  updatedAt: null,
+  updatedBy: null
+};
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -207,6 +219,125 @@ export function recordCoverage(
     input.skipReason ?? null,
     input.errorCode ?? null
   );
+}
+
+export function getAzureEnvironmentSettings(db: DatabaseSync = openDatabase()): AzureEnvironmentSettings {
+  migrate(db);
+  const row = db.prepare("SELECT * FROM azure_environment_settings WHERE id = 1").get() as
+    | Record<string, unknown>
+    | undefined;
+  if (!row) return { ...DEFAULT_AZURE_SETTINGS };
+  return azureEnvironmentSettingsFromRow(row);
+}
+
+export function saveAzureEnvironmentSettings(
+  input: Omit<AzureEnvironmentSettings, "updatedAt" | "updatedBy">,
+  actor?: AuthActor | string | null,
+  db: DatabaseSync = openDatabase()
+): AzureEnvironmentSettings {
+  migrate(db);
+  const timestamp = nowIso();
+  const updatedBy = actorLabel(actor);
+  const settings: AzureEnvironmentSettings = {
+    tenantId: cleanSetting(input.tenantId),
+    subscriptionIds: uniqueCleanStrings(input.subscriptionIds),
+    keyVaultResourceIds: uniqueCleanStrings(input.keyVaultResourceIds),
+    cloudName: cleanSetting(input.cloudName),
+    includeGraphOwners: input.includeGraphOwners !== false,
+    includeGraphOwnerDirectory: input.includeGraphOwnerDirectory !== false,
+    includeKeyVaultVersions: input.includeKeyVaultVersions === true,
+    updatedAt: timestamp,
+    updatedBy
+  };
+
+  try {
+    db.exec("BEGIN");
+    db.prepare(
+      `
+      INSERT INTO azure_environment_settings (
+        id, tenant_id, subscription_ids_json, key_vault_resource_ids_json, cloud_name,
+        include_graph_owners, include_graph_owner_directory, include_key_vault_versions,
+        updated_at, updated_by
+      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        tenant_id = excluded.tenant_id,
+        subscription_ids_json = excluded.subscription_ids_json,
+        key_vault_resource_ids_json = excluded.key_vault_resource_ids_json,
+        cloud_name = excluded.cloud_name,
+        include_graph_owners = excluded.include_graph_owners,
+        include_graph_owner_directory = excluded.include_graph_owner_directory,
+        include_key_vault_versions = excluded.include_key_vault_versions,
+        updated_at = excluded.updated_at,
+        updated_by = excluded.updated_by
+    `
+    ).run(
+      settings.tenantId,
+      JSON.stringify(settings.subscriptionIds),
+      JSON.stringify(settings.keyVaultResourceIds),
+      settings.cloudName,
+      settings.includeGraphOwners ? 1 : 0,
+      settings.includeGraphOwnerDirectory ? 1 : 0,
+      settings.includeKeyVaultVersions ? 1 : 0,
+      settings.updatedAt,
+      settings.updatedBy
+    );
+    db.prepare(
+      `
+      INSERT INTO azure_environment_events (
+        event_type, tenant_id, subscription_ids_json, key_vault_resource_ids_json, cloud_name,
+        include_graph_owners, include_graph_owner_directory, include_key_vault_versions,
+        created_at, created_by
+      ) VALUES ('settings_updated', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `
+    ).run(
+      settings.tenantId,
+      JSON.stringify(settings.subscriptionIds),
+      JSON.stringify(settings.keyVaultResourceIds),
+      settings.cloudName,
+      settings.includeGraphOwners ? 1 : 0,
+      settings.includeGraphOwnerDirectory ? 1 : 0,
+      settings.includeKeyVaultVersions ? 1 : 0,
+      settings.updatedAt,
+      settings.updatedBy
+    );
+    db.exec("COMMIT");
+    return settings;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function azureEnvironmentSettingsFromRow(row: Record<string, unknown>): AzureEnvironmentSettings {
+  return {
+    tenantId: row.tenant_id as string | null,
+    subscriptionIds: parseJsonStringArray(row.subscription_ids_json),
+    keyVaultResourceIds: parseJsonStringArray(row.key_vault_resource_ids_json),
+    cloudName: row.cloud_name as string | null,
+    includeGraphOwners: Boolean(row.include_graph_owners),
+    includeGraphOwnerDirectory: Boolean(row.include_graph_owner_directory),
+    includeKeyVaultVersions: Boolean(row.include_key_vault_versions),
+    updatedAt: row.updated_at as string | null,
+    updatedBy: row.updated_by as string | null
+  };
+}
+
+function parseJsonStringArray(value: unknown): string[] {
+  try {
+    const parsed = JSON.parse(String(value ?? "[]")) as unknown;
+    return Array.isArray(parsed) ? uniqueCleanStrings(parsed.map(String)) : [];
+  } catch {
+    return [];
+  }
+}
+
+function cleanSetting(value: string | null | undefined): string | null {
+  const text = value?.trim();
+  return text || null;
+}
+
+function uniqueCleanStrings(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
 export function clearCoverageForSource(source: string, db: DatabaseSync = openDatabase()): void {

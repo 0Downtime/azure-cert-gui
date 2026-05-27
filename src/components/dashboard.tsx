@@ -40,6 +40,7 @@ import {
   useTransition
 } from "react";
 import type {
+  AzureSettingsResponse,
   CoverageHealth,
   DashboardAuthState,
   DashboardCoverage,
@@ -269,6 +270,8 @@ const REFRESH_INTERVAL_OPTIONS = [
   { value: "1440", label: "24h" }
 ];
 
+const AZURE_CLOUD_OPTIONS = ["AzureCloud", "AzureUSGovernment", "AzureChinaCloud"];
+
 const TUTORIAL_STORAGE_KEY = "azure-cert-gui-tutorial-complete";
 const TUTORIAL_STEPS: TutorialStep[] = [
   {
@@ -371,6 +374,17 @@ export function Dashboard({
   const [scheduleStatus, setScheduleStatus] = useState<RefreshScheduleStatus | null>(null);
   const [scheduleInterval, setScheduleInterval] = useState("1440");
   const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const [azureSettings, setAzureSettings] = useState<AzureSettingsResponse | null>(null);
+  const [azureSettingsError, setAzureSettingsError] = useState<string | null>(null);
+  const [azureSettingsSaving, setAzureSettingsSaving] = useState(false);
+  const [azureLoginStarting, setAzureLoginStarting] = useState(false);
+  const [azureTenantId, setAzureTenantId] = useState("");
+  const [azureSubscriptionIds, setAzureSubscriptionIds] = useState("");
+  const [azureKeyVaultResourceIds, setAzureKeyVaultResourceIds] = useState("");
+  const [azureCloudName, setAzureCloudName] = useState("");
+  const [azureIncludeGraphOwners, setAzureIncludeGraphOwners] = useState(true);
+  const [azureIncludeGraphOwnerDirectory, setAzureIncludeGraphOwnerDirectory] = useState(true);
+  const [azureIncludeKeyVaultVersions, setAzureIncludeKeyVaultVersions] = useState(false);
   const refreshStatusRef = useRef<string | null>(null);
   const refreshStartedFromUi = useRef(false);
   const [isPending, startTransition] = useTransition();
@@ -413,6 +427,11 @@ export function Dashboard({
   }, []);
 
   useEffect(() => {
+    if (activeTab !== "settings") return;
+    void loadAzureSettings(!azureSettings);
+  }, [activeTab]);
+
+  useEffect(() => {
     if (window.localStorage.getItem(TUTORIAL_STORAGE_KEY) === "complete") return;
     const timer = window.setTimeout(() => startTutorial(), 350);
     return () => window.clearTimeout(timer);
@@ -434,6 +453,14 @@ export function Dashboard({
     }, 30_000);
     return () => window.clearInterval(timer);
   }, [scheduleStatus?.enabled]);
+
+  useEffect(() => {
+    if (azureSettings?.login.status !== "running") return;
+    const timer = window.setInterval(() => {
+      void loadAzureLoginStatus();
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [azureSettings?.login.status]);
 
   useEffect(() => {
     if (!currentTutorialStep) {
@@ -594,6 +621,134 @@ export function Dashboard({
       if (syncInput) setScheduleInterval(String(next.intervalMinutes));
     } catch (error) {
       setScheduleError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function loadAzureSettings(syncInputs: boolean) {
+    try {
+      const response = await fetch("/api/settings/azure", { cache: "no-store" });
+      if (!response.ok) throw new Error(`Azure settings failed with HTTP ${response.status}`);
+      const next = (await response.json()) as AzureSettingsResponse;
+      setAzureSettings(next);
+      setAzureSettingsError(null);
+      if (syncInputs) syncAzureSettingsInputs(next);
+    } catch (error) {
+      setAzureSettingsError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function loadAzureLoginStatus() {
+    try {
+      const response = await fetch("/api/settings/azure/login", { cache: "no-store" });
+      if (!response.ok) throw new Error(`Azure login status failed with HTTP ${response.status}`);
+      const login = (await response.json()) as AzureSettingsResponse["login"];
+      setAzureSettings((current) => (current ? { ...current, login } : current));
+      if (login.status !== "running") {
+        void loadAzureSettings(false);
+      }
+    } catch (error) {
+      setAzureSettingsError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  function syncAzureSettingsInputs(next: AzureSettingsResponse) {
+    setAzureTenantId(next.settings.tenantId ?? "");
+    setAzureSubscriptionIds(next.settings.subscriptionIds.join("\n"));
+    setAzureKeyVaultResourceIds(next.settings.keyVaultResourceIds.join("\n"));
+    setAzureCloudName(next.settings.cloudName ?? "");
+    setAzureIncludeGraphOwners(next.settings.includeGraphOwners);
+    setAzureIncludeGraphOwnerDirectory(next.settings.includeGraphOwnerDirectory);
+    setAzureIncludeKeyVaultVersions(next.settings.includeKeyVaultVersions);
+  }
+
+  async function saveAzureSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!auth.canAdmin) {
+      setAzureSettingsError("Admin access is required to change Azure environment settings.");
+      return;
+    }
+    setAzureSettingsSaving(true);
+    setAzureSettingsError(null);
+    try {
+      const response = await fetch("/api/settings/azure", {
+        method: "POST",
+        cache: "no-store",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          tenantId: azureTenantId,
+          subscriptionIds: splitSettingLines(azureSubscriptionIds),
+          keyVaultResourceIds: splitSettingLines(azureKeyVaultResourceIds),
+          cloudName: azureCloudName,
+          includeGraphOwners: azureIncludeGraphOwners,
+          includeGraphOwnerDirectory: azureIncludeGraphOwnerDirectory,
+          includeKeyVaultVersions: azureIncludeKeyVaultVersions
+        })
+      });
+      if (!response.ok) throw new Error(`Azure settings save failed with HTTP ${response.status}`);
+      const next = (await response.json()) as AzureSettingsResponse;
+      setAzureSettings(next);
+      syncAzureSettingsInputs(next);
+    } catch (error) {
+      setAzureSettingsError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setAzureSettingsSaving(false);
+    }
+  }
+
+  async function startAzureLogin() {
+    if (!auth.canAdmin) {
+      setAzureSettingsError("Admin access is required to start Azure sign-in.");
+      return;
+    }
+    setAzureLoginStarting(true);
+    setAzureSettingsError(null);
+    try {
+      const response = await fetch("/api/settings/azure/login", {
+        method: "POST",
+        cache: "no-store",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          tenantId: azureTenantId,
+          cloudName: azureCloudName
+        })
+      });
+      if (!response.ok) throw new Error(`Azure login start failed with HTTP ${response.status}`);
+      const login = (await response.json()) as AzureSettingsResponse["login"];
+      setAzureSettings((current) =>
+        current
+          ? { ...current, login }
+          : {
+              settings: {
+                tenantId: null,
+                subscriptionIds: [],
+                keyVaultResourceIds: [],
+                cloudName: null,
+                includeGraphOwners: true,
+                includeGraphOwnerDirectory: true,
+                includeKeyVaultVersions: false,
+                updatedAt: null,
+                updatedBy: null
+              },
+              status: {
+                checkedAt: new Date().toISOString(),
+                azureCliPath: null,
+                signedIn: false,
+                cloudName: null,
+                tenantId: null,
+                subscriptionId: null,
+                subscriptionName: null,
+                username: null,
+                availableSubscriptions: [],
+                message: "Azure login started"
+              },
+              login,
+              canManage: auth.canAdmin
+            }
+      );
+    } catch (error) {
+      setAzureSettingsError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setAzureLoginStarting(false);
     }
   }
 
@@ -1772,6 +1927,161 @@ export function Dashboard({
                 <RotateCcw size={15} />
                 Reset tutorial
               </button>
+            </div>
+          </section>
+
+          <section className="settings-panel">
+            <div className="section-heading">
+              <div>
+                <h2>Azure environment</h2>
+                <span>Admin-only Azure CLI sign-in and sync scope.</span>
+              </div>
+              <KeyRound size={18} />
+            </div>
+            <dl className="settings-list">
+              <div>
+                <dt>CLI status</dt>
+                <dd>{azureSettings?.status.message ?? "Not checked yet"}</dd>
+              </div>
+              <div>
+                <dt>Signed in as</dt>
+                <dd>{azureSettings?.status.username ?? "Not signed in"}</dd>
+              </div>
+              <div>
+                <dt>Current scope</dt>
+                <dd>
+                  {azureSettings?.status.subscriptionName || azureSettings?.status.subscriptionId
+                    ? `${azureSettings.status.subscriptionName ?? "Subscription"} (${azureSettings.status.subscriptionId ?? "unknown id"})`
+                    : "No active subscription"}
+                </dd>
+              </div>
+              <div>
+                <dt>Tenant / cloud</dt>
+                <dd>
+                  {[azureSettings?.status.tenantId, azureSettings?.status.cloudName].filter(Boolean).join(" / ") ||
+                    "No Azure context"}
+                </dd>
+              </div>
+            </dl>
+            <form className="settings-form azure-settings-form" onSubmit={saveAzureSettings}>
+              <label>
+                <span>Cloud</span>
+                <select
+                  value={azureCloudName}
+                  onChange={(event) => setAzureCloudName(event.currentTarget.value)}
+                  disabled={!auth.canAdmin || azureSettingsSaving}
+                  aria-label="Azure cloud"
+                >
+                  <option value="">Use current Azure CLI cloud</option>
+                  {AZURE_CLOUD_OPTIONS.map((cloud) => (
+                    <option key={cloud} value={cloud}>
+                      {cloud}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Tenant ID</span>
+                <input
+                  value={azureTenantId}
+                  onChange={(event) => setAzureTenantId(event.currentTarget.value)}
+                  placeholder="Tenant ID used for Azure sign-in and Graph inventory"
+                  disabled={!auth.canAdmin || azureSettingsSaving}
+                />
+              </label>
+              <label>
+                <span>Subscription IDs</span>
+                <textarea
+                  value={azureSubscriptionIds}
+                  onChange={(event) => setAzureSubscriptionIds(event.currentTarget.value)}
+                  placeholder="One subscription ID per line. Blank scans enabled CLI subscriptions."
+                  disabled={!auth.canAdmin || azureSettingsSaving}
+                />
+              </label>
+              <label>
+                <span>Key Vault resource IDs</span>
+                <textarea
+                  value={azureKeyVaultResourceIds}
+                  onChange={(event) => setAzureKeyVaultResourceIds(event.currentTarget.value)}
+                  placeholder="Optional. One full Key Vault resource ID per line."
+                  disabled={!auth.canAdmin || azureSettingsSaving}
+                />
+              </label>
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={azureIncludeGraphOwners}
+                  onChange={(event) => setAzureIncludeGraphOwners(event.currentTarget.checked)}
+                  disabled={!auth.canAdmin || azureSettingsSaving}
+                />
+                <span>
+                  <strong>Read Graph owners</strong>
+                  <em>Include application and service-principal owner hints.</em>
+                </span>
+              </label>
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={azureIncludeGraphOwnerDirectory}
+                  onChange={(event) => setAzureIncludeGraphOwnerDirectory(event.currentTarget.checked)}
+                  disabled={!auth.canAdmin || azureSettingsSaving}
+                />
+                <span>
+                  <strong>Read owner directory</strong>
+                  <em>Load user and group names for owner autocomplete.</em>
+                </span>
+              </label>
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={azureIncludeKeyVaultVersions}
+                  onChange={(event) => setAzureIncludeKeyVaultVersions(event.currentTarget.checked)}
+                  disabled={!auth.canAdmin || azureSettingsSaving}
+                />
+                <span>
+                  <strong>Include Key Vault versions</strong>
+                  <em>Scan every secret and certificate version instead of only current versions.</em>
+                </span>
+              </label>
+              {azureSettings?.login.status === "running" ? (
+                <div className="settings-note azure-login-note" aria-live="polite">
+                  <strong>{azureSettings.login.message}</strong>
+                  {azureSettings.login.verificationUrl ? (
+                    <a href={azureSettings.login.verificationUrl} target="_blank" rel="noreferrer">
+                      {azureSettings.login.verificationUrl}
+                    </a>
+                  ) : null}
+                  {azureSettings.login.userCode ? <code>{azureSettings.login.userCode}</code> : null}
+                </div>
+              ) : azureSettings?.login.status === "failed" || azureSettings?.login.status === "succeeded" ? (
+                <div className="settings-note" aria-live="polite">{azureSettings.login.message}</div>
+              ) : null}
+              {azureSettingsError ? (
+                <div className="settings-note failed" aria-live="polite">{azureSettingsError}</div>
+              ) : null}
+              <div className="settings-actions">
+                <button type="button" onClick={() => void loadAzureSettings(true)}>
+                  <RefreshCw size={15} />
+                  Check status
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void startAzureLogin()}
+                  disabled={!auth.canAdmin || azureLoginStarting || azureSettings?.login.status === "running"}
+                  title={auth.canAdmin ? "Start Azure device-code sign-in" : "Admin access required"}
+                >
+                  <KeyRound size={15} />
+                  {azureSettings?.login.status === "running" ? "Waiting for login" : "Sign in to Azure"}
+                </button>
+                <button type="submit" disabled={!auth.canAdmin || azureSettingsSaving}>
+                  {azureSettingsSaving ? "Saving" : "Save Azure settings"}
+                </button>
+              </div>
+            </form>
+            <div className="settings-note">
+              {auth.canAdmin
+                ? "Azure CLI stores sign-in tokens for the server account. The app stores only environment scope and an audit record."
+                : "Only Admin users can change Azure sign-in and environment settings."}
             </div>
           </section>
 
@@ -3592,6 +3902,13 @@ function matchesRotationScope(item: DashboardItem, rotationScope: RotationScope)
   if (rotationScope === "all") return true;
   if (rotationScope === "actionable") return isRenewalActionable(item.rotationMode);
   return item.rotationMode === rotationScope;
+}
+
+function splitSettingLines(value: string): string[] {
+  return value
+    .split(/[\n,]/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 }
 
 function isDashboardTab(value: string | null): value is DashboardTab {
