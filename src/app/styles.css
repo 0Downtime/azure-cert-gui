@@ -460,6 +460,75 @@ h1 {
   }
 }
 
+.guidance-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 16px;
+}
+
+.guidance-heading {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.guidance-heading h2 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.guidance-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+}
+
+.guidance-action {
+  align-items: start;
+  justify-content: flex-start;
+  min-height: 88px;
+  padding: 16px;
+  text-align: left;
+}
+
+.guidance-action > svg {
+  color: var(--teal);
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.guidance-action.danger > svg,
+.guidance-action.danger strong {
+  color: var(--red);
+}
+
+.guidance-action.warning > svg,
+.guidance-action.warning strong {
+  color: var(--amber);
+}
+
+.guidance-action span {
+  display: grid;
+  gap: 3px;
+}
+
+.guidance-action strong {
+  color: var(--teal);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.guidance-action em {
+  color: var(--muted);
+  font-size: 13px;
+  font-style: normal;
+  line-height: 1.3;
+}
+
 @keyframes detail-cell-open {
   from {
     opacity: 0;
@@ -1520,6 +1589,142 @@ select option {
   grid-column: 1 / -1;
 }
 
+.settings-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+}
+
+.settings-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 14px;
+  padding: 12px;
+}
+
+.settings-panel > .section-heading > svg {
+  color: var(--teal);
+  flex: 0 0 auto;
+}
+
+.setting-row,
+.toggle-row {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding-top: 12px;
+}
+
+.setting-row > div:first-child,
+.toggle-row > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.setting-row strong,
+.toggle-row strong {
+  font-size: 14px;
+}
+
+.setting-row span,
+.toggle-row em,
+.settings-note {
+  color: var(--muted);
+  font-size: 13px;
+  font-style: normal;
+}
+
+.setting-row select,
+.settings-form select {
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  min-height: 36px;
+  min-width: 190px;
+  padding: 0 8px;
+}
+
+.segmented-control {
+  align-items: center;
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+}
+
+.segmented-control button {
+  border-color: transparent;
+  min-height: 30px;
+}
+
+.segmented-control button.active {
+  background: var(--panel);
+  border-color: var(--teal);
+  color: var(--teal);
+  font-weight: 700;
+}
+
+.toggle-row {
+  cursor: pointer;
+  justify-content: flex-start;
+}
+
+.toggle-row input {
+  margin: 0;
+}
+
+.settings-form {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+}
+
+.settings-form label {
+  display: grid;
+  gap: 4px;
+}
+
+.settings-form label span,
+.settings-list dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.settings-list {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-top: 12px;
+}
+
+.settings-list > div {
+  display: grid;
+  gap: 3px;
+}
+
+.settings-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
 .health.warning,
 .health.stale,
 .risk.bucket-0-30,
@@ -2316,6 +2521,39 @@ tr.selected-row {
   }
 }
 
+.density-compact .metrics {
+  grid-template-columns: repeat(8, minmax(105px, 1fr));
+}
+
+.density-compact .metric {
+  padding: 7px 9px;
+}
+
+.density-compact .guidance-action {
+  min-height: 64px;
+  padding: 8px;
+}
+
+.density-compact .toolbar,
+.density-compact .actionbar,
+.density-compact .exportbar,
+.density-compact .coverage-panel,
+.density-compact .owner-gap-panel,
+.density-compact .owner-directory,
+.density-compact .settings-panel {
+  padding: 8px;
+}
+
+.density-compact th,
+.density-compact td {
+  padding: 8px;
+}
+
+.density-compact .inventory-table th,
+.density-compact .inventory-table td {
+  padding: 5px 7px;
+}
+
 @media (max-width: 1100px) {
   .shell {
     padding: 0 14px 24px;
@@ -2349,11 +2587,43 @@ tr.selected-row {
     grid-template-columns: 1fr;
   }
 
+  .scheduler-form label {
+    flex-wrap: wrap;
+  }
+
+  .refresh-label-full {
+    display: none;
+  }
+
+  .refresh-label-short {
+    display: inline;
+  }
+
+  .metrics {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+
+  .guidance-grid,
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .queuebar {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+
+  .coverage-row {
+    grid-template-columns: 1fr;
+  }
+
   .coverage-row,
   .mapping-form,
   .owner-mapping-row,
-  .owner-gap-row {
+  .owner-gap-row,
+  .setting-row {
     grid-template-columns: 1fr;
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .detail-drawer {
