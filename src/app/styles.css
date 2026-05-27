@@ -265,45 +265,9 @@ textarea {
   min-height: 40px;
 }
 
-.settings-menu {
-  position: relative;
-}
-
 .settings-toggle {
   min-height: 40px;
   width: 40px;
-}
-
-.settings-menu-panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: var(--drawer-shadow);
-  display: grid;
-  gap: 6px;
-  min-width: 210px;
-  padding: 8px;
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
-  z-index: 35;
-}
-
-.settings-menu-panel strong {
-  color: var(--muted);
-  font-size: 12px;
-  padding: 3px 5px;
-  text-transform: uppercase;
-}
-
-.settings-menu-panel button {
-  border-color: transparent;
-  justify-content: flex-start;
-  width: 100%;
-}
-
-.settings-menu-panel button:hover {
-  background: var(--code-bg);
 }
 
 .refresh-button {
