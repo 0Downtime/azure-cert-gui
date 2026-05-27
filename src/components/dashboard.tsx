@@ -17,7 +17,6 @@ import {
   LayoutDashboard,
   Moon,
   RefreshCw,
-  RotateCcw,
   Search,
   Settings,
   ShieldAlert,
@@ -366,7 +365,6 @@ export function Dashboard({
   const [selectedDetailId, setSelectedDetailId] = useState<number | null>(null);
   const [copyPanel, setCopyPanel] = useState<{ title: string; text: string; copied: boolean } | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
-  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [tutorialStepIndex, setTutorialStepIndex] = useState<number | null>(null);
   const [tutorialSpotlight, setTutorialSpotlight] = useState<TutorialSpotlight | null>(null);
   const [refreshStatus, setRefreshStatus] = useState<RefreshRunStatus | null>(null);
@@ -576,7 +574,6 @@ export function Dashboard({
     setActiveTab("inventory");
     setSelectedDetailId(null);
     setExportMenuOpen(false);
-    setSettingsMenuOpen(false);
     setTutorialStepIndex(0);
   }
 
@@ -1472,43 +1469,18 @@ export function Dashboard({
           >
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
           </button>
-          <div className="settings-menu">
-            <button
-              type="button"
-              className="icon-button settings-toggle"
-              onClick={() => setSettingsMenuOpen((current) => !current)}
-              aria-expanded={settingsMenuOpen}
-              aria-label="Open settings"
-              title="Settings"
-            >
-              <Settings size={16} />
-            </button>
-            {settingsMenuOpen ? (
-              <div className="settings-menu-panel" role="menu" aria-label="Settings">
-                <strong>Settings</strong>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setSettingsMenuOpen(false);
-                    setSelectedDetailId(null);
-                    setActiveTab("settings");
-                  }}
-                >
-                  <Settings size={15} />
-                  Open settings
-                </button>
-                <button type="button" role="menuitem" onClick={startTutorial}>
-                  <HelpCircle size={15} />
-                  Replay tutorial
-                </button>
-                <button type="button" role="menuitem" onClick={resetTutorial}>
-                  <RotateCcw size={15} />
-                  Reset tutorial
-                </button>
-              </div>
-            ) : null}
-          </div>
+          <button
+            type="button"
+            className="icon-button settings-toggle"
+            onClick={() => {
+              setSelectedDetailId(null);
+              setActiveTab("settings");
+            }}
+            aria-label="Open settings"
+            title="Settings"
+          >
+            <Settings size={16} />
+          </button>
           <div className="auth-pill" title={authTitle}>
             <UserRound size={16} />
             <span className="auth-name">{signedInName}</span>
@@ -1954,11 +1926,11 @@ export function Dashboard({
             <div className="setting-row">
               <div>
                 <strong>Tutorial</strong>
-                <span>Restore the guided next-actions panel and return to the starting queue.</span>
+                <span>Replay the guided tour from the starting queue.</span>
               </div>
               <button type="button" onClick={resetTutorial}>
-                <RotateCcw size={15} />
-                Reset tutorial
+                <HelpCircle size={15} />
+                Replay tutorial
               </button>
             </div>
           </section>
@@ -2221,8 +2193,8 @@ export function Dashboard({
           <section className="settings-panel">
             <div className="section-heading">
               <div>
-                <h2>Access & exports</h2>
-                <span>Current session and audit shortcuts.</span>
+                <h2>Access</h2>
+                <span>Current session permissions.</span>
               </div>
               <UserRound size={18} />
             </div>
@@ -2240,16 +2212,6 @@ export function Dashboard({
                 <dd>{auth.canOperate ? "Enabled" : "Viewer only"}</dd>
               </div>
             </dl>
-            <div className="settings-actions">
-              <button type="button" onClick={copyInventoryExport} disabled={!filtered.length}>
-                <Download size={15} />
-                Copy visible inventory
-              </button>
-              <button type="button" onClick={copyStatusAudit} disabled={!items.some((item) => item.statusHistory.length)}>
-                <Download size={15} />
-                Copy status audit
-              </button>
-            </div>
           </section>
         </section>
       </section>
