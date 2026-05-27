@@ -3,6 +3,7 @@
 import {
   AlertTriangle,
   Ban,
+  Bell,
   CheckCircle2,
   ChevronRight,
   Clock,
@@ -13,11 +14,14 @@ import {
   Filter,
   HelpCircle,
   KeyRound,
+  LayoutDashboard,
   Moon,
   RefreshCw,
+  RotateCcw,
   Search,
   Settings,
   ShieldAlert,
+  SlidersHorizontal,
   Sun,
   UserRound,
   X,
@@ -68,7 +72,8 @@ import { isRenewalActionable } from "@/lib/rotation";
 
 type WorkflowMode = "all" | "urgent" | "due60" | "unknown" | "contacted_pending";
 type RotationScope = "actionable" | "all" | RotationMode;
-type DashboardTab = "inventory" | "renewals" | "owners" | "coverage";
+type DashboardTab = "inventory" | "renewals" | "owners" | "coverage" | "settings";
+type DashboardDensity = "comfortable" | "compact";
 type SourceFilter = InventorySource | "all" | "key_vault";
 type OwnerSuggestionFilter = "all" | "users" | "groups";
 type InventorySort = "expires_soonest" | "recently_expired";
@@ -174,7 +179,16 @@ const TAB_LABELS: Record<DashboardTab, string> = {
   inventory: "Inventory",
   renewals: "Renewals",
   owners: "Owners",
-  coverage: "Coverage & Audit"
+  coverage: "Coverage & Audit",
+  settings: "Settings"
+};
+
+const STORAGE_KEYS = {
+  theme: "azure-cert-gui-theme",
+  density: "azure-cert-gui-density",
+  defaultTab: "azure-cert-gui-default-tab",
+  defaultQueue: "azure-cert-gui-default-queue",
+  showGuidance: "azure-cert-gui-show-guidance"
 };
 
 const INVENTORY_SORT_LABELS: Record<InventorySort, string> = {
@@ -339,6 +353,12 @@ export function Dashboard({
   const [workflowMode, setWorkflowMode] = useState<WorkflowMode>(() => (summary.unknownOwners > 0 ? "unknown" : "all"));
   const [activeTab, setActiveTab] = useState<DashboardTab>("inventory");
   const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [density, setDensity] = useState<DashboardDensity>("comfortable");
+  const [defaultTab, setDefaultTab] = useState<DashboardTab>("inventory");
+  const [defaultWorkflowMode, setDefaultWorkflowMode] = useState<WorkflowMode>(() =>
+    summary.unknownOwners > 0 ? "unknown" : "all"
+  );
+  const [showGuidance, setShowGuidance] = useState(true);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [selectedDetailId, setSelectedDetailId] = useState<number | null>(null);
   const [copyPanel, setCopyPanel] = useState<{ title: string; text: string; copied: boolean } | null>(null);
@@ -357,10 +377,33 @@ export function Dashboard({
   const currentTutorialStep = tutorialStepIndex === null ? null : TUTORIAL_STEPS[tutorialStepIndex] ?? null;
 
   useEffect(() => {
-    const stored = window.localStorage.getItem("azure-cert-gui-theme");
-    if (stored === "dark" || stored === "light") {
-      setTheme(stored);
-      document.documentElement.dataset.theme = stored;
+    const storedTheme = window.localStorage.getItem(STORAGE_KEYS.theme);
+    if (storedTheme === "dark" || storedTheme === "light") {
+      setTheme(storedTheme);
+      document.documentElement.dataset.theme = storedTheme;
+      document.documentElement.style.colorScheme = storedTheme;
+    }
+
+    const storedDensity = window.localStorage.getItem(STORAGE_KEYS.density);
+    if (storedDensity === "comfortable" || storedDensity === "compact") {
+      setDensity(storedDensity);
+    }
+
+    const storedDefaultTab = window.localStorage.getItem(STORAGE_KEYS.defaultTab);
+    if (isDashboardTab(storedDefaultTab)) {
+      setDefaultTab(storedDefaultTab);
+      setActiveTab(storedDefaultTab);
+    }
+
+    const storedDefaultQueue = window.localStorage.getItem(STORAGE_KEYS.defaultQueue);
+    if (isWorkflowMode(storedDefaultQueue)) {
+      setDefaultWorkflowMode(storedDefaultQueue);
+      setWorkflowMode(storedDefaultQueue);
+    }
+
+    const storedShowGuidance = window.localStorage.getItem(STORAGE_KEYS.showGuidance);
+    if (storedShowGuidance === "false") {
+      setShowGuidance(false);
     }
   }, []);
 
@@ -448,13 +491,58 @@ export function Dashboard({
     };
   }, [currentTutorialStep]);
 
+  function applyTheme(next: "light" | "dark") {
+    setTheme(next);
+    document.documentElement.dataset.theme = next;
+    document.documentElement.style.colorScheme = next;
+    window.localStorage.setItem(STORAGE_KEYS.theme, next);
+  }
+
   function toggleTheme() {
-    setTheme((current) => {
-      const next = current === "dark" ? "light" : "dark";
-      document.documentElement.dataset.theme = next;
-      window.localStorage.setItem("azure-cert-gui-theme", next);
-      return next;
-    });
+    applyTheme(theme === "dark" ? "light" : "dark");
+  }
+
+  function saveDensity(next: DashboardDensity) {
+    setDensity(next);
+    window.localStorage.setItem(STORAGE_KEYS.density, next);
+  }
+
+  function saveDefaultTab(next: DashboardTab) {
+    setDefaultTab(next);
+    window.localStorage.setItem(STORAGE_KEYS.defaultTab, next);
+  }
+
+  function saveDefaultWorkflowMode(next: WorkflowMode) {
+    setDefaultWorkflowMode(next);
+    window.localStorage.setItem(STORAGE_KEYS.defaultQueue, next);
+  }
+
+  function saveShowGuidance(next: boolean) {
+    setShowGuidance(next);
+    window.localStorage.setItem(STORAGE_KEYS.showGuidance, String(next));
+  }
+
+  function resetLocalPreferences() {
+    window.localStorage.removeItem(STORAGE_KEYS.theme);
+    window.localStorage.removeItem(STORAGE_KEYS.density);
+    window.localStorage.removeItem(STORAGE_KEYS.defaultTab);
+    window.localStorage.removeItem(STORAGE_KEYS.defaultQueue);
+    window.localStorage.removeItem(STORAGE_KEYS.showGuidance);
+    applyTheme("light");
+    saveDensity("comfortable");
+    saveDefaultTab("inventory");
+    saveDefaultWorkflowMode(summary.unknownOwners > 0 ? "unknown" : "all");
+    saveShowGuidance(true);
+    setActiveTab("inventory");
+    setWorkflowMode(summary.unknownOwners > 0 ? "unknown" : "all");
+  }
+
+  function resetTutorial() {
+    window.localStorage.removeItem(TUTORIAL_STORAGE_KEY);
+    window.localStorage.removeItem(STORAGE_KEYS.showGuidance);
+    setShowGuidance(true);
+    setWorkflowMode(summary.unknownOwners > 0 ? "unknown" : "all");
+    startTutorial();
   }
 
   function startTutorial() {
@@ -596,6 +684,36 @@ export function Dashboard({
     setSelectedDetailId(null);
   }
 
+  function focusUrgentRenewals() {
+    setActiveTab("inventory");
+    setWorkflowMode("urgent");
+    setSource("all");
+    setBucket("all");
+    setStatus("all");
+    setOwnerMode("all");
+    setRotationScope("actionable");
+    setQuery("");
+    setSelectedDetailId(null);
+  }
+
+  function focusOwnerGaps() {
+    setActiveTab("owners");
+    setWorkflowMode("unknown");
+    setOwnerMode("unknown");
+    setRotationScope("actionable");
+    setSelectedDetailId(null);
+  }
+
+  function focusRenewalQueue() {
+    setActiveTab("renewals");
+    setSelectedDetailId(null);
+  }
+
+  function focusCoverage() {
+    setActiveTab("coverage");
+    setSelectedDetailId(null);
+  }
+
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     const matching = items.filter((item) => {
@@ -636,6 +754,19 @@ export function Dashboard({
   const allSyncedViewActive = broadInventoryFiltersActive && source === "all";
   const vaultItemsViewActive = broadInventoryFiltersActive && source === "key_vault";
   const vaultItemCount = useMemo(() => items.filter((item) => KEY_VAULT_SOURCES.has(item.source)).length, [items]);
+  const urgentRenewalCount = useMemo(
+    () =>
+      items.filter(
+        (item) =>
+          isRenewalActionable(item.rotationMode) && (item.riskBucket === "expired" || item.riskBucket === "0-30")
+      ).length,
+    [items]
+  );
+  const openRenewalCaseCount = useMemo(
+    () => items.filter((item) => item.renewalCase && item.renewalCase.status !== "closed").length,
+    [items]
+  );
+  const coverageIssueCount = useMemo(() => coverage.filter((row) => row.health !== "ok").length, [coverage]);
 
   const selectedItems = useMemo(
     () => items.filter((item) => selectedIds.includes(item.id)),
@@ -1084,8 +1215,10 @@ export function Dashboard({
     );
   }
 
+  const dashboardClassName = `shell ${density === "compact" ? "density-compact" : ""}`;
+
   return (
-    <main className="shell">
+    <main className={dashboardClassName}>
       <header className="topbar">
         <div className="brand-lockup">
           <AzureCertLogo />
@@ -1165,9 +1298,25 @@ export function Dashboard({
             {settingsMenuOpen ? (
               <div className="settings-menu-panel" role="menu" aria-label="Settings">
                 <strong>Settings</strong>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setSettingsMenuOpen(false);
+                    setSelectedDetailId(null);
+                    setActiveTab("settings");
+                  }}
+                >
+                  <Settings size={15} />
+                  Open settings
+                </button>
                 <button type="button" role="menuitem" onClick={startTutorial}>
                   <HelpCircle size={15} />
                   Replay tutorial
+                </button>
+                <button type="button" role="menuitem" onClick={resetTutorial}>
+                  <RotateCcw size={15} />
+                  Reset tutorial
                 </button>
               </div>
             ) : null}
@@ -1269,6 +1418,50 @@ export function Dashboard({
           Review renewals
         </button>
       </section>
+
+      {showGuidance ? (
+        <section className="guidance-panel" aria-label="Recommended next actions">
+          <div className="guidance-heading">
+            <div>
+              <p className="eyebrow">Next actions</p>
+              <h2>Start with the riskiest gaps</h2>
+            </div>
+            <button type="button" className="icon-button" onClick={() => saveShowGuidance(false)} aria-label="Hide next actions" title="Hide next actions">
+              <X size={15} />
+            </button>
+          </div>
+          <div className="guidance-grid">
+            <button type="button" className="guidance-action danger" onClick={focusUrgentRenewals}>
+              <AlertTriangle size={18} />
+              <span>
+                <strong>{urgentRenewalCount}</strong>
+                <em>Expired or 0-30 day actionable credentials</em>
+              </span>
+            </button>
+            <button type="button" className="guidance-action warning" onClick={focusOwnerGaps}>
+              <UserRound size={18} />
+              <span>
+                <strong>{summary.unknownOwners}</strong>
+                <em>Credentials missing an owner</em>
+              </span>
+            </button>
+            <button type="button" className="guidance-action" onClick={focusRenewalQueue}>
+              <Clock size={18} />
+              <span>
+                <strong>{openRenewalCaseCount}</strong>
+                <em>Open renewal cases to review</em>
+              </span>
+            </button>
+            <button type="button" className="guidance-action danger" onClick={focusCoverage}>
+              <ShieldAlert size={18} />
+              <span>
+                <strong>{coverageIssueCount}</strong>
+                <em>Source coverage issues</em>
+              </span>
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       <section className="metrics" aria-label="Inventory summary" data-tour-key="metrics">
         <Metric label="Total" value={summary.total} icon={<Database size={18} />} />
@@ -1514,6 +1707,207 @@ export function Dashboard({
             <Download size={15} />
             Copy owner mappings
           </button>
+        </section>
+      </section>
+
+      <section
+        id="panel-settings"
+        className="tab-panel"
+        role="tabpanel"
+        aria-labelledby="tab-settings"
+        hidden={activeTab !== "settings"}
+      >
+        <section className="settings-grid" aria-label="Settings">
+          <section className="settings-panel">
+            <div className="section-heading">
+              <div>
+                <h2>Appearance</h2>
+                <span>Local preferences for this browser</span>
+              </div>
+              <SlidersHorizontal size={18} />
+            </div>
+            <div className="setting-row">
+              <div>
+                <strong>Theme</strong>
+                <span>Choose the dashboard color mode.</span>
+              </div>
+              <div className="segmented-control" role="group" aria-label="Theme">
+                <button type="button" className={theme === "light" ? "active" : ""} onClick={() => applyTheme("light")}>
+                  <Sun size={15} />
+                  Light
+                </button>
+                <button type="button" className={theme === "dark" ? "active" : ""} onClick={() => applyTheme("dark")}>
+                  <Moon size={15} />
+                  Dark
+                </button>
+              </div>
+            </div>
+            <div className="setting-row">
+              <div>
+                <strong>Density</strong>
+                <span>Use compact rows when reviewing large inventories.</span>
+              </div>
+              <div className="segmented-control" role="group" aria-label="Dashboard density">
+                <button type="button" className={density === "comfortable" ? "active" : ""} onClick={() => saveDensity("comfortable")}>
+                  Comfortable
+                </button>
+                <button type="button" className={density === "compact" ? "active" : ""} onClick={() => saveDensity("compact")}>
+                  Compact
+                </button>
+              </div>
+            </div>
+            <label className="toggle-row">
+              <input type="checkbox" checked={showGuidance} onChange={(event) => saveShowGuidance(event.currentTarget.checked)} />
+              <span>
+                <strong>Show next actions</strong>
+                <em>Display the guided triage band above metrics.</em>
+              </span>
+            </label>
+            <div className="setting-row">
+              <div>
+                <strong>Tutorial</strong>
+                <span>Restore the guided next-actions panel and return to the starting queue.</span>
+              </div>
+              <button type="button" onClick={resetTutorial}>
+                <RotateCcw size={15} />
+                Reset tutorial
+              </button>
+            </div>
+          </section>
+
+          <section className="settings-panel">
+            <div className="section-heading">
+              <div>
+                <h2>Default view</h2>
+                <span>Open the dashboard where your team usually starts.</span>
+              </div>
+              <LayoutDashboard size={18} />
+            </div>
+            <div className="setting-row">
+              <div>
+                <strong>Landing tab</strong>
+                <span>Used the next time this browser opens the app.</span>
+              </div>
+              <select
+                value={defaultTab}
+                onChange={(event) => saveDefaultTab(event.currentTarget.value as DashboardTab)}
+                aria-label="Default dashboard tab"
+              >
+                {(Object.keys(TAB_LABELS) as DashboardTab[]).map((tab) => (
+                  <option key={tab} value={tab}>
+                    {TAB_LABELS[tab]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="setting-row">
+              <div>
+                <strong>Inventory queue</strong>
+                <span>Default quick queue for the Inventory tab.</span>
+              </div>
+              <select
+                value={defaultWorkflowMode}
+                onChange={(event) => saveDefaultWorkflowMode(event.currentTarget.value as WorkflowMode)}
+                aria-label="Default inventory queue"
+              >
+                {(Object.keys(QUEUE_LABELS) as WorkflowMode[]).map((mode) => (
+                  <option key={mode} value={mode}>
+                    {QUEUE_LABELS[mode]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="settings-actions">
+              <button type="button" onClick={resetLocalPreferences}>
+                Reset local preferences
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab(defaultTab);
+                  setWorkflowMode(defaultWorkflowMode);
+                }}
+              >
+                Apply now
+              </button>
+            </div>
+          </section>
+
+          <section className="settings-panel">
+            <div className="section-heading">
+              <div>
+                <h2>Refresh schedule</h2>
+                <span>Control background inventory syncs.</span>
+              </div>
+              <Bell size={18} />
+            </div>
+            <form className="settings-form" onSubmit={saveRefreshSchedule}>
+              <label>
+                <span>Interval</span>
+                <select
+                  name="intervalMinutes"
+                  value={scheduleInterval}
+                  onChange={(event) => setScheduleInterval(event.currentTarget.value)}
+                  disabled={!auth.canOperate}
+                >
+                  {refreshIntervalOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="settings-actions">
+                <button type="submit" disabled={!auth.canOperate}>
+                  <RefreshCw size={15} />
+                  {scheduleStatus?.enabled ? "Update schedule" : "Enable schedule"}
+                </button>
+                <button type="button" onClick={stopRefreshSchedule} disabled={!auth.canOperate || !scheduleStatus?.enabled}>
+                  <X size={15} />
+                  Stop schedule
+                </button>
+              </div>
+            </form>
+            <div className="settings-note">
+              {scheduleStatus?.enabled && scheduleStatus.nextRunAt
+                ? `Next run ${formatDateTime(scheduleStatus.nextRunAt)}`
+                : "Automatic refresh is currently off."}
+            </div>
+          </section>
+
+          <section className="settings-panel">
+            <div className="section-heading">
+              <div>
+                <h2>Access & exports</h2>
+                <span>Current session and audit shortcuts.</span>
+              </div>
+              <UserRound size={18} />
+            </div>
+            <dl className="settings-list">
+              <div>
+                <dt>User</dt>
+                <dd>{authTitle}</dd>
+              </div>
+              <div>
+                <dt>Access</dt>
+                <dd>{auth.accessLevel}</dd>
+              </div>
+              <div>
+                <dt>Operator actions</dt>
+                <dd>{auth.canOperate ? "Enabled" : "Viewer only"}</dd>
+              </div>
+            </dl>
+            <div className="settings-actions">
+              <button type="button" onClick={copyInventoryExport} disabled={!filtered.length}>
+                <Download size={15} />
+                Copy visible inventory
+              </button>
+              <button type="button" onClick={copyStatusAudit} disabled={!items.some((item) => item.statusHistory.length)}>
+                <Download size={15} />
+                Copy status audit
+              </button>
+            </div>
+          </section>
         </section>
       </section>
 
@@ -3198,4 +3592,12 @@ function matchesRotationScope(item: DashboardItem, rotationScope: RotationScope)
   if (rotationScope === "all") return true;
   if (rotationScope === "actionable") return isRenewalActionable(item.rotationMode);
   return item.rotationMode === rotationScope;
+}
+
+function isDashboardTab(value: string | null): value is DashboardTab {
+  return Boolean(value && value in TAB_LABELS);
+}
+
+function isWorkflowMode(value: string | null): value is WorkflowMode {
+  return Boolean(value && value in QUEUE_LABELS);
 }
