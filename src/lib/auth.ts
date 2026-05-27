@@ -171,6 +171,17 @@ export async function requireOperatorAccessForRequest(request: NextRequest): Pro
   return toAuthActor(context);
 }
 
+export async function requireAdminAccessForRequest(request: NextRequest): Promise<AuthActor> {
+  const context = await getCurrentAuthContextForRequest(request);
+  if (!isSameOriginMutation(request.headers)) {
+    throw new AuthError(403, "MutationOriginMismatch");
+  }
+  if (!canAdmin(context)) {
+    throw new AuthError(context ? 403 : 401, "AdminAccessRequired");
+  }
+  return toAuthActor(context);
+}
+
 export async function requireViewerAccessForRequest(request: NextRequest): Promise<void> {
   const context = await getCurrentAuthContextForRequest(request);
   if (!canView(context)) {
@@ -341,6 +352,11 @@ function canOperate(session: AuthSession | null): session is AuthSession {
   return ["Operator", "Admin"].includes(resolveAccessLevel(session.roles));
 }
 
+function canAdmin(session: AuthSession | null): session is AuthSession {
+  if (!session) return false;
+  return resolveAccessLevel(session.roles) === "Admin";
+}
+
 function toDashboardAuthState(session: AuthSession): DashboardAuthState {
   return {
     mode: authOptionsFromEnv().mode,
@@ -349,6 +365,7 @@ function toDashboardAuthState(session: AuthSession): DashboardAuthState {
     displayName: session.displayName,
     accessLevel: resolveAccessLevel(session.roles),
     canOperate: canOperate(session),
+    canAdmin: canAdmin(session),
     signInPath: "/api/auth/login",
     signOutPath: "/api/auth/logout"
   };

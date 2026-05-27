@@ -1640,7 +1640,9 @@ select option {
 }
 
 .setting-row select,
-.settings-form select {
+.settings-form input,
+.settings-form select,
+.settings-form textarea {
   background: var(--field);
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -1648,6 +1650,42 @@ select option {
   min-height: 36px;
   min-width: 190px;
   padding: 0 8px;
+}
+
+.settings-form textarea {
+  min-height: 82px;
+  padding: 8px;
+  resize: vertical;
+  width: 100%;
+}
+
+.azure-settings-form {
+  align-content: start;
+}
+
+.azure-login-note {
+  display: grid;
+  gap: 6px;
+}
+
+.azure-login-note a {
+  color: var(--teal);
+  font-weight: 600;
+}
+
+.azure-login-note code {
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  color: var(--text);
+  display: inline-flex;
+  font: 20px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  letter-spacing: 2px;
+  padding: 8px 10px;
+  width: fit-content;
+}
+
+.settings-note.failed {
+  color: var(--red);
 }
 
 .segmented-control {
