@@ -106,7 +106,7 @@ jobs:
 
       - name: Run SonarQube analysis
         if: env.SONARQUBE_CONFIGURED == 'true'
-        uses: SonarSource/sonarqube-scan-action@v7
+        uses: SonarSource/sonarqube-scan-action@v8
         env:
           SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
           SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
