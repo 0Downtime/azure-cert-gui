@@ -11,22 +11,42 @@ pr:
       - main
 
 variables:
-  nodeVersion: "22.x"
-  sonarProjectKey: "0Downtime_azure-cert-gui"
-  sonarProjectName: "Azure Cert GUI"
-  artifactName: "azure-cert-gui"
+  - group: azure-cert-gui-production
 
-  # Deployment is limited to main and is still gated by the Azure DevOps environment.
-  deployWindowsServer: "true"
-  windowsEnvironment: "Azure-Cert-GUI-Production"
-  windowsResource: "azure-cert-gui-server-2022"
-  windowsInstallRoot: "C:\\ProgramData\\AzureCertGui"
-  windowsListenHost: "127.0.0.1"
-  windowsPort: "3000"
-  windowsTaskName: "AzureCertGui"
-  windowsSyncTime: "07:30"
-  windowsUseManagedIdentity: "true"
-  windowsRunInitialSync: "true"
+  - name: nodeVersion
+    value: "22.x"
+  - name: sonarProjectKey
+    value: "0Downtime_azure-cert-gui"
+  - name: sonarProjectName
+    value: "Azure Cert GUI"
+  - name: artifactName
+    value: "azure-cert-gui"
+
+  # Deployment is limited to main and is gated by the Azure DevOps environment.
+  - name: deployWindowsServer
+    value: "true"
+  - name: windowsEnvironment
+    value: "Azure-Cert-GUI-Production"
+  - name: windowsResource
+    value: "azure-cert-gui-server-2022"
+  - name: windowsInstallRoot
+    value: "C:\\ProgramData\\AzureCertGui"
+  - name: windowsListenHost
+    value: "127.0.0.1"
+  - name: windowsPort
+    value: "3000"
+  - name: windowsTaskName
+    value: "AzureCertGui"
+  - name: windowsSyncTime
+    value: "07:30"
+  - name: windowsAzureCliLoginMode
+    value: "service-principal-certificate"
+  - name: windowsCertificateSecureFile
+    value: "azure-cert-gui-production.pem"
+  - name: windowsUseManagedIdentity
+    value: "false"
+  - name: windowsRunInitialSync
+    value: "false"
 
 stages:
   - stage: ValidateAndPackage
@@ -145,6 +165,12 @@ stages:
                 - download: current
                   artifact: $(artifactName)
 
+                - task: DownloadSecureFile@1
+                  name: azureCertificate
+                  displayName: Download protected Azure certificate
+                  inputs:
+                    secureFile: "$(windowsCertificateSecureFile)"
+
                 - task: PowerShell@2
                   displayName: Deploy, migrate, schedule, and smoke test
                   inputs:
@@ -157,6 +183,9 @@ stages:
                       -Port $(windowsPort)
                       -TaskName "$(windowsTaskName)"
                       -SyncTime "$(windowsSyncTime)"
+                      -AzureCliLoginMode "$(windowsAzureCliLoginMode)"
+                      -AzureCliServicePrincipalAppId "$(AZURE_CERT_GUI_SP_APP_ID)"
+                      -AzureCliCertificatePath "$(azureCertificate.secureFilePath)"
                       -UseManagedIdentity $(windowsUseManagedIdentity)
                       -RunInitialSync $(windowsRunInitialSync)
                     pwsh: false
@@ -165,6 +194,8 @@ stages:
                     AZURE_SUBSCRIPTION_IDS: $(AZURE_SUBSCRIPTION_IDS)
                     AZURE_KEYVAULT_RESOURCE_IDS: $(AZURE_KEYVAULT_RESOURCE_IDS)
                     AZURE_CLI_PATH: $(AZURE_CLI_PATH)
+                    AZURE_CERT_GUI_AZ_LOGIN_MODE: $(windowsAzureCliLoginMode)
+                    AZURE_CERT_GUI_SP_APP_ID: $(AZURE_CERT_GUI_SP_APP_ID)
                     AZURE_GRAPH_INCLUDE_OWNERS: $(AZURE_GRAPH_INCLUDE_OWNERS)
                     AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY: $(AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY)
                     AZURE_KEYVAULT_INCLUDE_VERSIONS: $(AZURE_KEYVAULT_INCLUDE_VERSIONS)

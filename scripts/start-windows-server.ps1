@@ -48,8 +48,38 @@ if ($loginMode -eq "managed-identity") {
   if ($LASTEXITCODE -ne 0) {
     throw "The configured existing Azure CLI login is not available to the Windows Server runtime account."
   }
+} elseif ($loginMode -eq "service-principal-certificate") {
+  if (-not $az) {
+    throw "Azure CLI was not found. Install Azure CLI on the Windows Server 2022 target."
+  }
+  if ([string]::IsNullOrWhiteSpace($env:AZURE_CERT_GUI_SP_APP_ID)) {
+    throw "AZURE_CERT_GUI_SP_APP_ID is required for service-principal-certificate login."
+  }
+  if ([string]::IsNullOrWhiteSpace($env:AZURE_CERT_GUI_SP_CERTIFICATE_PATH)) {
+    throw "AZURE_CERT_GUI_SP_CERTIFICATE_PATH is required for service-principal-certificate login."
+  }
+  if (-not (Test-Path -LiteralPath $env:AZURE_CERT_GUI_SP_CERTIFICATE_PATH -PathType Leaf)) {
+    throw "The Azure service principal certificate file was not found."
+  }
+  if ([string]::IsNullOrWhiteSpace($env:AZURE_TENANT_ID)) {
+    throw "AZURE_TENANT_ID is required for service-principal-certificate login."
+  }
+
+  $loginArgs = @(
+    "login",
+    "--service-principal",
+    "--username", $env:AZURE_CERT_GUI_SP_APP_ID,
+    "--certificate", $env:AZURE_CERT_GUI_SP_CERTIFICATE_PATH,
+    "--tenant", $env:AZURE_TENANT_ID,
+    "--allow-no-subscriptions",
+    "--only-show-errors"
+  )
+  & $az.Source @loginArgs *> $null
+  if ($LASTEXITCODE -ne 0) {
+    throw "Azure CLI service-principal certificate login failed for the Windows Server runtime account."
+  }
 } else {
-  throw "Unsupported AZURE_CERT_GUI_AZ_LOGIN_MODE '$loginMode'. Use managed-identity or existing."
+  throw "Unsupported AZURE_CERT_GUI_AZ_LOGIN_MODE '$loginMode'. Use managed-identity, existing, or service-principal-certificate."
 }
 
 $tsx = Join-Path $releaseRoot "node_modules\tsx\dist\cli.mjs"
