@@ -181,6 +181,8 @@ The Azure DevOps pipeline publishes a production artifact and, for successful `m
 
 The deployment creates a timestamped SQLite backup, registers restartable startup and daily metadata-sync scheduled tasks under `SYSTEM`, runs the database migration, performs an unauthenticated `/api/health` smoke test, and runs an initial metadata sync. The application binds to `127.0.0.1:3000`; terminate TLS and publish it through the enterprise reverse proxy or IIS separately.
 
+For an on-premises Windows Server without a VM or Arc managed identity, use the `service-principal-certificate` Azure CLI login mode. The certificate file must be a PEM containing both the public certificate and its private key. The deployment copies it to `C:\ProgramData\AzureCertGui\credentials\azure-cert-gui-login.pem`, grants access only to `SYSTEM` and local `Administrators`, and stores only that protected path in the runtime environment. Pass `-AzureCliLoginMode service-principal-certificate`, `-AzureCliServicePrincipalAppId <app-id>`, and `-AzureCliCertificatePath <combined-pem-path>` to `deploy-windows-server.ps1`, or provide the corresponding `AZURE_CERT_GUI_AZ_LOGIN_MODE`, `AZURE_CERT_GUI_SP_APP_ID`, and `AZURE_CERT_GUI_SP_CERTIFICATE_PATH` environment values. Do not use the interactive `existing` mode for unattended scheduled tasks.
+
 Configure these Azure DevOps variables before permitting the deployment stage. Keep the client secret and cookie secret as secret variables or protected variable-group values:
 
 - `AZURE_TENANT_ID` and the explicitly scoped `AZURE_SUBSCRIPTION_IDS`.
@@ -415,6 +417,9 @@ Supported environment values:
 - `AZURE_GRAPH_INCLUDE_OWNERS`: defaults to `true`. Set `false` if Graph owner reads are not consented yet.
 - `AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY`: defaults to `true`. Set `false` if Graph user/group reads are not consented yet.
 - `AZURE_KEYVAULT_INCLUDE_VERSIONS`: defaults to `false`. Current Key Vault secrets/certificates are usually enough for rotation tracking.
+- `AZURE_CERT_GUI_AZ_LOGIN_MODE`: `managed-identity`, `existing`, or `service-principal-certificate` for the Windows Server Azure CLI runtime.
+- `AZURE_CERT_GUI_SP_APP_ID`: service principal application/client ID when using certificate login.
+- `AZURE_CERT_GUI_SP_CERTIFICATE_PATH`: combined PEM path containing the service principal certificate and private key when using certificate login.
 - `AZURE_CERT_GUI__AUTH__MODE`: `local`, `oidc`, or `hybrid`. `local` is loopback-only and intended for development.
 - `AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY`: OIDC authority, such as an Entra tenant `/v2.0` URL.
 - `AZURE_CERT_GUI__AUTH__OIDC__CLIENTID`: app registration client ID.

@@ -11,7 +11,10 @@ param(
   [string]$SyncTaskName = "AzureCertGui-Sync",
   [string]$SyncTime = "07:30",
   [bool]$UseManagedIdentity = $true,
-  [bool]$RunInitialSync = $true
+  [bool]$RunInitialSync = $true,
+  [string]$AzureCliLoginMode = "",
+  [string]$AzureCliServicePrincipalAppId = "",
+  [string]$AzureCliCertificatePath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -74,6 +77,15 @@ function Protect-RuntimeDirectory {
   & icacls.exe $Path /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" /T /C | Out-Null
   if ($LASTEXITCODE -ne 0) {
     throw "Failed to protect runtime configuration directory: $Path"
+  }
+}
+
+function Protect-CredentialDirectory {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  & icacls.exe $Path /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" /T /C | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to protect Azure CLI certificate directory: $Path"
   }
 }
 
@@ -212,6 +224,43 @@ if ($authMode -ne "oidc") {
   throw "Enterprise deployment requires AZURE_CERT_GUI__AUTH__MODE=oidc."
 }
 
+$configuredLoginMode = Get-ProcessEnvironmentValue -Name "AZURE_CERT_GUI_AZ_LOGIN_MODE"
+$loginMode = if (-not [string]::IsNullOrWhiteSpace($AzureCliLoginMode)) {
+  $AzureCliLoginMode.Trim()
+} elseif (-not [string]::IsNullOrWhiteSpace($configuredLoginMode)) {
+  $configuredLoginMode
+} elseif ($UseManagedIdentity) {
+  "managed-identity"
+} else {
+  "existing"
+}
+if ($loginMode -notin @("managed-identity", "existing", "service-principal-certificate")) {
+  throw "Unsupported Azure CLI login mode '$loginMode'. Use managed-identity, existing, or service-principal-certificate."
+}
+
+$servicePrincipalAppId = $null
+$certificateSourcePath = $null
+if ($loginMode -eq "service-principal-certificate") {
+  $servicePrincipalAppId = if (-not [string]::IsNullOrWhiteSpace($AzureCliServicePrincipalAppId)) {
+    $AzureCliServicePrincipalAppId.Trim()
+  } else {
+    Require-ProcessEnvironmentValue -Name "AZURE_CERT_GUI_SP_APP_ID"
+  }
+  $certificateSourcePath = if (-not [string]::IsNullOrWhiteSpace($AzureCliCertificatePath)) {
+    $AzureCliCertificatePath.Trim()
+  } else {
+    Require-ProcessEnvironmentValue -Name "AZURE_CERT_GUI_SP_CERTIFICATE_PATH"
+  }
+  if (-not (Test-Path -LiteralPath $certificateSourcePath -PathType Leaf)) {
+    throw "The Azure service principal certificate file was not found."
+  }
+  $certificateText = Get-Content -LiteralPath $certificateSourcePath -Raw
+  if ($certificateText -notmatch "-----BEGIN CERTIFICATE-----" -or
+      $certificateText -notmatch "-----BEGIN (?:PRIVATE KEY|RSA PRIVATE KEY)-----") {
+    throw "The Azure service principal certificate file must contain a PEM certificate and private key."
+  }
+}
+
 $requiredAuthValues = @(
   "AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY",
   "AZURE_CERT_GUI__AUTH__OIDC__CLIENTID",
@@ -237,6 +286,7 @@ if ($groupValues.Count -eq 0) {
 $dataPath = Join-Path $InstallRoot "data\azure-cert-gui.sqlite"
 $backupRoot = Join-Path $InstallRoot "backups"
 $runtimeRoot = Join-Path $InstallRoot "current\.runtime"
+$credentialRoot = Join-Path $InstallRoot "credentials"
 $releasesRoot = Join-Path $InstallRoot "releases"
 $currentRoot = Join-Path $InstallRoot "current"
 $releaseName = "release-{0}" -f (Get-Date -Format "yyyyMMdd-HHmmss")
@@ -286,7 +336,7 @@ $values = @{
   AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET = Require-ProcessEnvironmentValue -Name "AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET"
   AZURE_CERT_GUI__AUTH__COOKIESECRET = Require-ProcessEnvironmentValue -Name "AZURE_CERT_GUI__AUTH__COOKIESECRET"
   AZURE_CERT_GUI__ROTATION__LIVEENABLED = (Get-ProcessEnvironmentValue -Name "AZURE_CERT_GUI__ROTATION__LIVEENABLED")
-  AZURE_CERT_GUI_AZ_LOGIN_MODE = $(if ($UseManagedIdentity) { "managed-identity" } else { "existing" })
+  AZURE_CERT_GUI_AZ_LOGIN_MODE = $loginMode
 }
 
 if ([string]::IsNullOrWhiteSpace($values.AZURE_CERT_GUI__ROTATION__LIVEENABLED)) {
@@ -305,6 +355,17 @@ Add-OptionalRuntimeValue -Values $values -Name "AZURE_CERT_GUI__AUTH__OIDC__OPER
 Add-OptionalRuntimeValue -Values $values -Name "AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS__0"
 Add-OptionalRuntimeValue -Values $values -Name "AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS"
 Add-OptionalRuntimeValue -Values $values -Name "AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS__0"
+
+if ($loginMode -eq "service-principal-certificate") {
+  New-Item -ItemType Directory -Path $credentialRoot -Force | Out-Null
+  $certificateRuntimePath = Join-Path $credentialRoot "azure-cert-gui-login.pem"
+  if ([IO.Path]::GetFullPath($certificateSourcePath) -ne [IO.Path]::GetFullPath($certificateRuntimePath)) {
+    Copy-Item -LiteralPath $certificateSourcePath -Destination $certificateRuntimePath -Force
+  }
+  $values.AZURE_CERT_GUI_SP_APP_ID = $servicePrincipalAppId
+  $values.AZURE_CERT_GUI_SP_CERTIFICATE_PATH = $certificateRuntimePath
+  Protect-CredentialDirectory -Path $credentialRoot
+}
 
 Write-RuntimeEnvironment -Path (Join-Path $runtimeRoot "azure-cert-gui.env.ps1") -Values $values
 Protect-RuntimeDirectory -Path $runtimeRoot
