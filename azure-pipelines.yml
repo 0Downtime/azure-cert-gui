@@ -1,4 +1,4 @@
-name: azure-cert-gui-sonarqube-$(Date:yyyyMMdd).$(Rev:r)
+name: azure-cert-gui-$(Date:yyyyMMdd).$(Rev:r)
 
 trigger:
   branches:
@@ -14,68 +14,171 @@ variables:
   nodeVersion: "22.x"
   sonarProjectKey: "0Downtime_azure-cert-gui"
   sonarProjectName: "Azure Cert GUI"
+  artifactName: "azure-cert-gui"
 
-pool:
-  vmImage: ubuntu-latest
+  # Deployment is limited to main and is still gated by the Azure DevOps environment.
+  deployWindowsServer: "true"
+  windowsEnvironment: "Azure-Cert-GUI-Production"
+  windowsResource: "azure-cert-gui-server-2022"
+  windowsInstallRoot: "C:\\ProgramData\\AzureCertGui"
+  windowsListenHost: "127.0.0.1"
+  windowsPort: "3000"
+  windowsTaskName: "AzureCertGui"
+  windowsSyncTime: "07:30"
+  windowsUseManagedIdentity: "true"
+  windowsRunInitialSync: "true"
 
-steps:
-  - checkout: self
-    fetchDepth: 0
+stages:
+  - stage: ValidateAndPackage
+    displayName: Validate and package
+    jobs:
+      - job: ValidateAndPackage
+        displayName: Test, scan, build, and publish artifact
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+            fetchDepth: 0
 
-  - task: NodeTool@0
-    displayName: Use Node.js $(nodeVersion)
-    inputs:
-      versionSpec: $(nodeVersion)
+          - task: NodeTool@0
+            displayName: Use Node.js $(nodeVersion)
+            inputs:
+              versionSpec: $(nodeVersion)
 
-  - script: npm ci --ignore-scripts
-    displayName: Install dependencies
+          - script: npm ci --ignore-scripts
+            displayName: Install dependencies
 
-  - task: SonarQubePrepare@8
-    displayName: Prepare SonarQube analysis
-    inputs:
-      SonarQube: SonarQube
-      scannerMode: cli
-      configMode: manual
-      cliProjectKey: $(sonarProjectKey)
-      cliProjectName: $(sonarProjectName)
-      cliSources: .
-      extraProperties: |
-        sonar.sourceEncoding=UTF-8
-        sonar.sources=src,scripts
-        sonar.tests=src
-        sonar.test.inclusions=src/**/*.test.ts
-        sonar.exclusions=src/**/*.test.ts,node_modules/**,.next/**,coverage/**,test-results/**,data/**,.runtime/**,fixtures/**
-        sonar.javascript.lcov.reportPaths=coverage/lcov.info
-        sonar.typescript.tsconfigPath=tsconfig.json
+          - bash: |
+              set -euo pipefail
+              docker run --rm \
+                -v "$(Build.SourcesDirectory):/repo" \
+                ghcr.io/gitleaks/gitleaks:v8.30.1 \
+                detect --source /repo --redact --no-banner
+            displayName: Scan repository for secrets
 
-  - script: npm run typecheck
-    displayName: Typecheck
+          - task: SonarQubePrepare@8
+            displayName: Prepare SonarQube analysis
+            inputs:
+              SonarQube: SonarQube
+              scannerMode: cli
+              configMode: manual
+              cliProjectKey: $(sonarProjectKey)
+              cliProjectName: $(sonarProjectName)
+              cliSources: .
+              extraProperties: |
+                sonar.sourceEncoding=UTF-8
+                sonar.sources=src,scripts
+                sonar.tests=src
+                sonar.test.inclusions=src/**/*.test.ts
+                sonar.exclusions=src/**/*.test.ts,node_modules/**,.next/**,coverage/**,test-results/**,data/**,.runtime/**,fixtures/**
+                sonar.javascript.lcov.reportPaths=coverage/lcov.info
+                sonar.typescript.tsconfigPath=tsconfig.json
 
-  - script: |
-      mkdir -p test-results
-      npm run test:ci
-    displayName: Test with coverage
+          - script: npm run typecheck
+            displayName: Typecheck
 
-  - task: PublishTestResults@2
-    displayName: Publish test results
-    condition: succeededOrFailed()
-    inputs:
-      testResultsFormat: JUnit
-      testResultsFiles: test-results/vitest-junit.xml
-      failTaskOnFailedTests: true
+          - script: |
+              mkdir -p test-results
+              npm run test:ci
+            displayName: Test with coverage
 
-  - script: npm run build
-    displayName: Build
+          - task: PublishTestResults@2
+            displayName: Publish test results
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: JUnit
+              testResultsFiles: test-results/vitest-junit.xml
+              failTaskOnFailedTests: true
 
-  - script: npm audit --omit=dev
-    displayName: Audit production dependencies
+          - script: npm run build
+            displayName: Build production bundle
 
-  - task: SonarQubeAnalyze@8
-    displayName: Run SonarQube analysis
-    inputs:
-      jdkversion: JAVA_HOME_17_X64
+          - script: npm audit --omit=dev --audit-level=high
+            displayName: Audit production dependencies (high and critical)
 
-  - task: SonarQubePublish@8
-    displayName: Publish SonarQube quality gate
-    inputs:
-      pollingTimeoutSec: "300"
+          - task: SonarQubeAnalyze@8
+            displayName: Run SonarQube analysis
+            inputs:
+              jdkversion: JAVA_HOME_17_X64
+
+          - task: SonarQubePublish@8
+            displayName: Publish SonarQube quality gate
+            inputs:
+              pollingTimeoutSec: "300"
+
+          - bash: |
+              set -euo pipefail
+              artifact_dir="$(Build.ArtifactStagingDirectory)/$(artifactName)"
+              rm -rf "$artifact_dir"
+              mkdir -p "$artifact_dir"
+
+              cp -a .next public scripts src "$artifact_dir/"
+              cp -a package.json package-lock.json next.config.mjs next-env.d.ts tsconfig.json "$artifact_dir/"
+
+              test -f "$artifact_dir/scripts/deploy-windows-server.ps1"
+              test -f "$artifact_dir/scripts/start-windows-server.ps1"
+              test -f "$artifact_dir/scripts/run-azure-sync-windows.ps1"
+            displayName: Assemble Windows Server artifact
+
+          - task: PublishPipelineArtifact@1
+            displayName: Publish deployment artifact
+            inputs:
+              targetPath: "$(Build.ArtifactStagingDirectory)/$(artifactName)"
+              artifact: "$(artifactName)"
+              publishLocation: pipeline
+
+  - stage: DeployWindowsServer
+    displayName: Deploy to Windows Server 2022
+    dependsOn: ValidateAndPackage
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['deployWindowsServer'], 'true'))
+    jobs:
+      - deployment: DeployWindowsServer
+        displayName: Deploy Azure Cert GUI
+        environment:
+          name: $(windowsEnvironment)
+          resourceName: $(windowsResource)
+          resourceType: virtualMachine
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: $(artifactName)
+
+                - task: PowerShell@2
+                  displayName: Deploy, migrate, schedule, and smoke test
+                  inputs:
+                    targetType: filePath
+                    filePath: "$(Pipeline.Workspace)\\$(artifactName)\\scripts\\deploy-windows-server.ps1"
+                    arguments: >
+                      -ArtifactPath "$(Pipeline.Workspace)\\$(artifactName)"
+                      -InstallRoot "$(windowsInstallRoot)"
+                      -ListenHost "$(windowsListenHost)"
+                      -Port $(windowsPort)
+                      -TaskName "$(windowsTaskName)"
+                      -SyncTime "$(windowsSyncTime)"
+                      -UseManagedIdentity $(windowsUseManagedIdentity)
+                      -RunInitialSync $(windowsRunInitialSync)
+                    pwsh: false
+                  env:
+                    AZURE_TENANT_ID: $(AZURE_TENANT_ID)
+                    AZURE_SUBSCRIPTION_IDS: $(AZURE_SUBSCRIPTION_IDS)
+                    AZURE_KEYVAULT_RESOURCE_IDS: $(AZURE_KEYVAULT_RESOURCE_IDS)
+                    AZURE_CLI_PATH: $(AZURE_CLI_PATH)
+                    AZURE_GRAPH_INCLUDE_OWNERS: $(AZURE_GRAPH_INCLUDE_OWNERS)
+                    AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY: $(AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY)
+                    AZURE_KEYVAULT_INCLUDE_VERSIONS: $(AZURE_KEYVAULT_INCLUDE_VERSIONS)
+                    AZURE_CERT_GUI__AUTH__MODE: oidc
+                    AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY: $(AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY)
+                    AZURE_CERT_GUI__AUTH__OIDC__CLIENTID: $(AZURE_CERT_GUI__AUTH__OIDC__CLIENTID)
+                    AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET: $(AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET)
+                    AZURE_CERT_GUI__AUTH__COOKIESECRET: $(AZURE_CERT_GUI__AUTH__COOKIESECRET)
+                    AZURE_CERT_GUI__AUTH__OIDC__ROLESCLAIMTYPE: $(AZURE_CERT_GUI__AUTH__OIDC__ROLESCLAIMTYPE)
+                    AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS: $(AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS)
+                    AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS__0: $(AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS__0)
+                    AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS: $(AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS)
+                    AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS__0: $(AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS__0)
+                    AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS: $(AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS)
+                    AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS__0: $(AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS__0)
+                    AZURE_CERT_GUI__ROTATION__LIVEENABLED: "false"
+                    AZURE_CERT_GUI_MANAGED_IDENTITY_CLIENT_ID: $(AZURE_CERT_GUI_MANAGED_IDENTITY_CLIENT_ID)
