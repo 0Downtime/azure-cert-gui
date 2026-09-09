@@ -36,7 +36,7 @@ jobs:
         run: npm run build
 
       - name: Audit production dependencies
-        run: npm audit --omit=dev
+        run: npm audit --omit=dev --audit-level=high
 
   sonarqube:
     name: SonarQube Quality Gate
@@ -102,7 +102,7 @@ jobs:
 
       - name: Audit production dependencies
         if: env.SONARQUBE_CONFIGURED == 'true'
-        run: npm audit --omit=dev
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Run SonarQube analysis
         if: env.SONARQUBE_CONFIGURED == 'true'

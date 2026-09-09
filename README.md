@@ -25,7 +25,7 @@
   <img src="https://img.shields.io/badge/repository-local--first-2f7d32" alt="Repository: local-first" />
   <img src="https://img.shields.io/badge/language-TypeScript-2f7d32" alt="Language: TypeScript" />
   <img src="https://img.shields.io/badge/package-v0.1.0-2f7d32" alt="Package Version: v0.1.0" />
-  <img src="https://img.shields.io/badge/Next.js-15.5-2f7d32" alt="Next.js 15.5" />
+  <img src="https://img.shields.io/badge/Next.js-16.3-2f7d32" alt="Next.js 16.3" />
   <img src="https://img.shields.io/badge/Node.js-22%2B-2f7d32" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-MIT-2f7d32" alt="License: MIT" />
 </p>
@@ -38,7 +38,7 @@
 
 ## Current State
 
-- The active implementation is a Next.js 15 and React 19 app with SQLite-backed runtime state through `node:sqlite`.
+- The active implementation is a Next.js 16 and React 19 app with SQLite-backed runtime state through `node:sqlite`.
 - The repository contains an operator-facing dashboard for credential triage, owner mapping, renewal case tracking, source coverage, audit exports, and UI-triggered Azure metadata refreshes.
 - Local development can run entirely from synthetic fixture data, so Azure credentials are not required to try the dashboard.
 - Real Azure sync and renewal actions use the current Azure CLI login. The app reads metadata by default and avoids collecting secret values or certificate private keys.
@@ -54,7 +54,7 @@
 
 ## Current Stack
 
-- Runtime: Node.js 22+ with Next.js 15
+- Runtime: Node.js 22+ with Next.js 16
 - Operator UI: React 19 app router with server actions
 - Frontend components: local TypeScript components plus `lucide-react` icons
 - Runtime state: SQLite through `node:sqlite`
@@ -168,6 +168,27 @@ Before enabling the pipeline in Azure DevOps:
 - Create or authorize a SonarQube Server service connection named `SonarQube`, or update the `SonarQube` task input in `azure-pipelines.yml`.
 - Create or confirm the SonarQube project key `0Downtime_azure-cert-gui`, or update the `sonarProjectKey` variable.
 - Make sure the build agent has Java 17 available as `JAVA_HOME_17_X64`. Microsoft-hosted Ubuntu agents already expose it; self-hosted agents must install it and trust the SonarQube server certificate chain.
+
+## Azure DevOps Windows Server deployment
+
+The Azure DevOps pipeline publishes a production artifact and, for successful `main` builds, deploys it through the protected `Azure-Cert-GUI-Production` environment to the `azure-cert-gui-server-2022` Windows Server 2022 VM resource. The target must already have:
+
+- An Azure DevOps environment VM agent running with local administrator rights.
+- Node.js 22, npm, and Azure CLI on `PATH`, plus access to the npm registry for Windows-native production dependency installation.
+- A system-assigned or user-assigned managed identity if `windowsUseManagedIdentity` remains `true`.
+- Network access to Microsoft Entra ID, Microsoft Graph, Azure Resource Manager, Key Vault, and the configured OIDC authority.
+- The managed identity must have the reviewed Microsoft Graph application permissions and subscription/Key Vault metadata access required by the configured sync scope.
+
+The deployment creates a timestamped SQLite backup, registers restartable startup and daily metadata-sync scheduled tasks under `SYSTEM`, runs the database migration, performs an unauthenticated `/api/health` smoke test, and runs an initial metadata sync. The application binds to `127.0.0.1:3000`; terminate TLS and publish it through the enterprise reverse proxy or IIS separately.
+
+Configure these Azure DevOps variables before permitting the deployment stage. Keep the client secret and cookie secret as secret variables or protected variable-group values:
+
+- `AZURE_TENANT_ID` and the explicitly scoped `AZURE_SUBSCRIPTION_IDS`.
+- `AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY`, `AZURE_CERT_GUI__AUTH__OIDC__CLIENTID`, and `AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET`.
+- `AZURE_CERT_GUI__AUTH__COOKIESECRET` and at least one Viewer, Operator, or Admin group variable.
+- Optional `AZURE_KEYVAULT_RESOURCE_IDS` and `AZURE_CERT_GUI_MANAGED_IDENTITY_CLIENT_ID`.
+
+`AZURE_CERT_GUI__ROTATION__LIVEENABLED` is deliberately forced to `false` by the pipeline. Enable live rotations only as a separate reviewed change after the staging sync and dry-run workflow are validated. Configure approvals and checks on the Azure DevOps environment before enabling production deployment.
 
 If you run `npm run build` while `npm run dev` is already running, restart the dev server before testing forms again. Next dev and Next build both write to `.next`, so a live dev server can serve stale asset paths after a production build.
 

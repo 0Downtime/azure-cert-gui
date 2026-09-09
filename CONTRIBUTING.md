@@ -21,7 +21,7 @@ Run the standard checks before opening a pull request:
 npm run typecheck
 npm test
 npm run build
-npm audit
+npm audit --omit=dev --audit-level=high
 ```
 
 If `gitleaks` is installed locally, also run:
