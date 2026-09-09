@@ -32,7 +32,7 @@
     "tsx": "^4.23.12"
   },
   "devDependencies": {
-    "@types/node": "^25.8.0",
+    "@types/node": "^26.4.1",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "@vitest/coverage-v8": "^4.1.11",
