@@ -160,18 +160,20 @@ The SonarQube job skips with a notice until both GitHub Actions configuration va
 
 ## Azure DevOps SonarQube CI
 
-`azure-pipelines.yml` runs the SonarQube Enterprise-style CI path for Azure DevOps. It triggers on pushes to `main` and pull requests targeting `main`, then installs Node.js 22, runs typecheck, Vitest with coverage, Next.js build, production dependency audit, SonarQube analysis, and quality-gate publishing.
+`azure-pipelines.yml` is the public Azure DevOps CI pipeline. It triggers on pushes to `main` and pull requests targeting `main`, then installs Node.js 22, runs typecheck, Vitest with coverage, Next.js build, production dependency audit, SonarQube analysis, quality-gate publishing, and publishes the deployable artifact. It contains no deployment job or target-machine routing.
 
 Before enabling the pipeline in Azure DevOps:
 
 - Install the SonarQube Server Azure DevOps extension in the organization.
-- Create or authorize a SonarQube Server service connection named `SonarQube`, or update the `SonarQube` task input in `azure-pipelines.yml`.
+- Create or authorize the SonarQube Server service connection, then store its internal Azure DevOps name in the protected pipeline variable `SONARQUBE_SERVICE_CONNECTION`. Do not place the internal name in GitHub.
 - Create or confirm the SonarQube project key `0Downtime_azure-cert-gui`, or update the `sonarProjectKey` variable.
 - Make sure the build agent has Java 17 available as `JAVA_HOME_17_X64`. Microsoft-hosted Ubuntu agents already expose it; self-hosted agents must install it and trust the SonarQube server certificate chain.
 
 ## Azure DevOps Windows Server deployment
 
-The Azure DevOps pipeline publishes a production artifact and, for successful `main` builds, deploys it through the protected `Azure-Cert-GUI-Production` environment on an approved self-hosted Windows agent installed on the target machine. The public repository deliberately does not contain a target server name. Supply `deployTargetName` in the protected Azure DevOps variable group or as a queue-time variable, never in Git; it provides the deployment audit label and fail-closed guard. The local agent executes on the target itself, so the variable is not used for WinRM or remote routing. The deploy stage remains skipped for pull-request validation, when `deployTargetName` is empty, or when the run is disabled with `deployWindowsServer`.
+Deployment is intentionally separate from CI. Create a second Azure DevOps pipeline from `azure-deploy-pipeline.yml`; it has no push or pull-request trigger and defaults its `deployProduction` parameter to `false`. A production run therefore requires an explicit parameter selection and the protected Azure DevOps environment approval. The deployment pipeline downloads the artifact from the selected successful run of the `azure-cert-gui` CI pipeline.
+
+Keep the concrete target name only in Azure DevOps configuration: the protected environment/resource, the self-hosted agent registration, or a restricted agent demand. The public repository uses only generic pool and environment identifiers and must not contain a machine name. Configure the deployment pipeline's `ci` pipeline resource to reference the Azure DevOps CI definition named `azure-cert-gui`, then authorize that resource for the deployment pipeline.
 
 The approved target/agent machine must already have:
 
@@ -185,10 +187,10 @@ The deployment downloads the artifact and protected certificate to the self-host
 
 For an on-premises Windows Server without a VM or Arc managed identity, use the `service-principal-certificate` Azure CLI login mode. The certificate file must be a PEM containing both the public certificate and its private key. In Azure DevOps, store that combined PEM as a protected Secure File; the pipeline downloads it to the self-hosted agent only for deployment. The deployment copies it to `C:\ProgramData\AzureCertGui\credentials\azure-cert-gui-login.pem`, grants access only to `SYSTEM` and local `Administrators`, and stores only that protected path in the runtime environment. Pass `-AzureCliLoginMode service-principal-certificate`, `-AzureCliServicePrincipalAppId <app-id>`, and `-AzureCliCertificatePath <combined-pem-path>` to `deploy-windows-server.ps1`, or provide the corresponding `AZURE_CERT_GUI_AZ_LOGIN_MODE`, `AZURE_CERT_GUI_SP_APP_ID`, and `AZURE_CERT_GUI_SP_CERTIFICATE_PATH` environment values. Do not use the interactive `existing` mode for unattended scheduled tasks.
 
-Create and authorize the `azure-cert-gui-production` Azure DevOps variable group before permitting the deployment stage. Keep client secrets and the cookie secret as secret variables in that protected group. Register the self-hosted agent in the pool named by `windowsAgentPool`; never commit the target server name to this public repository. Upload the combined service-principal PEM as an Azure DevOps Secure File named by `windowsCertificateSecureFile`; never commit the PEM or place its contents in YAML or ordinary variables:
+Create and authorize the `azure-cert-gui-production` Azure DevOps variable group for the deployment pipeline. Keep client secrets and the cookie secret as secret variables in that protected group. Register the self-hosted agent in the pool named by `windowsAgentPool`; never commit the target server name to this public repository. Upload the combined service-principal PEM as an Azure DevOps Secure File named by `windowsCertificateSecureFile`; never commit the PEM or place its contents in YAML or ordinary variables:
 
 - `windowsAgentPool` as the generic Azure DevOps self-hosted pool name. The agent must be installed on the approved target machine.
-- `deployTargetName` in the protected Azure DevOps variable group, or as a queue-time variable for a one-off run, containing the private target name. Keep the actual value out of GitHub; use a one-agent pool or an Azure DevOps agent demand to ensure the label matches the machine running the job.
+- The concrete target name in the protected Azure DevOps environment/resource or agent configuration. Keep the actual value out of GitHub; use a one-agent pool or an Azure DevOps agent demand to ensure the deployment runs on the approved machine.
 - `AZURE_TENANT_ID` and the explicitly scoped `AZURE_SUBSCRIPTION_IDS`.
 - `AZURE_CERT_GUI_SP_APP_ID` and the Secure File containing the combined service-principal certificate/private key.
 - `AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY`, `AZURE_CERT_GUI__AUTH__OIDC__CLIENTID`, and `AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET`.
@@ -197,7 +199,7 @@ Create and authorize the `azure-cert-gui-production` Azure DevOps variable group
 
 The local-agent flow does not use `deployTargetMachines`, `deployAdminUserName`, or `AZURE_CERT_GUI_DEPLOY_ADMIN_PASSWORD`; remove those obsolete remote-deployment variables from Azure DevOps after the migration is validated.
 
-`AZURE_CERT_GUI__ROTATION__LIVEENABLED` is deliberately forced to `false` by the pipeline. Enable live rotations only as a separate reviewed change after the staging sync and dry-run workflow are validated. Configure approvals and checks on the Azure DevOps environment before enabling production deployment.
+`AZURE_CERT_GUI__ROTATION__LIVEENABLED` is deliberately forced to `false` by the deployment pipeline. Enable live rotations only as a separate reviewed change after the staging sync and dry-run workflow are validated. Configure approvals and checks on the Azure DevOps environment before enabling production deployment. For each deployment, first confirm the CI run passed, select that run in the deployment pipeline's `ci` resource, set `deployProduction` to `true`, and wait for the environment approval. Leave the parameter false for a no-op configuration test.
 
 If you run `npm run build` while `npm run dev` is already running, restart the dev server before testing forms again. Next dev and Next build both write to `.next`, so a live dev server can serve stale asset paths after a production build.
 
