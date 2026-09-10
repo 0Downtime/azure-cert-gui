@@ -79,7 +79,9 @@ stages:
           - task: SonarQubePrepare@8
             displayName: Prepare SonarQube analysis
             inputs:
-              SonarQube: SonarQube
+              # The internal service-connection name is supplied by the protected
+              # Azure DevOps pipeline variable SONARQUBE_SERVICE_CONNECTION.
+              SonarQube: $(SONARQUBE_SERVICE_CONNECTION)
               scannerMode: cli
               configMode: manual
               cliProjectKey: $(sonarProjectKey)
