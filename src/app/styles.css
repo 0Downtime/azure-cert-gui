@@ -2296,6 +2296,68 @@ tr.selected-row {
   overflow-wrap: anywhere;
 }
 
+.rotation-workflow {
+  border: 1px solid var(--line);
+  display: grid;
+}
+
+.rotation-step {
+  align-items: start;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto 1fr;
+  padding: 12px;
+}
+
+.rotation-step:last-child {
+  border-bottom: 0;
+}
+
+.rotation-step.active {
+  background: var(--field);
+}
+
+.rotation-step.complete .rotation-step-index {
+  background: var(--green-soft);
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.rotation-step-index {
+  align-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  height: 24px;
+  justify-content: center;
+  margin-top: 1px;
+  width: 24px;
+}
+
+.rotation-step > div {
+  display: grid;
+  gap: 2px;
+}
+
+.rotation-step span:not(.rotation-step-index) {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.renewal-form-heading {
+  display: grid;
+  gap: 3px;
+}
+
+.renewal-form-heading span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .renewal-safety-note {
   align-items: center;
   background: var(--amber-soft);
@@ -2315,6 +2377,10 @@ tr.selected-row {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.renewal-actions > button[disabled] {
+  cursor: not-allowed;
 }
 
 .renewal-result {
