@@ -156,7 +156,7 @@ stages:
         displayName: Deploy Azure Cert GUI
         environment:
           name: $(windowsEnvironment)
-          resourceName: $(windowsResource)
+          resourceName: azure-cert-gui-server-2022
           resourceType: virtualMachine
         strategy:
           runOnce:
