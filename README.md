@@ -171,15 +171,17 @@ Before enabling the pipeline in Azure DevOps:
 
 ## Azure DevOps Windows Server deployment
 
-The Azure DevOps pipeline publishes a production artifact and, for successful `main` builds, deploys it through the protected `Azure-Cert-GUI-Production` environment to the `azure-cert-gui-server-2022` Windows Server 2022 VM resource. The target must already have:
+The Azure DevOps pipeline publishes a production artifact and, for successful `main` builds, deploys it through the protected `Azure-Cert-GUI-Production` environment. Manage the Windows Server 2022 VM membership in Azure DevOps; keep target host names out of this public repository. The target must already have:
 
 - An Azure DevOps environment VM agent running with local administrator rights.
-- Node.js 22, npm, and Azure CLI on `PATH`, plus access to the npm registry for Windows-native production dependency installation.
+- Node.js 22, npm, and Azure CLI on `PATH`, plus access to the npm registry for Windows-native production dependency installation. If Node.js is installed outside `PATH`, set the non-secret Azure DevOps variable `WINDOWS_NODE_BIN_PATH` to its bin directory, such as `C:\Apps\node-v22.3.2-win-x64`.
 - A system-assigned or user-assigned managed identity if `windowsUseManagedIdentity` remains `true`.
 - Network access to Microsoft Entra ID, Microsoft Graph, Azure Resource Manager, Key Vault, and the configured OIDC authority.
 - The managed identity must have the reviewed Microsoft Graph application permissions and subscription/Key Vault metadata access required by the configured sync scope.
 
 The deployment creates a timestamped SQLite backup, registers restartable startup and daily metadata-sync scheduled tasks under `SYSTEM`, runs the database migration, performs an unauthenticated `/api/health` smoke test, and runs an initial metadata sync. The application binds to `127.0.0.1:3000`; terminate TLS and publish it through the enterprise reverse proxy or IIS separately.
+
+For an on-premises Windows Server without a VM or Arc managed identity, use the `service-principal-certificate` Azure CLI login mode. The certificate file must be a PEM containing both the public certificate and its private key. The deployment copies it to `C:\ProgramData\AzureCertGui\credentials\azure-cert-gui-login.pem`, grants access only to `SYSTEM` and local `Administrators`, and stores only that protected path in the runtime environment. Pass `-AzureCliLoginMode service-principal-certificate`, `-AzureCliServicePrincipalAppId <app-id>`, and `-AzureCliCertificatePath <combined-pem-path>` to `deploy-windows-server.ps1`, or provide the corresponding `AZURE_CERT_GUI_AZ_LOGIN_MODE`, `AZURE_CERT_GUI_SP_APP_ID`, and `AZURE_CERT_GUI_SP_CERTIFICATE_PATH` environment values. Do not use the interactive `existing` mode for unattended scheduled tasks.
 
 Configure these Azure DevOps variables before permitting the deployment stage. Keep the client secret and cookie secret as secret variables or protected variable-group values:
 
@@ -187,6 +189,7 @@ Configure these Azure DevOps variables before permitting the deployment stage. K
 - `AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY`, `AZURE_CERT_GUI__AUTH__OIDC__CLIENTID`, and `AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET`.
 - `AZURE_CERT_GUI__AUTH__COOKIESECRET` and at least one Viewer, Operator, or Admin group variable.
 - Optional `AZURE_KEYVAULT_RESOURCE_IDS` and `AZURE_CERT_GUI_MANAGED_IDENTITY_CLIENT_ID`.
+- Optional `WINDOWS_NODE_BIN_PATH` when the target's Node.js and npm binaries are installed outside `PATH`.
 
 `AZURE_CERT_GUI__ROTATION__LIVEENABLED` is deliberately forced to `false` by the pipeline. Enable live rotations only as a separate reviewed change after the staging sync and dry-run workflow are validated. Configure approvals and checks on the Azure DevOps environment before enabling production deployment.
 
@@ -415,6 +418,9 @@ Supported environment values:
 - `AZURE_GRAPH_INCLUDE_OWNERS`: defaults to `true`. Set `false` if Graph owner reads are not consented yet.
 - `AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY`: defaults to `true`. Set `false` if Graph user/group reads are not consented yet.
 - `AZURE_KEYVAULT_INCLUDE_VERSIONS`: defaults to `false`. Current Key Vault secrets/certificates are usually enough for rotation tracking.
+- `AZURE_CERT_GUI_AZ_LOGIN_MODE`: `managed-identity`, `existing`, or `service-principal-certificate` for the Windows Server Azure CLI runtime.
+- `AZURE_CERT_GUI_SP_APP_ID`: service principal application/client ID when using certificate login.
+- `AZURE_CERT_GUI_SP_CERTIFICATE_PATH`: combined PEM path containing the service principal certificate and private key when using certificate login.
 - `AZURE_CERT_GUI__AUTH__MODE`: `local`, `oidc`, or `hybrid`. `local` is loopback-only and intended for development.
 - `AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY`: OIDC authority, such as an Entra tenant `/v2.0` URL.
 - `AZURE_CERT_GUI__AUTH__OIDC__CLIENTID`: app registration client ID.

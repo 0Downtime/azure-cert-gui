@@ -19,7 +19,6 @@ variables:
   # Deployment is limited to main and is still gated by the Azure DevOps environment.
   deployWindowsServer: "true"
   windowsEnvironment: "Azure-Cert-GUI-Production"
-  windowsResource: "azure-cert-gui-server-2022"
   windowsInstallRoot: "C:\\ProgramData\\AzureCertGui"
   windowsListenHost: "127.0.0.1"
   windowsPort: "3000"
@@ -134,10 +133,8 @@ stages:
     jobs:
       - deployment: DeployWindowsServer
         displayName: Deploy Azure Cert GUI
-        environment:
-          name: $(windowsEnvironment)
-          resourceName: $(windowsResource)
-          resourceType: virtualMachine
+        # VM membership is managed in Azure DevOps so target host names stay out of this public repository.
+        environment: $(windowsEnvironment)
         strategy:
           runOnce:
             deploy:
@@ -161,6 +158,7 @@ stages:
                       -RunInitialSync $(windowsRunInitialSync)
                     pwsh: false
                   env:
+                    AZURE_CERT_GUI_NODE_BIN_PATH: $(WINDOWS_NODE_BIN_PATH)
                     AZURE_TENANT_ID: $(AZURE_TENANT_ID)
                     AZURE_SUBSCRIPTION_IDS: $(AZURE_SUBSCRIPTION_IDS)
                     AZURE_KEYVAULT_RESOURCE_IDS: $(AZURE_KEYVAULT_RESOURCE_IDS)
