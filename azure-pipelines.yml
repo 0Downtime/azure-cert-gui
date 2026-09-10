@@ -21,13 +21,73 @@ variables:
     value: "azure-cert-gui"
 
 stages:
-  - stage: ValidateAndPackage
-    displayName: Validate and package
+  # Pull requests from the public repository run only on a hosted agent. This
+  # prevents untrusted PR code from reaching the private network or service
+  # connection context used by the trusted SonarQube job below.
+  - stage: ValidatePullRequest
+    displayName: Validate pull request
+    dependsOn: []
+    condition: eq(variables['Build.Reason'], 'PullRequest')
     jobs:
-      - job: ValidateAndPackage
-        displayName: Test, scan, build, and publish artifact
+      - job: ValidatePullRequest
+        displayName: Test, scan, and build pull request
         pool:
           vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - task: NodeTool@0
+            displayName: Use Node.js $(nodeVersion)
+            inputs:
+              versionSpec: $(nodeVersion)
+
+          - script: npm ci --ignore-scripts
+            displayName: Install dependencies
+
+          - bash: |
+              set -euo pipefail
+              docker run --rm \
+                -v "$(Build.SourcesDirectory):/repo" \
+                ghcr.io/gitleaks/gitleaks:v8.30.1 \
+                detect --source /repo --redact --no-banner
+            displayName: Scan repository for secrets
+
+          - script: npm run typecheck
+            displayName: Typecheck
+
+          - script: |
+              mkdir -p test-results
+              npm run test:ci
+            displayName: Test with coverage
+
+          - task: PublishTestResults@2
+            displayName: Publish test results
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: JUnit
+              testResultsFiles: test-results/vitest-junit.xml
+              failTaskOnFailedTests: true
+
+          - script: npm run build
+            displayName: Build production bundle
+
+          - script: npm audit --omit=dev --audit-level=high
+            displayName: Audit production dependencies (high and critical)
+
+  # Only trusted main-branch executions use the private Linux self-hosted pool.
+  # The private CA is installed on that pool for the internal SonarQube service.
+  - stage: ValidateAndPackage
+    displayName: Validate, analyze, and package main
+    dependsOn: []
+    condition: and(ne(variables['Build.Reason'], 'PullRequest'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - job: ValidateAndPackage
+        displayName: Test, scan, analyze, and publish artifact
+        pool:
+          name: "Azure Self Hosted Linux Pool"
+        variables:
+          NODE_EXTRA_CA_CERTS: "/usr/local/share/ca-certificates/sonarqube/sonarqube-ca.crt"
         steps:
           - checkout: self
             fetchDepth: 0
