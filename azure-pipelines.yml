@@ -23,12 +23,17 @@ variables:
     value: "azure-cert-gui"
 
   # Deployment is limited to main and is gated by the Azure DevOps environment.
+  # The actual target is supplied in Azure DevOps pipeline variables, not in Git.
   - name: deployWindowsServer
     value: "true"
+  - name: deployTargetMachines
+    value: ""
+  - name: deployAdminUserName
+    value: ""
+  - name: deployRemoteStagingPath
+    value: "C:\\ProgramData\\AzureCertGui\\_staging"
   - name: windowsEnvironment
     value: "Azure-Cert-GUI-Production"
-  - name: windowsResource
-    value: "REDACTED-WINDOWS-TARGET"
   - name: windowsInstallRoot
     value: "C:\\ProgramData\\AzureCertGui"
   - name: windowsListenHost
@@ -150,20 +155,23 @@ stages:
   - stage: DeployWindowsServer
     displayName: Deploy to Windows Server 2022
     dependsOn: ValidateAndPackage
-    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['deployWindowsServer'], 'true'))
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['deployWindowsServer'], 'true'), ne(variables['deployTargetMachines'], ''), ne(variables['Build.Reason'], 'PullRequest'))
     jobs:
       - deployment: DeployWindowsServer
-        displayName: Deploy Azure Cert GUI
-        environment:
-          name: $(windowsEnvironment)
-          resourceName: REDACTED-WINDOWS-TARGET
-          resourceType: virtualMachine
+        displayName: Deploy Azure Cert GUI over WinRM
+        pool:
+          vmImage: windows-latest
+        environment: $(windowsEnvironment)
         strategy:
           runOnce:
             deploy:
               steps:
-                - download: current
-                  artifact: $(artifactName)
+                - task: DownloadPipelineArtifact@2
+                  displayName: Download deployment artifact
+                  inputs:
+                    buildType: current
+                    artifactName: $(artifactName)
+                    targetPath: $(Pipeline.Workspace)\$(artifactName)
 
                 - task: DownloadSecureFile@1
                   name: azureCertificate
@@ -171,45 +179,101 @@ stages:
                   inputs:
                     secureFile: "$(windowsCertificateSecureFile)"
 
-                - task: PowerShell@2
-                  displayName: Deploy, migrate, schedule, and smoke test
+                - task: WindowsMachineFileCopy@2
+                  displayName: Copy deployment artifact to target
                   inputs:
-                    targetType: filePath
-                    filePath: "$(Pipeline.Workspace)\\$(artifactName)\\scripts\\deploy-windows-server.ps1"
-                    arguments: >
-                      -ArtifactPath "$(Pipeline.Workspace)\\$(artifactName)"
-                      -InstallRoot "$(windowsInstallRoot)"
-                      -ListenHost "$(windowsListenHost)"
-                      -Port $(windowsPort)
-                      -TaskName "$(windowsTaskName)"
-                      -SyncTime "$(windowsSyncTime)"
-                      -AzureCliLoginMode "$(windowsAzureCliLoginMode)"
-                      -AzureCliServicePrincipalAppId "$(AZURE_CERT_GUI_SP_APP_ID)"
-                      -AzureCliCertificatePath "$(azureCertificate.secureFilePath)"
-                      -UseManagedIdentity $(windowsUseManagedIdentity)
-                      -RunInitialSync $(windowsRunInitialSync)
-                    pwsh: false
-                  env:
-                    AZURE_TENANT_ID: $(AZURE_TENANT_ID)
-                    AZURE_SUBSCRIPTION_IDS: $(AZURE_SUBSCRIPTION_IDS)
-                    AZURE_KEYVAULT_RESOURCE_IDS: $(AZURE_KEYVAULT_RESOURCE_IDS)
-                    AZURE_CLI_PATH: $(AZURE_CLI_PATH)
-                    AZURE_CERT_GUI_AZ_LOGIN_MODE: $(windowsAzureCliLoginMode)
-                    AZURE_CERT_GUI_SP_APP_ID: $(AZURE_CERT_GUI_SP_APP_ID)
-                    AZURE_GRAPH_INCLUDE_OWNERS: $(AZURE_GRAPH_INCLUDE_OWNERS)
-                    AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY: $(AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY)
-                    AZURE_KEYVAULT_INCLUDE_VERSIONS: $(AZURE_KEYVAULT_INCLUDE_VERSIONS)
-                    AZURE_CERT_GUI__AUTH__MODE: oidc
-                    AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY: $(AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY)
-                    AZURE_CERT_GUI__AUTH__OIDC__CLIENTID: $(AZURE_CERT_GUI__AUTH__OIDC__CLIENTID)
-                    AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET: $(AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET)
-                    AZURE_CERT_GUI__AUTH__COOKIESECRET: $(AZURE_CERT_GUI__AUTH__COOKIESECRET)
-                    AZURE_CERT_GUI__AUTH__OIDC__ROLESCLAIMTYPE: $(AZURE_CERT_GUI__AUTH__OIDC__ROLESCLAIMTYPE)
-                    AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS: $(AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS)
-                    AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS__0: $(AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS__0)
-                    AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS: $(AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS)
-                    AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS__0: $(AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS__0)
-                    AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS: $(AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS)
-                    AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS__0: $(AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS__0)
-                    AZURE_CERT_GUI__ROTATION__LIVEENABLED: "false"
-                    AZURE_CERT_GUI_MANAGED_IDENTITY_CLIENT_ID: $(AZURE_CERT_GUI_MANAGED_IDENTITY_CLIENT_ID)
+                    SourcePath: "$(Pipeline.Workspace)\\$(artifactName)"
+                    MachineNames: "$(deployTargetMachines)"
+                    AdminUserName: "$(deployAdminUserName)"
+                    AdminPassword: "$(AZURE_CERT_GUI_DEPLOY_ADMIN_PASSWORD)"
+                    TargetPath: "$(deployRemoteStagingPath)"
+                    CleanTargetBeforeCopy: true
+                    CopyFilesInParallel: true
+
+                - task: WindowsMachineFileCopy@2
+                  displayName: Copy protected Azure certificate to target
+                  inputs:
+                    SourcePath: "$(azureCertificate.secureFilePath)"
+                    MachineNames: "$(deployTargetMachines)"
+                    AdminUserName: "$(deployAdminUserName)"
+                    AdminPassword: "$(AZURE_CERT_GUI_DEPLOY_ADMIN_PASSWORD)"
+                    TargetPath: "$(deployRemoteStagingPath)\\credentials"
+                    CleanTargetBeforeCopy: false
+                    CopyFilesInParallel: false
+
+                - task: PowerShellOnTargetMachines@3
+                  displayName: Deploy, migrate, schedule, and smoke test remotely
+                  inputs:
+                    Machines: "$(deployTargetMachines)"
+                    UserName: "$(deployAdminUserName)"
+                    UserPassword: "$(AZURE_CERT_GUI_DEPLOY_ADMIN_PASSWORD)"
+                    ScriptType: Inline
+                    InlineScript: |
+                      $ErrorActionPreference = "Stop"
+                      $artifactPath = "$(deployRemoteStagingPath)"
+                      $certificatePath = Join-Path $artifactPath "credentials\\$(windowsCertificateSecureFile)"
+                      $deployScript = Join-Path $artifactPath "scripts\\deploy-windows-server.ps1"
+
+                      $env:AZURE_TENANT_ID = '$(AZURE_TENANT_ID)'
+                      $env:AZURE_SUBSCRIPTION_IDS = '$(AZURE_SUBSCRIPTION_IDS)'
+                      $env:AZURE_KEYVAULT_RESOURCE_IDS = '$(AZURE_KEYVAULT_RESOURCE_IDS)'
+                      $env:AZURE_CLI_PATH = '$(AZURE_CLI_PATH)'
+                      $env:AZURE_CERT_GUI_AZ_LOGIN_MODE = '$(windowsAzureCliLoginMode)'
+                      $env:AZURE_CERT_GUI_SP_APP_ID = '$(AZURE_CERT_GUI_SP_APP_ID)'
+                      $env:AZURE_CERT_GUI_SP_CERTIFICATE_PATH = $certificatePath
+                      $env:AZURE_GRAPH_INCLUDE_OWNERS = '$(AZURE_GRAPH_INCLUDE_OWNERS)'
+                      $env:AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY = '$(AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY)'
+                      $env:AZURE_KEYVAULT_INCLUDE_VERSIONS = '$(AZURE_KEYVAULT_INCLUDE_VERSIONS)'
+                      $env:AZURE_CERT_GUI__AUTH__MODE = 'oidc'
+                      $env:AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY = '$(AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY)'
+                      $env:AZURE_CERT_GUI__AUTH__OIDC__CLIENTID = '$(AZURE_CERT_GUI__AUTH__OIDC__CLIENTID)'
+                      $env:AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET = '$(AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET)'
+                      $env:AZURE_CERT_GUI__AUTH__COOKIESECRET = '$(AZURE_CERT_GUI__AUTH__COOKIESECRET)'
+                      $env:AZURE_CERT_GUI__AUTH__OIDC__ROLESCLAIMTYPE = '$(AZURE_CERT_GUI__AUTH__OIDC__ROLESCLAIMTYPE)'
+                      $env:AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS = '$(AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS)'
+                      $env:AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS__0 = '$(AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS__0)'
+                      $env:AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS = '$(AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS)'
+                      $env:AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS__0 = '$(AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS__0)'
+                      $env:AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS = '$(AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS)'
+                      $env:AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS__0 = '$(AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS__0)'
+                      $env:AZURE_CERT_GUI__ROTATION__LIVEENABLED = "false"
+                      $env:AZURE_CERT_GUI_MANAGED_IDENTITY_CLIENT_ID = '$(AZURE_CERT_GUI_MANAGED_IDENTITY_CLIENT_ID)'
+
+                      try {
+                        & $deployScript `
+                          -ArtifactPath $artifactPath `
+                          -InstallRoot "$(windowsInstallRoot)" `
+                          -ListenHost "$(windowsListenHost)" `
+                          -Port $(windowsPort) `
+                          -TaskName "$(windowsTaskName)" `
+                          -SyncTime "$(windowsSyncTime)" `
+                          -AzureCliLoginMode "$(windowsAzureCliLoginMode)" `
+                          -AzureCliCertificatePath $certificatePath `
+                          -UseManagedIdentity ([System.Convert]::ToBoolean("$(windowsUseManagedIdentity)")) `
+                          -RunInitialSync ([System.Convert]::ToBoolean("$(windowsRunInitialSync)"))
+                        if ($LASTEXITCODE -ne 0) {
+                          exit $LASTEXITCODE
+                        }
+                      } finally {
+                        Remove-Item -LiteralPath $certificatePath -Force -ErrorAction SilentlyContinue
+                        Remove-Item -LiteralPath $artifactPath -Recurse -Force -ErrorAction SilentlyContinue
+                      }
+                    CommunicationProtocol: Https
+                    AuthenticationMechanism: Default
+                    NewPsSessionOptionArguments: "-SkipCACheck -SkipCNCheck -SkipRevocationCheck -IdleTimeout 7200000 -OperationTimeout 0 -OutputBufferingMode Block"
+                    RunPowershellInParallel: false
+
+                - task: PowerShellOnTargetMachines@3
+                  displayName: Clean remote deployment staging
+                  condition: always()
+                  inputs:
+                    Machines: "$(deployTargetMachines)"
+                    UserName: "$(deployAdminUserName)"
+                    UserPassword: "$(AZURE_CERT_GUI_DEPLOY_ADMIN_PASSWORD)"
+                    ScriptType: Inline
+                    InlineScript: |
+                      Remove-Item -LiteralPath "$(deployRemoteStagingPath)" -Recurse -Force -ErrorAction SilentlyContinue
+                    CommunicationProtocol: Https
+                    AuthenticationMechanism: Default
+                    NewPsSessionOptionArguments: "-SkipCACheck -SkipCNCheck -SkipRevocationCheck -IdleTimeout 7200000 -OperationTimeout 0 -OutputBufferingMode Block"
+                    RunPowershellInParallel: false

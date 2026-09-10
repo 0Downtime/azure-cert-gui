@@ -171,20 +171,25 @@ Before enabling the pipeline in Azure DevOps:
 
 ## Azure DevOps Windows Server deployment
 
-The Azure DevOps pipeline publishes a production artifact and, for successful `main` builds, deploys it through the protected `Azure-Cert-GUI-Production` environment to the `REDACTED-WINDOWS-TARGET` Windows Server 2022 VM resource. The target must already have:
+The Azure DevOps pipeline publishes a production artifact and, for successful `main` builds, deploys it through the protected `Azure-Cert-GUI-Production` environment over WinRM. The public repository deliberately does not contain a target server name. Supply `deployTargetMachines` and `deployAdminUserName` as Azure DevOps pipeline variables, and keep `AZURE_CERT_GUI_DEPLOY_ADMIN_PASSWORD` as a secret in the protected variable group. The deploy stage remains skipped when `deployTargetMachines` is empty or when the run is a pull-request validation.
 
-- An Azure DevOps environment VM agent running with local administrator rights.
+The target must already have:
+
+- WinRM and SMB/file-copy access from the selected Azure DevOps agent. Use HTTPS WinRM with a certificate trusted by the agent, or configure the pipeline's session options for the approved enterprise WinRM policy.
+- Local administrator or approved delegated deployment rights for the account stored in Azure DevOps.
 - Node.js 22, npm, and Azure CLI on `PATH`, plus access to the npm registry for Windows-native production dependency installation.
 - The protected `azure-cert-gui-production` variable group and Azure DevOps Secure File referenced by the pipeline. The on-premises deployment uses service-principal certificate authentication; managed identity is not required.
 - Network access to Microsoft Entra ID, Microsoft Graph, Azure Resource Manager, Key Vault, and the configured OIDC authority.
 - The managed identity must have the reviewed Microsoft Graph application permissions and subscription/Key Vault metadata access required by the configured sync scope.
 
-The deployment creates a timestamped SQLite backup, registers restartable startup and daily metadata-sync scheduled tasks under `SYSTEM`, runs the database migration, performs an unauthenticated `/api/health` smoke test, and runs an initial metadata sync. The application binds to `127.0.0.1:3000`; terminate TLS and publish it through the enterprise reverse proxy or IIS separately.
+The deployment copies the artifact and protected certificate to a temporary target staging directory, runs the existing deployment script remotely, removes the temporary staging directory in both success and failure paths, creates a timestamped SQLite backup, registers restartable startup and daily metadata-sync scheduled tasks under `SYSTEM`, runs the database migration, performs an unauthenticated `/api/health` smoke test, and runs an initial metadata sync. The application binds to `127.0.0.1:3000`; terminate TLS and publish it through the enterprise reverse proxy or IIS separately.
 
 For an on-premises Windows Server without a VM or Arc managed identity, use the `service-principal-certificate` Azure CLI login mode. The certificate file must be a PEM containing both the public certificate and its private key. In Azure DevOps, store that combined PEM as a protected Secure File; the pipeline downloads it to the agent only for deployment. The deployment copies it to `C:\ProgramData\AzureCertGui\credentials\azure-cert-gui-login.pem`, grants access only to `SYSTEM` and local `Administrators`, and stores only that protected path in the runtime environment. Pass `-AzureCliLoginMode service-principal-certificate`, `-AzureCliServicePrincipalAppId <app-id>`, and `-AzureCliCertificatePath <combined-pem-path>` to `deploy-windows-server.ps1`, or provide the corresponding `AZURE_CERT_GUI_AZ_LOGIN_MODE`, `AZURE_CERT_GUI_SP_APP_ID`, and `AZURE_CERT_GUI_SP_CERTIFICATE_PATH` environment values. Do not use the interactive `existing` mode for unattended scheduled tasks.
 
-Create and authorize the `azure-cert-gui-production` Azure DevOps variable group before permitting the deployment stage. Keep the client secret and cookie secret as secret variables in that protected group. Upload the combined service-principal PEM as an Azure DevOps Secure File named by `windowsCertificateSecureFile`; never commit the PEM or place its contents in YAML or ordinary variables:
+Create and authorize the `azure-cert-gui-production` Azure DevOps variable group before permitting the deployment stage. Keep the deployment password, client secret, and cookie secret as secret variables in that protected group. Set the actual target machine list and deployment username only in Azure DevOps pipeline settings or protected configuration; never commit server names to this public repository. Upload the combined service-principal PEM as an Azure DevOps Secure File named by `windowsCertificateSecureFile`; never commit the PEM or place its contents in YAML or ordinary variables:
 
+- `deployTargetMachines` and `deployAdminUserName` as Azure DevOps pipeline variables, with the target value kept out of Git.
+- `AZURE_CERT_GUI_DEPLOY_ADMIN_PASSWORD` as a secret variable in the protected group.
 - `AZURE_TENANT_ID` and the explicitly scoped `AZURE_SUBSCRIPTION_IDS`.
 - `AZURE_CERT_GUI_SP_APP_ID` and the Secure File containing the combined service-principal certificate/private key.
 - `AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY`, `AZURE_CERT_GUI__AUTH__OIDC__CLIENTID`, and `AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET`.
