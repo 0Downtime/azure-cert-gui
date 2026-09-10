@@ -23,15 +23,12 @@ variables:
     value: "azure-cert-gui"
 
   # Deployment is limited to main and is gated by the Azure DevOps environment.
-  # The actual target is supplied in Azure DevOps pipeline variables, not in Git.
+  # The approved self-hosted agent is installed on the target machine. Keep the
+  # agent pool name generic; never put the target machine name in this repo.
   - name: deployWindowsServer
     value: "true"
-  - name: deployTargetMachines
-    value: ""
-  - name: deployAdminUserName
-    value: ""
-  - name: deployRemoteStagingPath
-    value: "C:\\ProgramData\\AzureCertGui\\_staging"
+  - name: windowsAgentPool
+    value: "azure-cert-gui-onprem"
   - name: windowsEnvironment
     value: "Azure-Cert-GUI-Production"
   - name: windowsInstallRoot
@@ -153,14 +150,14 @@ stages:
               publishLocation: pipeline
 
   - stage: DeployWindowsServer
-    displayName: Deploy to Windows Server 2022
+    displayName: Deploy on approved Windows target
     dependsOn: ValidateAndPackage
-    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['deployWindowsServer'], 'true'), ne(variables['deployTargetMachines'], ''), ne(variables['Build.Reason'], 'PullRequest'))
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['deployWindowsServer'], 'true'), ne(variables['deployTargetName'], ''), ne(variables['Build.Reason'], 'PullRequest'))
     jobs:
       - deployment: DeployWindowsServer
-        displayName: Deploy Azure Cert GUI over WinRM
+        displayName: Deploy Azure Cert GUI locally on $(deployTargetName)
         pool:
-          vmImage: windows-latest
+          name: $(windowsAgentPool)
         environment: $(windowsEnvironment)
         strategy:
           runOnce:
@@ -179,39 +176,14 @@ stages:
                   inputs:
                     secureFile: "$(windowsCertificateSecureFile)"
 
-                - task: WindowsMachineFileCopy@2
-                  displayName: Copy deployment artifact to target
+                - task: PowerShell@2
+                  displayName: Deploy, migrate, schedule, and smoke test locally
                   inputs:
-                    SourcePath: "$(Pipeline.Workspace)\\$(artifactName)"
-                    MachineNames: "$(deployTargetMachines)"
-                    AdminUserName: "$(deployAdminUserName)"
-                    AdminPassword: "$(AZURE_CERT_GUI_DEPLOY_ADMIN_PASSWORD)"
-                    TargetPath: "$(deployRemoteStagingPath)"
-                    CleanTargetBeforeCopy: true
-                    CopyFilesInParallel: true
-
-                - task: WindowsMachineFileCopy@2
-                  displayName: Copy protected Azure certificate to target
-                  inputs:
-                    SourcePath: "$(azureCertificate.secureFilePath)"
-                    MachineNames: "$(deployTargetMachines)"
-                    AdminUserName: "$(deployAdminUserName)"
-                    AdminPassword: "$(AZURE_CERT_GUI_DEPLOY_ADMIN_PASSWORD)"
-                    TargetPath: "$(deployRemoteStagingPath)\\credentials"
-                    CleanTargetBeforeCopy: false
-                    CopyFilesInParallel: false
-
-                - task: PowerShellOnTargetMachines@3
-                  displayName: Deploy, migrate, schedule, and smoke test remotely
-                  inputs:
-                    Machines: "$(deployTargetMachines)"
-                    UserName: "$(deployAdminUserName)"
-                    UserPassword: "$(AZURE_CERT_GUI_DEPLOY_ADMIN_PASSWORD)"
-                    ScriptType: Inline
-                    InlineScript: |
+                    targetType: inline
+                    script: |
                       $ErrorActionPreference = "Stop"
-                      $artifactPath = "$(deployRemoteStagingPath)"
-                      $certificatePath = Join-Path $artifactPath "credentials\\$(windowsCertificateSecureFile)"
+                      $artifactPath = Join-Path "$(Pipeline.Workspace)" "$(artifactName)"
+                      $certificatePath = "$(azureCertificate.secureFilePath)"
                       $deployScript = Join-Path $artifactPath "scripts\\deploy-windows-server.ps1"
 
                       $env:AZURE_TENANT_ID = '$(AZURE_TENANT_ID)'
@@ -240,6 +212,13 @@ stages:
                       $env:AZURE_CERT_GUI_MANAGED_IDENTITY_CLIENT_ID = '$(AZURE_CERT_GUI_MANAGED_IDENTITY_CLIENT_ID)'
 
                       try {
+                        if (-not (Test-Path -LiteralPath $artifactPath)) {
+                          throw "Deployment artifact was not found at $artifactPath."
+                        }
+                        if (-not (Test-Path -LiteralPath $certificatePath)) {
+                          throw "Protected Azure certificate was not found at $certificatePath."
+                        }
+
                         & $deployScript `
                           -ArtifactPath $artifactPath `
                           -InstallRoot "$(windowsInstallRoot)" `
@@ -258,22 +237,15 @@ stages:
                         Remove-Item -LiteralPath $certificatePath -Force -ErrorAction SilentlyContinue
                         Remove-Item -LiteralPath $artifactPath -Recurse -Force -ErrorAction SilentlyContinue
                       }
-                    CommunicationProtocol: Https
-                    AuthenticationMechanism: Default
-                    NewPsSessionOptionArguments: "-SkipCACheck -SkipCNCheck -SkipRevocationCheck -IdleTimeout 7200000 -OperationTimeout 0 -OutputBufferingMode Block"
-                    RunPowershellInParallel: false
+                    pwsh: false
 
-                - task: PowerShellOnTargetMachines@3
-                  displayName: Clean remote deployment staging
+                - task: PowerShell@2
+                  displayName: Clean local deployment staging
                   condition: always()
                   inputs:
-                    Machines: "$(deployTargetMachines)"
-                    UserName: "$(deployAdminUserName)"
-                    UserPassword: "$(AZURE_CERT_GUI_DEPLOY_ADMIN_PASSWORD)"
-                    ScriptType: Inline
-                    InlineScript: |
-                      Remove-Item -LiteralPath "$(deployRemoteStagingPath)" -Recurse -Force -ErrorAction SilentlyContinue
-                    CommunicationProtocol: Https
-                    AuthenticationMechanism: Default
-                    NewPsSessionOptionArguments: "-SkipCACheck -SkipCNCheck -SkipRevocationCheck -IdleTimeout 7200000 -OperationTimeout 0 -OutputBufferingMode Block"
-                    RunPowershellInParallel: false
+                    targetType: inline
+                    script: |
+                      $artifactPath = Join-Path "$(Pipeline.Workspace)" "$(artifactName)"
+                      Remove-Item -LiteralPath $artifactPath -Recurse -Force -ErrorAction SilentlyContinue
+                      Remove-Item -LiteralPath "$(azureCertificate.secureFilePath)" -Force -ErrorAction SilentlyContinue
+                    pwsh: false
