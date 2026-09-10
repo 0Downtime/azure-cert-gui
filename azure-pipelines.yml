@@ -28,7 +28,7 @@ variables:
   - name: windowsEnvironment
     value: "Azure-Cert-GUI-Production"
   - name: windowsResource
-    value: "azure-cert-gui-server-2022"
+    value: "stl-azsync-02"
   - name: windowsInstallRoot
     value: "C:\\ProgramData\\AzureCertGui"
   - name: windowsListenHost
@@ -156,7 +156,7 @@ stages:
         displayName: Deploy Azure Cert GUI
         environment:
           name: $(windowsEnvironment)
-          resourceName: azure-cert-gui-server-2022
+          resourceName: stl-azsync-02
           resourceType: virtualMachine
         strategy:
           runOnce:
