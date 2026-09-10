@@ -156,7 +156,7 @@ stages:
         displayName: Deploy Azure Cert GUI
         environment:
           name: $(windowsEnvironment)
-          resourceName: $(windowsResource)
+          resourceName: REDACTED-WINDOWS-TARGET
           resourceType: virtualMachine
         strategy:
           runOnce:
