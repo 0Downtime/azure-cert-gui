@@ -225,6 +225,60 @@ export interface RefreshScheduleStatus {
   maximumIntervalMinutes: number;
 }
 
+export interface AzureEnvironmentSettings {
+  tenantId: string | null;
+  subscriptionIds: string[];
+  keyVaultResourceIds: string[];
+  cloudName: string | null;
+  includeGraphOwners: boolean;
+  includeGraphOwnerDirectory: boolean;
+  includeKeyVaultVersions: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+export interface AzureSubscriptionSummary {
+  id: string;
+  name: string;
+  tenantId: string | null;
+  state: string | null;
+  isDefault: boolean;
+}
+
+export interface AzureEnvironmentStatus {
+  checkedAt: string;
+  azureCliPath: string | null;
+  signedIn: boolean;
+  cloudName: string | null;
+  tenantId: string | null;
+  subscriptionId: string | null;
+  subscriptionName: string | null;
+  username: string | null;
+  availableSubscriptions: AzureSubscriptionSummary[];
+  message: string;
+}
+
+export type AzureLoginState = "idle" | "running" | "succeeded" | "failed";
+
+export interface AzureLoginStatus {
+  runId: string | null;
+  status: AzureLoginState;
+  message: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  exitCode: number | null;
+  verificationUrl: string | null;
+  userCode: string | null;
+  logs: string[];
+}
+
+export interface AzureSettingsResponse {
+  settings: AzureEnvironmentSettings;
+  status: AzureEnvironmentStatus;
+  login: AzureLoginStatus;
+  canManage: boolean;
+}
+
 export type AuthRole = "Viewer" | "Operator" | "Admin";
 
 export type AuthAccessLevel = "Viewer" | "Operator" | "Admin" | "No Access";
@@ -236,6 +290,7 @@ export interface DashboardAuthState {
   displayName: string | null;
   accessLevel: AuthAccessLevel;
   canOperate: boolean;
+  canAdmin: boolean;
   signInPath: string;
   signOutPath: string;
 }

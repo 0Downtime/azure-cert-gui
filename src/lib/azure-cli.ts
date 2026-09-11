@@ -1,4 +1,5 @@
 import { AzureCliError, execAzureCliJson } from "./azure-command";
+import { getAzureEnvironmentSettings } from "./repository";
 import type {
   GraphApplicationInput,
   GraphCredentialInput,
@@ -113,13 +114,24 @@ interface KeyVaultRawItem {
 export { AzureCliError };
 
 export function azureSyncConfigFromEnv(env: NodeJS.ProcessEnv = process.env): AzureSyncConfig {
+  const saved = getAzureEnvironmentSettings();
   return {
-    tenantId: env.AZURE_TENANT_ID?.trim() || null,
-    subscriptionIds: csv(env.AZURE_SUBSCRIPTION_IDS),
-    keyVaultResourceIds: csv(env.AZURE_KEYVAULT_RESOURCE_IDS),
-    includeGraphOwners: env.AZURE_GRAPH_INCLUDE_OWNERS !== "false",
-    includeGraphOwnerDirectory: env.AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY !== "false",
-    includeKeyVaultVersions: env.AZURE_KEYVAULT_INCLUDE_VERSIONS === "true"
+    tenantId: env.AZURE_TENANT_ID?.trim() || saved.tenantId,
+    subscriptionIds: env.AZURE_SUBSCRIPTION_IDS !== undefined ? csv(env.AZURE_SUBSCRIPTION_IDS) : saved.subscriptionIds,
+    keyVaultResourceIds:
+      env.AZURE_KEYVAULT_RESOURCE_IDS !== undefined
+        ? csv(env.AZURE_KEYVAULT_RESOURCE_IDS)
+        : saved.keyVaultResourceIds,
+    includeGraphOwners:
+      env.AZURE_GRAPH_INCLUDE_OWNERS !== undefined ? env.AZURE_GRAPH_INCLUDE_OWNERS !== "false" : saved.includeGraphOwners,
+    includeGraphOwnerDirectory:
+      env.AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY !== undefined
+        ? env.AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY !== "false"
+        : saved.includeGraphOwnerDirectory,
+    includeKeyVaultVersions:
+      env.AZURE_KEYVAULT_INCLUDE_VERSIONS !== undefined
+        ? env.AZURE_KEYVAULT_INCLUDE_VERSIONS === "true"
+        : saved.includeKeyVaultVersions
   };
 }
 

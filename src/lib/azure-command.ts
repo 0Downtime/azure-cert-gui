@@ -27,6 +27,16 @@ export function azureCliCandidates(env: NodeJS.ProcessEnv = process.env, platfor
   ]);
 }
 
+export async function resolveAzureCliPath(
+  env: NodeJS.ProcessEnv = process.env,
+  platform = process.platform
+): Promise<string | null> {
+  for (const candidate of azureCliCandidates(env, platform)) {
+    if (await canAttempt(candidate)) return candidate;
+  }
+  return null;
+}
+
 export async function execAzureCliJson<T>(
   args: string[],
   options: { maxBuffer?: number } = {}
