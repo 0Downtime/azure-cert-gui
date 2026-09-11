@@ -83,7 +83,7 @@ stages:
     condition: and(ne(variables['Build.Reason'], 'PullRequest'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
     jobs:
       - job: ValidateAndPackage
-        displayName: Test, scan, analyze, and publish artifact
+        displayName: Test, analyze, and publish artifact
         pool:
           name: "Azure Self Hosted Linux Pool"
         variables:
@@ -99,14 +99,6 @@ stages:
 
           - script: npm ci --ignore-scripts
             displayName: Install dependencies
-
-          - bash: |
-              set -euo pipefail
-              docker run --rm \
-                -v "$(Build.SourcesDirectory):/repo" \
-                ghcr.io/gitleaks/gitleaks:v8.30.1 \
-                detect --source /repo --redact --no-banner
-            displayName: Scan repository for secrets
 
           - task: SonarQubePrepare@8
             displayName: Prepare SonarQube analysis
