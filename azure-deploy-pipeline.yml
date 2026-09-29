@@ -84,30 +84,7 @@ stages:
                       $certificatePath = "$(azureCertificate.secureFilePath)"
                       $deployScript = Join-Path $artifactPath "scripts\\deploy-windows-server.ps1"
 
-                      $env:AZURE_TENANT_ID = '$(AZURE_TENANT_ID)'
-                      $env:AZURE_SUBSCRIPTION_IDS = '$(AZURE_SUBSCRIPTION_IDS)'
-                      $env:AZURE_KEYVAULT_RESOURCE_IDS = '$(AZURE_KEYVAULT_RESOURCE_IDS)'
-                      $env:AZURE_CLI_PATH = '$(AZURE_CLI_PATH)'
-                      $env:AZURE_CERT_GUI_AZ_LOGIN_MODE = '$(windowsAzureCliLoginMode)'
-                      $env:AZURE_CERT_GUI_SP_APP_ID = '$(AZURE_CERT_GUI_SP_APP_ID)'
                       $env:AZURE_CERT_GUI_SP_CERTIFICATE_PATH = $certificatePath
-                      $env:AZURE_GRAPH_INCLUDE_OWNERS = '$(AZURE_GRAPH_INCLUDE_OWNERS)'
-                      $env:AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY = '$(AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY)'
-                      $env:AZURE_KEYVAULT_INCLUDE_VERSIONS = '$(AZURE_KEYVAULT_INCLUDE_VERSIONS)'
-                      $env:AZURE_CERT_GUI__AUTH__MODE = 'oidc'
-                      $env:AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY = '$(AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY)'
-                      $env:AZURE_CERT_GUI__AUTH__OIDC__CLIENTID = '$(AZURE_CERT_GUI__AUTH__OIDC__CLIENTID)'
-                      $env:AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET = '$(AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET)'
-                      $env:AZURE_CERT_GUI__AUTH__COOKIESECRET = '$(AZURE_CERT_GUI__AUTH__COOKIESECRET)'
-                      $env:AZURE_CERT_GUI__AUTH__OIDC__ROLESCLAIMTYPE = '$(AZURE_CERT_GUI__AUTH__OIDC__ROLESCLAIMTYPE)'
-                      $env:AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS = '$(AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS)'
-                      $env:AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS__0 = '$(AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS__0)'
-                      $env:AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS = '$(AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS)'
-                      $env:AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS__0 = '$(AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS__0)'
-                      $env:AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS = '$(AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS)'
-                      $env:AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS__0 = '$(AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS__0)'
-                      $env:AZURE_CERT_GUI__ROTATION__LIVEENABLED = "false"
-                      $env:AZURE_CERT_GUI_MANAGED_IDENTITY_CLIENT_ID = '$(AZURE_CERT_GUI_MANAGED_IDENTITY_CLIENT_ID)'
 
                       try {
                         if (-not (Test-Path -LiteralPath $artifactPath)) {
@@ -136,6 +113,34 @@ stages:
                         Remove-Item -LiteralPath $artifactPath -Recurse -Force -ErrorAction SilentlyContinue
                       }
                     pwsh: false
+                  # Values are passed through task env (not interpolated into the script body)
+                  # so a quote or `$` inside a secret cannot break or inject into the script.
+                  # Variables left undefined stay as a literal $(NAME), which the deploy script ignores.
+                  env:
+                    AZURE_TENANT_ID: $(AZURE_TENANT_ID)
+                    AZURE_SUBSCRIPTION_IDS: $(AZURE_SUBSCRIPTION_IDS)
+                    AZURE_KEYVAULT_RESOURCE_IDS: $(AZURE_KEYVAULT_RESOURCE_IDS)
+                    AZURE_CLI_PATH: $(AZURE_CLI_PATH)
+                    AZURE_CERT_GUI_AZ_LOGIN_MODE: $(windowsAzureCliLoginMode)
+                    AZURE_CERT_GUI_SP_APP_ID: $(AZURE_CERT_GUI_SP_APP_ID)
+                    AZURE_GRAPH_INCLUDE_OWNERS: $(AZURE_GRAPH_INCLUDE_OWNERS)
+                    AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY: $(AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY)
+                    AZURE_KEYVAULT_INCLUDE_VERSIONS: $(AZURE_KEYVAULT_INCLUDE_VERSIONS)
+                    AZURE_CERT_GUI__AUTH__MODE: oidc
+                    AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY: $(AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY)
+                    AZURE_CERT_GUI__AUTH__OIDC__CLIENTID: $(AZURE_CERT_GUI__AUTH__OIDC__CLIENTID)
+                    AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET: $(AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET)
+                    AZURE_CERT_GUI__AUTH__COOKIESECRET: $(AZURE_CERT_GUI__AUTH__COOKIESECRET)
+                    AZURE_CERT_GUI__AUTH__OIDC__PUBLICORIGIN: $(AZURE_CERT_GUI__AUTH__OIDC__PUBLICORIGIN)
+                    AZURE_CERT_GUI__AUTH__OIDC__ROLESCLAIMTYPE: $(AZURE_CERT_GUI__AUTH__OIDC__ROLESCLAIMTYPE)
+                    AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS: $(AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS)
+                    AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS__0: $(AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS__0)
+                    AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS: $(AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS)
+                    AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS__0: $(AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS__0)
+                    AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS: $(AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS)
+                    AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS__0: $(AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS__0)
+                    AZURE_CERT_GUI__ROTATION__LIVEENABLED: "false"
+                    AZURE_CERT_GUI_MANAGED_IDENTITY_CLIENT_ID: $(AZURE_CERT_GUI_MANAGED_IDENTITY_CLIENT_ID)
 
                 - task: PowerShell@2
                   displayName: Clean local deployment staging

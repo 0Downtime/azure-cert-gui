@@ -132,6 +132,29 @@ function Backup-Database {
   return $backupPath
 }
 
+function Get-ReleaseDirectories {
+  param(
+    [Parameter(Mandatory = $true)][string]$Root,
+    [Parameter(Mandatory = $true)][string]$Prefix
+  )
+
+  # Names embed a sortable timestamp, so name order is age order.
+  return @(Get-ChildItem -LiteralPath $Root -Directory -Filter "$Prefix*" -ErrorAction SilentlyContinue |
+    Sort-Object Name -Descending)
+}
+
+function Remove-OldReleases {
+  param(
+    [Parameter(Mandatory = $true)][string]$Root,
+    [Parameter(Mandatory = $true)][string]$Prefix,
+    [Parameter(Mandatory = $true)][int]$Keep
+  )
+
+  foreach ($directory in (Get-ReleaseDirectories -Root $Root -Prefix $Prefix | Select-Object -Skip $Keep)) {
+    Remove-Item -LiteralPath $directory.FullName -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
 function Register-AppTask {
   param(
     [Parameter(Mandatory = $true)][string]$Name,
@@ -142,7 +165,8 @@ function Register-AppTask {
   $action = New-ScheduledTaskAction -Execute $powershell -Argument "-NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$ScriptPath`""
   $trigger = New-ScheduledTaskTrigger -AtStartup
   $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-  $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+  # The default execution limit is 72 hours, which would silently stop the long-running web server.
+  $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero)
   Register-ScheduledTask -TaskName $Name -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 }
 
@@ -158,7 +182,7 @@ function Register-SyncTask {
   $action = New-ScheduledTaskAction -Execute $powershell -Argument "-NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$ScriptPath`""
   $trigger = New-ScheduledTaskTrigger -Daily -At $parsedTime
   $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-  $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable
+  $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 2)
   Register-ScheduledTask -TaskName $Name -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 }
 
@@ -193,8 +217,11 @@ if ([string]::IsNullOrWhiteSpace($node)) {
   throw "Node.js 22 is required on the preprovisioned Windows Server 2022 target."
 }
 $nodeVersion = (& $node --version).Trim()
-if ($nodeVersion -notmatch '^v22\.') {
+if ($nodeVersion -notmatch '^v22\.(\d+)\.') {
   throw "Node.js 22 is required on the target. Detected: $nodeVersion"
+}
+if ([int]$Matches[1] -lt 13) {
+  throw "Node.js 22.13 or newer is required because the app uses node:sqlite without flags. Detected: $nodeVersion"
 }
 
 $npm = (Get-Command npm.cmd -ErrorAction SilentlyContinue).Source
@@ -304,89 +331,122 @@ if ($databaseBackup) {
 New-Item -ItemType Directory -Path $releaseRoot -Force | Out-Null
 Copy-Item -Path (Join-Path $ArtifactPath "*") -Destination $releaseRoot -Recurse -Force
 
+$previousRoot = $null
 if (Test-Path -LiteralPath $currentRoot) {
   $previousRoot = Join-Path $releasesRoot ("previous-{0}" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
   Move-Item -LiteralPath $currentRoot -Destination $previousRoot
 }
-Copy-Item -LiteralPath $releaseRoot -Destination $currentRoot -Recurse -Force
 
-$runtimeRoot = Join-Path $currentRoot ".runtime"
-New-Item -ItemType Directory -Path $runtimeRoot, (Join-Path $currentRoot "logs") -Force | Out-Null
-
-Push-Location -LiteralPath $currentRoot
 try {
-  & $npm ci --omit=dev --ignore-scripts --no-audit
-  if ($LASTEXITCODE -ne 0) {
-    throw "Windows production dependency installation failed with exit code $LASTEXITCODE."
+  Copy-Item -LiteralPath $releaseRoot -Destination $currentRoot -Recurse -Force
+
+  $runtimeRoot = Join-Path $currentRoot ".runtime"
+  New-Item -ItemType Directory -Path $runtimeRoot, (Join-Path $currentRoot "logs") -Force | Out-Null
+
+  Push-Location -LiteralPath $currentRoot
+  try {
+    & $npm ci --omit=dev --ignore-scripts --no-audit
+    if ($LASTEXITCODE -ne 0) {
+      throw "Windows production dependency installation failed with exit code $LASTEXITCODE."
+    }
+  } finally {
+    Pop-Location
   }
-} finally {
-  Pop-Location
-}
 
-$values = @{
-  NODE_ENV = "production"
-  UI_HOST = $ListenHost
-  PORT = [string]$Port
-  AZURE_CERT_GUI_DB_PATH = $dataPath
-  AZURE_TENANT_ID = $tenantId
-  AZURE_SUBSCRIPTION_IDS = $subscriptionIds
-  AZURE_CERT_GUI__AUTH__MODE = $authMode
-  AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY = Require-ProcessEnvironmentValue -Name "AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY"
-  AZURE_CERT_GUI__AUTH__OIDC__CLIENTID = Require-ProcessEnvironmentValue -Name "AZURE_CERT_GUI__AUTH__OIDC__CLIENTID"
-  AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET = Require-ProcessEnvironmentValue -Name "AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET"
-  AZURE_CERT_GUI__AUTH__COOKIESECRET = Require-ProcessEnvironmentValue -Name "AZURE_CERT_GUI__AUTH__COOKIESECRET"
-  AZURE_CERT_GUI__ROTATION__LIVEENABLED = (Get-ProcessEnvironmentValue -Name "AZURE_CERT_GUI__ROTATION__LIVEENABLED")
-  AZURE_CERT_GUI_AZ_LOGIN_MODE = $loginMode
-}
+  $values = @{
+    NODE_ENV = "production"
+    UI_HOST = $ListenHost
+    PORT = [string]$Port
+    AZURE_CERT_GUI_DB_PATH = $dataPath
+    AZURE_TENANT_ID = $tenantId
+    AZURE_SUBSCRIPTION_IDS = $subscriptionIds
+    AZURE_CERT_GUI__AUTH__MODE = $authMode
+    AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY = Require-ProcessEnvironmentValue -Name "AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY"
+    AZURE_CERT_GUI__AUTH__OIDC__CLIENTID = Require-ProcessEnvironmentValue -Name "AZURE_CERT_GUI__AUTH__OIDC__CLIENTID"
+    AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET = Require-ProcessEnvironmentValue -Name "AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET"
+    AZURE_CERT_GUI__AUTH__COOKIESECRET = Require-ProcessEnvironmentValue -Name "AZURE_CERT_GUI__AUTH__COOKIESECRET"
+    AZURE_CERT_GUI__ROTATION__LIVEENABLED = (Get-ProcessEnvironmentValue -Name "AZURE_CERT_GUI__ROTATION__LIVEENABLED")
+    AZURE_CERT_GUI_AZ_LOGIN_MODE = $loginMode
+  }
 
-if ([string]::IsNullOrWhiteSpace($values.AZURE_CERT_GUI__ROTATION__LIVEENABLED)) {
-  $values.AZURE_CERT_GUI__ROTATION__LIVEENABLED = "false"
-}
-Add-OptionalRuntimeValue -Values $values -Name "AZURE_CERT_GUI_MANAGED_IDENTITY_CLIENT_ID"
-Add-OptionalRuntimeValue -Values $values -Name "AZURE_CLI_PATH"
-Add-OptionalRuntimeValue -Values $values -Name "AZURE_KEYVAULT_RESOURCE_IDS"
-Add-OptionalRuntimeValue -Values $values -Name "AZURE_GRAPH_INCLUDE_OWNERS"
-Add-OptionalRuntimeValue -Values $values -Name "AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY"
-Add-OptionalRuntimeValue -Values $values -Name "AZURE_KEYVAULT_INCLUDE_VERSIONS"
+  if ([string]::IsNullOrWhiteSpace($values.AZURE_CERT_GUI__ROTATION__LIVEENABLED)) {
+    $values.AZURE_CERT_GUI__ROTATION__LIVEENABLED = "false"
+  }
+  Add-OptionalRuntimeValue -Values $values -Name "AZURE_CERT_GUI_MANAGED_IDENTITY_CLIENT_ID"
+  Add-OptionalRuntimeValue -Values $values -Name "AZURE_CLI_PATH"
+  Add-OptionalRuntimeValue -Values $values -Name "AZURE_KEYVAULT_RESOURCE_IDS"
+  Add-OptionalRuntimeValue -Values $values -Name "AZURE_GRAPH_INCLUDE_OWNERS"
+  Add-OptionalRuntimeValue -Values $values -Name "AZURE_GRAPH_INCLUDE_OWNER_DIRECTORY"
+  Add-OptionalRuntimeValue -Values $values -Name "AZURE_KEYVAULT_INCLUDE_VERSIONS"
+  Add-OptionalRuntimeValue -Values $values -Name "AZURE_CERT_GUI__AUTH__OIDC__PUBLICORIGIN"
 Add-OptionalRuntimeValue -Values $values -Name "AZURE_CERT_GUI__AUTH__OIDC__ROLESCLAIMTYPE"
-Add-OptionalRuntimeValue -Values $values -Name "AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS"
-Add-OptionalRuntimeValue -Values $values -Name "AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS__0"
-Add-OptionalRuntimeValue -Values $values -Name "AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS"
-Add-OptionalRuntimeValue -Values $values -Name "AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS__0"
-Add-OptionalRuntimeValue -Values $values -Name "AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS"
-Add-OptionalRuntimeValue -Values $values -Name "AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS__0"
+  Add-OptionalRuntimeValue -Values $values -Name "AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS"
+  Add-OptionalRuntimeValue -Values $values -Name "AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS__0"
+  Add-OptionalRuntimeValue -Values $values -Name "AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS"
+  Add-OptionalRuntimeValue -Values $values -Name "AZURE_CERT_GUI__AUTH__OIDC__OPERATORGROUPS__0"
+  Add-OptionalRuntimeValue -Values $values -Name "AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS"
+  Add-OptionalRuntimeValue -Values $values -Name "AZURE_CERT_GUI__AUTH__OIDC__ADMINGROUPS__0"
 
-if ($loginMode -eq "service-principal-certificate") {
-  New-Item -ItemType Directory -Path $credentialRoot -Force | Out-Null
-  $certificateRuntimePath = Join-Path $credentialRoot "azure-cert-gui-login.pem"
-  if ([IO.Path]::GetFullPath($certificateSourcePath) -ne [IO.Path]::GetFullPath($certificateRuntimePath)) {
-    Copy-Item -LiteralPath $certificateSourcePath -Destination $certificateRuntimePath -Force
+  if ($loginMode -eq "service-principal-certificate") {
+    New-Item -ItemType Directory -Path $credentialRoot -Force | Out-Null
+    $certificateRuntimePath = Join-Path $credentialRoot "azure-cert-gui-login.pem"
+    if ([IO.Path]::GetFullPath($certificateSourcePath) -ne [IO.Path]::GetFullPath($certificateRuntimePath)) {
+      Copy-Item -LiteralPath $certificateSourcePath -Destination $certificateRuntimePath -Force
+    }
+    $values.AZURE_CERT_GUI_SP_APP_ID = $servicePrincipalAppId
+    $values.AZURE_CERT_GUI_SP_CERTIFICATE_PATH = $certificateRuntimePath
+    Protect-CredentialDirectory -Path $credentialRoot
   }
-  $values.AZURE_CERT_GUI_SP_APP_ID = $servicePrincipalAppId
-  $values.AZURE_CERT_GUI_SP_CERTIFICATE_PATH = $certificateRuntimePath
-  Protect-CredentialDirectory -Path $credentialRoot
+
+  Write-RuntimeEnvironment -Path (Join-Path $runtimeRoot "azure-cert-gui.env.ps1") -Values $values
+  Protect-RuntimeDirectory -Path $runtimeRoot
+
+  foreach ($entry in $values.GetEnumerator()) {
+    [Environment]::SetEnvironmentVariable($entry.Key, [string]$entry.Value, "Process")
+  }
+
+  $tsx = Join-Path $currentRoot "node_modules\tsx\dist\cli.mjs"
+  & $node $tsx (Join-Path $currentRoot "scripts\migrate.ts")
+  if ($LASTEXITCODE -ne 0) {
+    throw "Database migration failed with exit code $LASTEXITCODE."
+  }
+
+  $startScript = Join-Path $currentRoot "scripts\start-windows-server.ps1"
+  $syncScript = Join-Path $currentRoot "scripts\run-azure-sync-windows.ps1"
+  Register-AppTask -Name $TaskName -ScriptPath $startScript
+  Register-SyncTask -Name $SyncTaskName -ScriptPath $syncScript -At $SyncTime
+  Start-ScheduledTask -TaskName $TaskName
+
+  Wait-ForHealth -Uri ("http://{0}:{1}/api/health" -f $ListenHost, $Port)
+} catch {
+  $deployFailure = $_
+  Write-Warning "Deployment failed: $($deployFailure.Exception.Message)"
+  if ($previousRoot -and (Test-Path -LiteralPath $previousRoot)) {
+    Write-Warning "Rolling back to the previous release."
+    Stop-TaskIfPresent -Name $TaskName
+    Stop-ExistingAppProcesses -Root $InstallRoot
+    if (Test-Path -LiteralPath $currentRoot) {
+      Move-Item -LiteralPath $currentRoot -Destination (Join-Path $releasesRoot ("failed-{0}" -f (Get-Date -Format "yyyyMMdd-HHmmss")))
+    }
+    Move-Item -LiteralPath $previousRoot -Destination $currentRoot
+    $restoredStart = Join-Path $currentRoot "scripts\start-windows-server.ps1"
+    $restoredSync = Join-Path $currentRoot "scripts\run-azure-sync-windows.ps1"
+    if ((Test-Path -LiteralPath $restoredStart) -and (Test-Path -LiteralPath $restoredSync)) {
+      Register-AppTask -Name $TaskName -ScriptPath $restoredStart
+      Register-SyncTask -Name $SyncTaskName -ScriptPath $restoredSync -At $SyncTime
+      Start-ScheduledTask -TaskName $TaskName
+      Write-Warning "Previous release restored and restarted. The database backup is at: $databaseBackup"
+    }
+  } else {
+    Write-Warning "No previous release exists to roll back to."
+  }
+  throw $deployFailure
 }
 
-Write-RuntimeEnvironment -Path (Join-Path $runtimeRoot "azure-cert-gui.env.ps1") -Values $values
-Protect-RuntimeDirectory -Path $runtimeRoot
-
-foreach ($entry in $values.GetEnumerator()) {
-  [Environment]::SetEnvironmentVariable($entry.Key, [string]$entry.Value, "Process")
-}
-
-$tsx = Join-Path $currentRoot "node_modules\tsx\dist\cli.mjs"
-& $node $tsx (Join-Path $currentRoot "scripts\migrate.ts")
-if ($LASTEXITCODE -ne 0) {
-  throw "Database migration failed with exit code $LASTEXITCODE."
-}
-
-$startScript = Join-Path $currentRoot "scripts\start-windows-server.ps1"
-$syncScript = Join-Path $currentRoot "scripts\run-azure-sync-windows.ps1"
-Register-AppTask -Name $TaskName -ScriptPath $startScript
-Register-SyncTask -Name $SyncTaskName -ScriptPath $syncScript -At $SyncTime
-Start-ScheduledTask -TaskName $TaskName
-
-Wait-ForHealth -Uri ("http://{0}:{1}/api/health" -f $ListenHost, $Port)
+# Keep a few releases for manual recovery; each previous-* folder carries its own node_modules.
+Remove-OldReleases -Root $releasesRoot -Prefix "release-" -Keep 3
+Remove-OldReleases -Root $releasesRoot -Prefix "previous-" -Keep 2
+Remove-OldReleases -Root $releasesRoot -Prefix "failed-" -Keep 1
 
 if ($RunInitialSync) {
   $syncStartedAt = Get-Date
