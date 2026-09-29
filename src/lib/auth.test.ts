@@ -77,6 +77,26 @@ describe("auth configuration", () => {
     ).not.toThrow();
   });
 
+  it("accepts a valid OIDC public origin and rejects malformed ones", () => {
+    const base = {
+      AZURE_CERT_GUI__AUTH__MODE: "oidc",
+      AZURE_CERT_GUI__AUTH__OIDC__AUTHORITY: "https://login.example.com/tenant/v2.0",
+      AZURE_CERT_GUI__AUTH__OIDC__CLIENTID: "client-id",
+      AZURE_CERT_GUI__AUTH__OIDC__CLIENTSECRET: "client-secret",
+      AZURE_CERT_GUI__AUTH__OIDC__VIEWERGROUPS__0: "group-id"
+    };
+
+    const ok = authOptionsFromEnv({ ...base, AZURE_CERT_GUI__AUTH__OIDC__PUBLICORIGIN: "https://gui.example.com/" });
+    expect(ok.oidc.publicOrigin).toBe("https://gui.example.com/");
+    expect(() => validateAuthConfiguration(ok)).not.toThrow();
+
+    for (const bad of ["gui.example.com", "https://gui.example.com/app", "ftp://gui.example.com"]) {
+      expect(() =>
+        validateAuthConfiguration(authOptionsFromEnv({ ...base, AZURE_CERT_GUI__AUTH__OIDC__PUBLICORIGIN: bad }))
+      ).toThrow(/PUBLICORIGIN/);
+    }
+  });
+
   it("requires an explicit opt-in flag for live Azure rotations", () => {
     expect(isLiveRotationEnabled({})).toBe(false);
     expect(isLiveRotationEnabled({ AZURE_CERT_GUI__ROTATION__LIVEENABLED: "false" })).toBe(false);

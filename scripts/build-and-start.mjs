@@ -32,20 +32,30 @@ enableLoopbackLocalAuthBreakGlass(host);
 async function main() {
   await ensureDependencies();
 
-  const buildHash = await hashBuildInputs();
-  const cache = await readJson(cachePath);
   const hasProductionBuild = await exists(buildIdPath);
 
-  if (cache?.buildHash === buildHash && hasProductionBuild) {
-    console.log(`[ui] Build is current (${buildHash.slice(0, 12)}); skipping npm run build.`);
+  if (isTruthy(process.env.AZURE_CERT_GUI_SKIP_BUILD)) {
+    // Deployed artifacts ship the CI-built .next output. Rebuilding on the target would need
+    // devDependencies and would run code that CI never tested.
+    if (!hasProductionBuild) {
+      throw new Error("AZURE_CERT_GUI_SKIP_BUILD is set but no production build was found at .next/BUILD_ID.");
+    }
+    console.log("[ui] AZURE_CERT_GUI_SKIP_BUILD is set; using the prebuilt .next output.");
   } else {
-    console.log("[ui] Build is missing or stale; running next build.");
-    await run(process.execPath, [nextCliPath, "build"]);
-    await mkdir(path.dirname(cachePath), { recursive: true });
-    await writeFile(
-      cachePath,
-      `${JSON.stringify({ buildHash, builtAt: new Date().toISOString() }, null, 2)}\n`,
-    );
+    const buildHash = await hashBuildInputs();
+    const cache = await readJson(cachePath);
+
+    if (cache?.buildHash === buildHash && hasProductionBuild) {
+      console.log(`[ui] Build is current (${buildHash.slice(0, 12)}); skipping npm run build.`);
+    } else {
+      console.log("[ui] Build is missing or stale; running next build.");
+      await run(process.execPath, [nextCliPath, "build"]);
+      await mkdir(path.dirname(cachePath), { recursive: true });
+      await writeFile(
+        cachePath,
+        `${JSON.stringify({ buildHash, builtAt: new Date().toISOString() }, null, 2)}\n`,
+      );
+    }
   }
 
   const port = await findAvailablePort(requestedPort, host);
@@ -61,6 +71,10 @@ async function main() {
   await run(process.execPath, [nextCliPath, "start", "-p", String(port), "-H", host], {
     PORT: String(port),
   });
+}
+
+function isTruthy(value) {
+  return value !== undefined && ["1", "true", "yes"].includes(value.trim().toLowerCase());
 }
 
 function parsePort(value) {
